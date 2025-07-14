@@ -14,6 +14,8 @@ import Productos from "./pages/Productos";
 import Areas from "./pages/Areas";
 import Modificadores from "./pages/Modificadores";
 import Grupos from "./pages/Grupos";
+import Categorias from "./pages/Categorias";
+import SubGrupos from "./pages/SubGrupos";
 
 function App() {
   return (
@@ -35,6 +37,8 @@ function App() {
             <Route path="/mesas" element={<Mesas />} />
             <Route path="/productos" element={<Productos />} />
             <Route path="/productos/grupos" element={<Grupos />} />
+            <Route path="/productos/subgrupos" element={<SubGrupos />} />
+            <Route path="/productos/categorias" element={<Categorias />} />
             <Route
               path="/productos/modificadores"
               element={<Modificadores />}

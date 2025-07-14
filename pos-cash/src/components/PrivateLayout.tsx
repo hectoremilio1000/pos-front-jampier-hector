@@ -1,134 +1,24 @@
 import { Outlet, NavLink } from "react-router-dom";
 import { Button, Drawer, Avatar, Tooltip } from "antd";
-import {
-  MenuOutlined,
-  UserOutlined,
-  AppstoreOutlined,
-  ShopOutlined,
-  TableOutlined,
-  SettingOutlined,
-  LeftOutlined,
-  RightOutlined,
-  UpOutlined,
-  DownOutlined,
-} from "@ant-design/icons";
+import { MenuOutlined, LeftOutlined, RightOutlined } from "@ant-design/icons";
 import { useAuth } from "./Auth/AuthContext";
 import { useState } from "react";
-import { FaPiedPiper } from "react-icons/fa";
+import { FaBox, FaPiedPiper } from "react-icons/fa";
 
 const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: <FaPiedPiper /> },
-  { to: "/usuarios", label: "Usuarios", icon: <UserOutlined /> },
-  { to: "/areas", label: "Áreas", icon: <AppstoreOutlined /> },
-  { to: "/productos", label: "Productos", icon: <ShopOutlined /> }, // tendrá submenú
-  { to: "/mesas", label: "Mesas", icon: <TableOutlined /> },
+  { to: "/turnos", label: "Turnos", icon: <FaBox /> },
 ];
 
 const PrivateLayout = () => {
   const { user, logout } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const [productosOpen, setProductosOpen] = useState(true); // submenú expandido por defecto
 
   const SidebarContent = () => (
     <div className="flex flex-col justify-between h-full">
       <nav className="flex flex-col gap-1 p-2">
         {navItems.map((item) => {
-          if (item.label === "Productos") {
-            // Menú expandible para "Productos"
-            return (
-              <div key={item.label}>
-                <button
-                  onClick={() => setProductosOpen(!productosOpen)}
-                  className={`flex items-center w-full gap-3 px-4 py-2 rounded transition-all ${
-                    location.pathname.startsWith("/productos")
-                      ? "bg-blue-600 text-white"
-                      : "text-gray-700 hover:bg-blue-100"
-                  }`}
-                >
-                  <span className="text-xl">{item.icon}</span>
-                  {!collapsed && (
-                    <>
-                      <span className="font-medium">{item.label}</span>
-                      <span className="ml-auto">
-                        {productosOpen ? <UpOutlined /> : <DownOutlined />}
-                      </span>
-                    </>
-                  )}
-                </button>
-
-                {/* Submenú */}
-                {!collapsed && productosOpen && (
-                  <div className="ml-4 mt-1 flex flex-col gap-1 text-sm">
-                    <NavLink
-                      to="/productos/categorias"
-                      end
-                      className={({ isActive }) =>
-                        `rounded px-2 py-1 ${
-                          isActive
-                            ? "bg-blue-100 text-blue-800"
-                            : "text-gray-700 hover:bg-gray-100"
-                        }`
-                      }
-                    >
-                      ➕ Categorias
-                    </NavLink>
-                    <NavLink
-                      to="/productos"
-                      end
-                      className={({ isActive }) =>
-                        `rounded px-2 py-1 ${
-                          isActive
-                            ? "bg-blue-100 text-blue-800"
-                            : "text-gray-700 hover:bg-gray-100"
-                        }`
-                      }
-                    >
-                      ➕ Agregar producto
-                    </NavLink>
-
-                    <NavLink
-                      to="/productos/grupos"
-                      className={({ isActive }) =>
-                        `rounded px-2 py-1 ${
-                          isActive
-                            ? "bg-blue-100 text-blue-800"
-                            : "text-gray-700 hover:bg-gray-100"
-                        }`
-                      }
-                    >
-                      📦 Grupos
-                    </NavLink>
-                    <NavLink
-                      to="/productos/subgrupos"
-                      className={({ isActive }) =>
-                        `rounded px-2 py-1 ${
-                          isActive
-                            ? "bg-blue-100 text-blue-800"
-                            : "text-gray-700 hover:bg-gray-100"
-                        }`
-                      }
-                    >
-                      📦 SubGrupos
-                    </NavLink>
-                    <NavLink
-                      to="/productos/modificadores"
-                      className={({ isActive }) =>
-                        `rounded px-2 py-1 ${
-                          isActive
-                            ? "bg-blue-100 text-blue-800"
-                            : "text-gray-700 hover:bg-gray-100"
-                        }`
-                      }
-                    >
-                      🧩 Modificadores
-                    </NavLink>
-                  </div>
-                )}
-              </div>
-            );
-          }
-
           // Renderiza los demás items como antes
           const isCollapsed = collapsed;
 
@@ -199,7 +89,7 @@ const PrivateLayout = () => {
             <span className="text-white text-2xl sm:text-3xl">GrowthSuite</span>
             <span className="text-yellow-500 text-2xl sm:text-3xl">
               {" "}
-              POS Admin
+              POS Cash
             </span>
           </h1>
         </div>
