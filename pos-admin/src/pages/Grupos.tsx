@@ -6,9 +6,10 @@ import {
   Modal,
   InputNumber,
   Switch,
-  Tag,
   message,
+  Tag,
   Space,
+  Select,
 } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import apiOrder from "@/components/apis/apiOrder";
@@ -19,10 +20,18 @@ interface ProductGroup {
   name: string;
   sortOrder: number;
   isEnabled: boolean;
+  category: { id: number; name: string };
+  categoryId: number;
+}
+
+interface Category {
+  id: number;
+  name: string;
 }
 
 export default function Grupos() {
   const [groups, setGroups] = useState<ProductGroup[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -30,6 +39,7 @@ export default function Grupos() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const [createForm, setCreateForm] = useState({
+    categoryId: 0,
     code: "",
     name: "",
     sortOrder: 1,
@@ -37,6 +47,7 @@ export default function Grupos() {
   });
 
   const [editForm, setEditForm] = useState({
+    categoryId: 0,
     code: "",
     name: "",
     sortOrder: 1,
@@ -56,8 +67,18 @@ export default function Grupos() {
     setLoading(false);
   };
 
+  const fetchCategories = async () => {
+    try {
+      const res = await apiOrder.get("/categories");
+      setCategories(res.data);
+    } catch {
+      message.error("Error al cargar categorías");
+    }
+  };
+
   useEffect(() => {
     fetchGroups();
+    fetchCategories();
   }, []);
 
   const filtered = groups.filter((g) =>
@@ -66,10 +87,7 @@ export default function Grupos() {
 
   const handleCreate = async () => {
     try {
-      await apiOrder.post("/groups", {
-        ...createForm,
-        categoryId: 1, // si no tienes selector, fija 1 o el default permitido
-      });
+      await apiOrder.post("/groups", createForm);
       message.success("Grupo creado");
       setIsCreateModalOpen(false);
       fetchGroups();
@@ -80,6 +98,7 @@ export default function Grupos() {
 
   const openEditModal = (group: ProductGroup) => {
     setEditForm({
+      categoryId: group.categoryId,
       code: group.code,
       name: group.name,
       sortOrder: group.sortOrder,
@@ -92,10 +111,7 @@ export default function Grupos() {
   const handleEdit = async () => {
     if (!editId) return;
     try {
-      await apiOrder.put(`/groups/${editId}`, {
-        ...editForm,
-        categoryId: 1,
-      });
+      await apiOrder.put(`/groups/${editId}`, editForm);
       message.success("Grupo actualizado");
       setIsEditModalOpen(false);
       setEditId(null);
@@ -127,6 +143,11 @@ export default function Grupos() {
       key: "code",
     },
     {
+      title: "Categoría",
+      dataIndex: ["category", "name"],
+      key: "category",
+    },
+    {
       title: "Orden",
       dataIndex: "sortOrder",
       key: "sortOrder",
@@ -155,7 +176,7 @@ export default function Grupos() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 max-w-5xl mx-auto">
       <div className="flex justify-between items-center">
         <Input
           placeholder="Buscar por nombre o código"
@@ -168,10 +189,9 @@ export default function Grupos() {
           type="primary"
           onClick={() => {
             setCreateForm({
-              code: "",
+              ...createForm,
               name: "",
-              sortOrder: 1,
-              isEnabled: true,
+              categoryId: categories[0]?.id || 0,
             });
             setIsCreateModalOpen(true);
           }}
@@ -185,6 +205,7 @@ export default function Grupos() {
         columns={columns}
         dataSource={filtered}
         loading={loading}
+        pagination={{ pageSize: 10 }}
       />
 
       {/* Modal Crear */}
@@ -195,7 +216,12 @@ export default function Grupos() {
         onOk={handleCreate}
         okText="Crear"
       >
-        <GroupForm formData={createForm} setFormData={setCreateForm} />
+        <GroupForm
+          formData={createForm}
+          setFormData={setCreateForm}
+          categories={categories}
+          groups={groups}
+        />
       </Modal>
 
       {/* Modal Editar */}
@@ -206,7 +232,12 @@ export default function Grupos() {
         onOk={handleEdit}
         okText="Actualizar"
       >
-        <GroupForm formData={editForm} setFormData={setEditForm} />
+        <GroupForm
+          groups={groups}
+          formData={editForm}
+          setFormData={setEditForm}
+          categories={categories}
+        />
       </Modal>
     </div>
   );
@@ -215,22 +246,44 @@ export default function Grupos() {
 function GroupForm({
   formData,
   setFormData,
+  categories,
+  groups,
 }: {
   formData: any;
   setFormData: (val: any) => void;
+  categories: Category[];
+  groups: any[];
 }) {
+  useEffect(() => {
+    const code = `${groups.length + 1}`;
+    setFormData({ ...formData, code, sortOrder: code, name: "" });
+  }, [0, groups]);
   return (
     <div className="space-y-3">
+      <label htmlFor="nombre">Nombre</label>
       <Input
         placeholder="Nombre"
         value={formData.name}
         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
       />
+      <label htmlFor="codigo">Codigo</label>
       <Input
         placeholder="Código"
         value={formData.code}
         onChange={(e) => setFormData({ ...formData, code: e.target.value })}
       />
+      <label htmlFor="Categoria">Categoria</label>
+      <Select
+        className="w-full"
+        placeholder="Categoría"
+        value={formData.categoryId}
+        onChange={(val) => setFormData({ ...formData, categoryId: val })}
+        options={categories.map((cat) => ({
+          value: cat.id,
+          label: cat.name,
+        }))}
+      />
+      <label htmlFor="orden">Orden</label>
       <InputNumber
         placeholder="Orden"
         value={formData.sortOrder}

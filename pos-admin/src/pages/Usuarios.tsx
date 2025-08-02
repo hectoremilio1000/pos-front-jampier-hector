@@ -12,6 +12,7 @@ import {
 } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import apiAuth from "@/components/apis/apiAuth";
+import { useAuth } from "@/components/Auth/AuthContext";
 
 interface Role {
   id: number;
@@ -28,6 +29,7 @@ interface User {
 }
 
 export default function Usuarios() {
+  const { user } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(false);
@@ -55,7 +57,21 @@ export default function Usuarios() {
     setLoading(true);
     try {
       const res = await apiAuth.get("/users");
-      setUsers(res.data);
+
+      if (user?.role?.code === "owner") {
+        const usuariosLowLevel = res.data.filter(
+          (u: any) => u.id !== user?.id && u.role.code !== "owner"
+        );
+        setUsers(usuariosLowLevel);
+      } else {
+        const usuariosLowLevel = res.data.filter(
+          (u: any) =>
+            u.id !== user?.id &&
+            u.role.code !== "owner" &&
+            u.role.code !== "admin"
+        );
+        setUsers(usuariosLowLevel);
+      }
     } catch {
       message.error("Error al cargar usuarios");
     }

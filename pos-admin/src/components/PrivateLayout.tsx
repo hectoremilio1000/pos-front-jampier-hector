@@ -6,7 +6,6 @@ import {
   AppstoreOutlined,
   ShopOutlined,
   TableOutlined,
-  SettingOutlined,
   LeftOutlined,
   RightOutlined,
   UpOutlined,
@@ -14,12 +13,27 @@ import {
 } from "@ant-design/icons";
 import { useAuth } from "./Auth/AuthContext";
 import { useState } from "react";
-import { FaPiedPiper } from "react-icons/fa";
+import {
+  FaBox,
+  FaBoxTissue,
+  FaPlus,
+  FaPrint,
+  FaRulerCombined,
+} from "react-icons/fa";
+import { GiHotMeal } from "react-icons/gi";
+import { FiSettings } from "react-icons/fi";
+import { MdAssessment } from "react-icons/md";
+import { FaFileLines } from "react-icons/fa6";
 
 const navItems = [
-  { to: "/dashboard", label: "Dashboard", icon: <FaPiedPiper /> },
+  // { to: "/dashboard", label: "Dashboard", icon: <FaPiedPiper /> },
+  { to: "/configuracion", label: "Configuracion", icon: <FiSettings /> },
+  { to: "/reportes", label: "Reportes", icon: <MdAssessment /> },
   { to: "/usuarios", label: "Usuarios", icon: <UserOutlined /> },
+  { to: "/stations", label: "Estaciones/Cajas", icon: <FaBox /> },
+  { to: "/hour_cut", label: "Horario Turnos/Z corte", icon: <FaFileLines /> },
   { to: "/areas", label: "Áreas", icon: <AppstoreOutlined /> },
+  { to: "/areasImpresion", label: "Áreas Impresion", icon: <FaPrint /> },
   { to: "/productos", label: "Productos", icon: <ShopOutlined /> }, // tendrá submenú
   { to: "/mesas", label: "Mesas", icon: <TableOutlined /> },
 ];
@@ -61,67 +75,67 @@ const PrivateLayout = () => {
                 {!collapsed && productosOpen && (
                   <div className="ml-4 mt-1 flex flex-col gap-1 text-sm">
                     <NavLink
-                      to="/productos/categorias"
-                      end
-                      className={({ isActive }) =>
-                        `rounded px-2 py-1 ${
-                          isActive
-                            ? "bg-blue-100 text-blue-800"
-                            : "text-gray-700 hover:bg-gray-100"
-                        }`
-                      }
-                    >
-                      ➕ Categorias
-                    </NavLink>
-                    <NavLink
                       to="/productos"
                       end
                       className={({ isActive }) =>
-                        `rounded px-2 py-1 ${
+                        `rounded flex gap-2 items-center px-2 py-1 ${
                           isActive
                             ? "bg-blue-100 text-blue-800"
                             : "text-gray-700 hover:bg-gray-100"
                         }`
                       }
                     >
-                      ➕ Agregar producto
+                      <FaPlus /> Agregar producto
+                    </NavLink>
+                    <NavLink
+                      to="/productos/categorias"
+                      end
+                      className={({ isActive }) =>
+                        `rounded flex gap-2 items-center px-2 py-1 ${
+                          isActive
+                            ? "bg-blue-100 text-blue-800"
+                            : "text-gray-700 hover:bg-gray-100"
+                        }`
+                      }
+                    >
+                      <GiHotMeal /> Categorias
                     </NavLink>
 
                     <NavLink
                       to="/productos/grupos"
                       className={({ isActive }) =>
-                        `rounded px-2 py-1 ${
+                        `rounded flex gap-2 items-center px-2 py-1 ${
                           isActive
                             ? "bg-blue-100 text-blue-800"
                             : "text-gray-700 hover:bg-gray-100"
                         }`
                       }
                     >
-                      📦 Grupos
+                      <FaBoxTissue /> Grupos de productos
                     </NavLink>
                     <NavLink
                       to="/productos/subgrupos"
                       className={({ isActive }) =>
-                        `rounded px-2 py-1 ${
+                        `rounded flex gap-2 items-center px-2 py-1 ${
                           isActive
                             ? "bg-blue-100 text-blue-800"
                             : "text-gray-700 hover:bg-gray-100"
                         }`
                       }
                     >
-                      📦 SubGrupos
+                      <FaBoxTissue /> SubGrupos de productos
                     </NavLink>
                     <NavLink
                       to="/productos/modificadores"
                       className={({ isActive }) =>
-                        `rounded px-2 py-1 ${
+                        `rounded flex gap-2 items-center px-2 py-1 ${
                           isActive
                             ? "bg-blue-100 text-blue-800"
                             : "text-gray-700 hover:bg-gray-100"
                         }`
                       }
                     >
-                      🧩 Modificadores
+                      <FaRulerCombined /> Modificadores
                     </NavLink>
                   </div>
                 )}

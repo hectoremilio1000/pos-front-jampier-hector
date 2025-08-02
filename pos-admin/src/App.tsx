@@ -10,12 +10,15 @@ import PrivateLayout from "./components/PrivateLayout";
 import Dashboard from "./pages/Dashboard";
 import Usuarios from "./pages/Usuarios";
 import Mesas from "./pages/Mesas";
-import Productos from "./pages/Productos";
 import Areas from "./pages/Areas";
 import Modificadores from "./pages/Modificadores";
 import Grupos from "./pages/Grupos";
 import Categorias from "./pages/Categorias";
 import SubGrupos from "./pages/SubGrupos";
+import ProductosPage from "./pages/ProductosPage";
+import AreasImpresion from "./pages/AreasImpresion";
+import Stations from "./pages/Stations";
+import FiscalCutSettings from "./pages/FiscalCutSettings";
 
 function App() {
   return (
@@ -32,10 +35,13 @@ function App() {
             }
           >
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/stations" element={<Stations />} />
+            <Route path="/hour_cut" element={<FiscalCutSettings />} />
             <Route path="/areas" element={<Areas />} />
+            <Route path="/areasImpresion" element={<AreasImpresion />} />
             <Route path="/usuarios" element={<Usuarios />} />
             <Route path="/mesas" element={<Mesas />} />
-            <Route path="/productos" element={<Productos />} />
+            <Route path="/productos" element={<ProductosPage />} />
             <Route path="/productos/grupos" element={<Grupos />} />
             <Route path="/productos/subgrupos" element={<SubGrupos />} />
             <Route path="/productos/categorias" element={<Categorias />} />

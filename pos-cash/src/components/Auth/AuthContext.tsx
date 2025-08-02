@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 
 import { useNavigate } from "react-router-dom";
 import apiAuth from "../apis/apiAuth";
+import { message } from "antd";
 
 interface Restaurant {
   id: number;
@@ -57,15 +58,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       email,
       password,
     });
+    if (
+      res.data.user.role.code === "cashier"
+      // || res.data.user.role.code === "waiter ..." //puede ser capitan mesero
+    ) {
+      setToken(res.data.value);
+      sessionStorage.setItem("token", res.data.value);
+      // Pide los datos del usuario desde /me
+      const meRes = await apiAuth.get("/me");
+      setUser(meRes.data);
 
-    setToken(res.data.value);
-    sessionStorage.setItem("token", res.data.value);
-
-    // Pide los datos del usuario desde /me
-    const meRes = await apiAuth.get("/me");
-    setUser(meRes.data);
-
-    navigate("/dashboard");
+      navigate("/turnos");
+    } else {
+      navigate("/");
+      message.error(
+        "No tienes el rol de waiter(mesero), para entrar a esta plataforma, porfavor revisa tus credenciales e intentalo de nuevo"
+      );
+    }
   };
 
   const logout = () => {

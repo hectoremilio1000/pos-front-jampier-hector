@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 
 import { useNavigate } from "react-router-dom";
 import apiAuth from "../apis/apiAuth";
+import { message } from "antd";
 
 interface Restaurant {
   id: number;
@@ -58,14 +59,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       password,
     });
 
-    setToken(res.data.value);
-    sessionStorage.setItem("token", res.data.value);
+    if (
+      res.data.user.role.code === "owner" ||
+      res.data.user.role.code === "admin"
+    ) {
+      setToken(res.data.value);
+      sessionStorage.setItem("token", res.data.value);
+      // Pide los datos del usuario desde /me
+      const meRes = await apiAuth.get("/me");
+      setUser(meRes.data);
 
-    // Pide los datos del usuario desde /me
-    const meRes = await apiAuth.get("/me");
-    setUser(meRes.data);
-
-    navigate("/dashboard");
+      navigate("/dashboard");
+    } else {
+      navigate("/");
+      message.error(
+        "No tienes el rol de owner o admin, para entrar a esta plataforma, porfavor revisa tus credenciales e intentalo de nuevo"
+      );
+    }
   };
 
   const logout = () => {
