@@ -182,15 +182,15 @@ export default function ProductosPage() {
 
           for (const line of g.modifiers) {
             let modifierId = line.modifierId;
-            if (line.modifier.isNew) {
+            if (line.product.isNew) {
               const { data: newProd } = await apiOrder.post("/products", {
-                groupId: line.modifier.groupId,
-                subgroupId: line.modifier.subgroupId,
-                code: line.modifier.code,
-                name: line.modifier.name,
-                price: line.modifier.basePrice,
-                taxRate: line.modifier.taxRate,
-                enabled: line.modifier.isEnabled,
+                groupId: line.product.groupId,
+                subgroupId: line.product.subgroupId,
+                code: line.product.code,
+                name: line.product.name,
+                price: line.product.basePrice,
+                taxRate: line.product.taxRate,
+                enabled: line.product.isEnabled,
               });
               modifierId = newProd.id;
             }
@@ -240,7 +240,6 @@ export default function ProductosPage() {
     try {
       const { data } = await apiOrder.get(`/products/${id}`);
       /* mapeo a tu ProductFormState */
-      console.log(data);
       setForm({
         name: data.name,
         code: data.code,
@@ -431,8 +430,7 @@ export default function ProductosPage() {
             unCheckedChildren="Off"
           />
 
-          <Divider>Grupo de Modificadores</Divider>
-          <Button onClick={() => setSelOpen(true)}>Agregar grupos</Button>
+          <Divider>Modificadores</Divider>
 
           {form.modifierGroups.map((g, i) => (
             <ModifierGroupCard
@@ -452,6 +450,8 @@ export default function ProductosPage() {
               }}
             />
           ))}
+
+          <Button onClick={() => setSelOpen(true)}>Agregar grupos</Button>
 
           <SelectorModal
             open={selOpen}

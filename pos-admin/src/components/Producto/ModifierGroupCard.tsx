@@ -1,15 +1,14 @@
 import { Card, InputNumber, Switch, Button, Tag, Divider } from "antd";
-import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
+import { PlusOutlined } from "@ant-design/icons";
 import { useState } from "react";
 import ProductSelectorModal, { type ProductMod } from "./ProductSelectorModal";
 
 export interface ModifierLine {
-  productId: number;
   modifierGroupId: number;
   modifierId: number | null;
   priceDelta: number;
   isEnabled: boolean;
-  product: ProductMod;
+  modifier: ProductMod;
 }
 
 export interface ModifierGroupConfig {
@@ -49,16 +48,16 @@ export default function ModifierGroupCard({
     onUpdate({ ...group, modifiers: copy });
   };
 
-  const delLine = (idx: number) => {
-    const copy = [...group.modifiers];
-    copy.splice(idx, 1);
-    onUpdate({ ...group, modifiers: copy });
-  };
+  // const delLine = (idx: number) => {
+  //   const copy = [...group.modifiers];
+  //   copy.splice(idx, 1);
+  //   onUpdate({ ...group, modifiers: copy });
+  // };
 
   return (
     <Card
       title={`${group.name} (${group.code})`}
-      className="mb-4"
+      className="mb-4 shadow-md"
       extra={
         <Button size="small" danger onClick={onRemove}>
           Eliminar grupo
@@ -66,7 +65,7 @@ export default function ModifierGroupCard({
       }
     >
       {/* Configuración */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
         <div>
           <label className="block text-sm font-medium">Cantidad incluida</label>
           <InputNumber
@@ -124,10 +123,11 @@ export default function ModifierGroupCard({
           className="flex items-center justify-between mb-2 bg-gray-100 px-2 py-1 rounded"
         >
           <div className="flex-1">
-            <div className="font-medium">{m.product.name}</div>
+            <div className="font-medium">{m.modifier.name}</div>
             <div className="text-sm">
               Extra $
               <InputNumber
+                disabled
                 size="small"
                 min={0}
                 value={m.priceDelta}
@@ -135,6 +135,7 @@ export default function ModifierGroupCard({
               />
               <Switch
                 size="small"
+                disabled
                 checked={m.isEnabled}
                 onChange={(v) => updLine(i, "isEnabled", v)}
                 className="ml-4"
@@ -142,23 +143,17 @@ export default function ModifierGroupCard({
               {!m.isEnabled && <Tag color="red">Off</Tag>}
             </div>
           </div>
-          <Button
-            type="text"
-            danger
-            icon={<MinusCircleOutlined />}
-            onClick={() => delLine(i)}
-          />
         </div>
       ))}
 
-      <Button
+      {/* <Button
         icon={<PlusOutlined />}
         size="small"
         type="dashed"
         onClick={() => setSelOpen(true)}
       >
         Añadir modificador
-      </Button>
+      </Button> */}
 
       {selOpen && (
         <ProductSelectorModal
@@ -173,12 +168,11 @@ export default function ModifierGroupCard({
               modifiers: [
                 ...group.modifiers,
                 {
-                  productId: 0, // se rellena después
                   modifierGroupId: group.id,
                   modifierId: prod.id, // null si es nuevo
                   priceDelta: 0,
                   isEnabled: true,
-                  product: prod, // objeto completo
+                  modifier: prod, // objeto completo
                 },
               ],
             })

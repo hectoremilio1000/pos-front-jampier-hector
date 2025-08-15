@@ -52,7 +52,6 @@ export default function SelectorModal({
     isForced: false,
     captureIncluded: false,
     priority: 0,
-    modifiers: [], // ← vacío; se llenará después en la tarjeta
   });
 
   /* crear grupo temporal */
@@ -67,6 +66,7 @@ export default function SelectorModal({
       name: newName,
       isNew: true,
     };
+    console.log(groups);
     setGroups([...groups, temp]);
     setPicked([...picked, tempId]);
     setNewCode("");
@@ -75,7 +75,9 @@ export default function SelectorModal({
 
   /* confirmar */
   const confirm = () => {
+    console.log(groups);
     const sel = groups.filter((g) => picked.includes(g.id)).map(toCfg);
+    console.log(sel);
     onSave(sel);
     onClose();
   };
