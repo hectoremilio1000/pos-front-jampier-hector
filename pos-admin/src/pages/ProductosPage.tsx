@@ -241,6 +241,24 @@ export default function ProductosPage() {
       const { data } = await apiOrder.get(`/products/${id}`);
       /* mapeo a tu ProductFormState */
       console.log(data);
+      const newModifierGroups = data.productModifierGroups.map(
+        (pmg: any, index: number) => {
+          console.log(pmg);
+          const newpmg = {
+            id: data.modifierGroups[index].id,
+            name: data.modifierGroups[index].name,
+            code: data.modifierGroups[index].code,
+            includedQty: pmg.includedQty,
+            maxQty: pmg.maxQty,
+            isForced: pmg.isForced,
+            captureIncluded: pmg.captureIncluded,
+            priority: pmg.priority,
+            modifiers: pmg.modifierGroup.modifiers,
+            isNew: pmg.isNew,
+          };
+          return newpmg;
+        }
+      );
       setForm({
         name: data.name,
         code: data.code,
@@ -251,11 +269,12 @@ export default function ProductosPage() {
         price: data.basePrice,
         taxRate: data.taxRate,
         enabled: data.isEnabled,
-        modifierGroups: data.modifierGroups, // ← árbol completo
+        modifierGroups: newModifierGroups, // ← árbol completo
       });
       setEditingId(id); // <<<<<<
       setOpen(true);
-    } catch {
+    } catch (error) {
+      console.log(error);
       message.error("Error al cargar producto");
     }
   };

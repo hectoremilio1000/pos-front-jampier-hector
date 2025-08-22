@@ -9,6 +9,7 @@ import {
   Select,
   Switch,
   InputNumber,
+  Popconfirm,
 } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import apiOrder from "@/components/apis/apiOrder";
@@ -281,8 +282,12 @@ export default function ModificadoresPage() {
       dataIndex: "priceDelta",
     },
     {
-      title: "isEnabled",
-      dataIndex: "isEnabled",
+      title: "Activo",
+      render: (_: any, record: ModifierItem) => (
+        <Button type={record.isEnabled ? "primary" : "default"} size="small">
+          {record.isEnabled ? "SI" : "NO"}
+        </Button>
+      ),
     },
     {
       title: "Acciones",
@@ -291,13 +296,17 @@ export default function ModificadoresPage() {
           <Button size="small" onClick={() => handleModifierEdit(record)}>
             Editar
           </Button>
-          <Button
-            size="small"
-            danger
-            onClick={() => handleModifierDelete(record.id)}
+          <Popconfirm
+            title="¿Estás seguro de eliminar este modifier?"
+            description="Esta acción no se puede deshacer."
+            okText="Sí"
+            cancelText="No"
+            onConfirm={() => handleModifierDelete(record.id)} // aquí llama a tu función
           >
-            Eliminar
-          </Button>
+            <Button size="small" danger>
+              Eliminar
+            </Button>
+          </Popconfirm>
         </Space>
       ),
     },
@@ -321,12 +330,12 @@ export default function ModificadoresPage() {
   };
   useEffect(() => {
     const newCurrentGroup = groups.find((g) => g.id === currentGroup?.id);
-    console.log(newCurrentGroup);
+
     setCurrentGroup(newCurrentGroup ? newCurrentGroup : null);
   }, [groups]);
   useEffect(() => {
     const newModifiers = currentGroup?.modifiers;
-    console.log(newModifiers);
+
     setModifiersCurrent(newModifiers ? newModifiers : []);
   }, [currentGroup]);
 
@@ -334,7 +343,13 @@ export default function ModificadoresPage() {
     console.log(modifierForm);
     setSavingModifier(true);
     try {
-      await apiOrder.post("/modifiers", modifierForm);
+      if (isEditingModifier && editModifierId) {
+        await apiOrder.put(`/modifiers/${editModifierId}`, modifierForm);
+        message.success("Modificador actualizado");
+      } else {
+        await apiOrder.post("/modifiers", modifierForm);
+        message.success("Modificador creado");
+      }
 
       await fetchModifierGroups();
       setModifierForm({
@@ -343,6 +358,7 @@ export default function ModificadoresPage() {
         priceDelta: 0,
         isEnabled: false,
       });
+      setEditModifierId(null);
       setIsModifiersModalOpen(false);
     } catch (error) {
       console.log(error);
@@ -360,7 +376,7 @@ export default function ModificadoresPage() {
       priceDelta: modifier.priceDelta,
       isEnabled: modifier.isEnabled,
     });
-    setIsGroupModalOpen(true);
+    setIsModifiersModalOpen(true);
   };
 
   const handleModifierDelete = async (id: number) => {
@@ -436,14 +452,14 @@ export default function ModificadoresPage() {
         <label htmlFor="nombre">Nombre</label>
         <Input
           placeholder="Nombre"
-          value={productForm.name}
+          value={groupForm.name}
           onChange={(e) => setGroupForm({ ...groupForm, name: e.target.value })}
           className="mb-2"
         />
         <label htmlFor="code">Code</label>
         <Input
           placeholder="Code"
-          value={productForm.code}
+          value={groupForm.code}
           onChange={(e) => setGroupForm({ ...groupForm, code: e.target.value })}
           className="mb-2"
         />
@@ -510,7 +526,8 @@ export default function ModificadoresPage() {
               allowClear
               value={modifierForm.modifierId ?? undefined}
               onChange={(v) => patchModifier({ modifierId: v ?? null })}
-              options={products.map((s: any) => ({
+              options={products.map((s: any, index: number) => ({
+                key: index,
                 value: s.id,
                 label: `${s.code} ${s.name}`,
               }))}
@@ -591,7 +608,8 @@ export default function ModificadoresPage() {
             placeholder="Grupo"
             value={productForm.groupId || undefined}
             onChange={(v) => patchProduct({ groupId: v })}
-            options={catalogGroups.map((g) => ({
+            options={catalogGroups.map((g, index) => ({
+              key: index,
               value: g.id,
               label: g.name,
             }))}
@@ -602,7 +620,8 @@ export default function ModificadoresPage() {
             allowClear
             value={productForm.subgroupId ?? undefined}
             onChange={(v) => patchProduct({ subgroupId: v ?? null })}
-            options={subgroups.map((s: any) => ({
+            options={subgroups.map((s: any, index: number) => ({
+              key: index,
               value: s.id,
               label: s.name,
             }))}
@@ -613,7 +632,8 @@ export default function ModificadoresPage() {
             allowClear
             value={productForm.printArea ?? undefined}
             onChange={(v) => patchProduct({ printArea: v ?? null })}
-            options={areasImpresions.map((s: AreaImpresion) => ({
+            options={areasImpresions.map((s: AreaImpresion, index: number) => ({
+              key: index,
               value: s.id,
               label: s.name,
             }))}
