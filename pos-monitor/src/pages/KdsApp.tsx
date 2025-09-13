@@ -64,7 +64,7 @@ interface KdsItem {
   productId: number | null;
   productName: string | null;
   qty: number;
-  status: "pending" | "in_progress" | "ready" | string;
+  status: "sent" | "fire" | "prepared" | "cancelled" | string;
   notes?: string | null;
   createdAt: string;
   routeAreaId: number | null;
@@ -75,7 +75,7 @@ export function KdsApp() {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<KdsItem[]>([]);
-  const [view, setView] = useState<"pending" | "active" | "all">("active");
+  const [view, setView] = useState<"queue" | "urgent" | "both">("both");
 
   // Transmit client
   const txRef = useRef<Transmit | null>(null);
@@ -149,16 +149,10 @@ export function KdsApp() {
     const tok = getAccessToken();
     if (!tok) return;
     const qs =
-      view === "pending"
-        ? "pending"
-        : view === "active"
-          ? "pending,in_progress"
-          : "pending,in_progress,ready";
+      view === "queue" ? "sent" : view === "urgent" ? "fire" : "sent,fire"; // both
     const res = await fetch(
       `${import.meta.env.VITE_ORDER_API_URL}/kds/items?status=${encodeURIComponent(qs)}`,
-      {
-        headers: { Authorization: `Bearer ${tok}` },
-      }
+      { headers: { Authorization: `Bearer ${tok}` } }
     );
     if (!res.ok) return message.error("No se pudieron cargar ítems");
     const data = await res.json();
@@ -205,7 +199,7 @@ export function KdsApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paired, view]);
 
-  async function bump(id: number, next: "in_progress" | "ready") {
+  async function bump(id: number, next: "prepared") {
     const tok = getAccessToken();
     if (!tok) return;
     const res = await fetch(
@@ -220,12 +214,9 @@ export function KdsApp() {
       }
     );
     if (!res.ok) return message.error("No se pudo actualizar");
-    // Optimista
-    setItems((prev) =>
-      prev.map((it) => (it.id === id ? { ...it, status: next } : it))
-    );
+    // Optimista: quítalo del listado (porque prepared ya no se muestra)
+    setItems((prev) => prev.filter((it) => it.id !== id));
   }
-  console.log(paired);
   if (!paired) {
     return (
       <Row justify="center" align="middle" style={{ minHeight: "80vh" }}>
@@ -266,15 +257,16 @@ export function KdsApp() {
       <Flex justify="space-between" align="center" className="mb-3">
         <Space>
           <Tag color="gold">Monitor #{getMonitorId()}</Tag>
+          // 4) header select
           <Select
             value={view}
             onChange={(v) => setView(v)}
             options={[
-              { label: "Pendientes", value: "pending" },
-              { label: "Activos", value: "active" },
-              { label: "Todos", value: "all" },
+              { label: "En cola (sent)", value: "queue" },
+              { label: "Urgentes (fire)", value: "urgent" },
+              { label: "Cola + Urgentes", value: "both" },
             ]}
-            style={{ minWidth: 160 }}
+            style={{ minWidth: 200 }}
           />
         </Space>
         <Space>
@@ -296,18 +288,20 @@ export function KdsApp() {
                   <span className="opacity-70">Orden #{it.orderId}</span>
                   <Tag
                     color={
-                      it.status === "ready"
+                      it.status === "prepared"
                         ? "green"
-                        : it.status === "in_progress"
-                          ? "gold"
-                          : "default"
+                        : it.status === "fire"
+                          ? "red"
+                          : "blue"
                     }
                   >
-                    {it.status === "pending"
-                      ? "Pendiente"
-                      : it.status === "in_progress"
-                        ? "Preparando"
-                        : "Listo"}
+                    {it.status === "fire"
+                      ? "¡URGENTE!"
+                      : it.status === "sent"
+                        ? "En cola"
+                        : it.status === "prepared"
+                          ? "Listo"
+                          : it.status}
                   </Tag>
                 </Flex>
                 <Typography.Text strong>
@@ -322,16 +316,10 @@ export function KdsApp() {
                   </Typography.Paragraph>
                 ) : null}
                 <Space>
-                  {it.status === "pending" && (
-                    <Button
-                      type="primary"
-                      onClick={() => bump(it.id, "in_progress")}
-                    >
-                      Comenzar
+                  {(it.status === "sent" || it.status === "fire") && (
+                    <Button onClick={() => bump(it.id, "prepared")}>
+                      Listo
                     </Button>
-                  )}
-                  {it.status !== "ready" && (
-                    <Button onClick={() => bump(it.id, "ready")}>Listo</Button>
                   )}
                 </Space>
               </Space>

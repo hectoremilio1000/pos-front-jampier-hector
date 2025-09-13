@@ -97,6 +97,7 @@ interface OrderItem {
   isModifier: boolean; // true si es una línea de modifier
   isCompositeProductMain: boolean; // true si es la línea principal del compuesto
   half: Mitad; // 0/1/2/3 (ver arriba)
+  route_area_id: number;
 }
 
 const ControlComandero: React.FC = () => {
@@ -113,7 +114,7 @@ const ControlComandero: React.FC = () => {
       tableName: string;
       persons: number;
       area_id: number | null;
-      areaName: string | null;
+      area: Area;
       items: OrderItem[];
     }[]
   >([]);
@@ -161,7 +162,7 @@ const ControlComandero: React.FC = () => {
   const chequesFiltrados =
     areaSeleccionada === "Todas"
       ? cheques
-      : cheques.filter((c) => c.areaName === areaSeleccionada);
+      : cheques.filter((c) => c.area.name === areaSeleccionada);
 
   const chequesPaginados = chequesFiltrados.slice(
     (paginaActual - 1) * viewPaginate,
@@ -257,7 +258,7 @@ const ControlComandero: React.FC = () => {
                   <FaTable className="text-4xl text-blue-500 mx-auto" />
                   <p className="font-bold mt-2">{cuenta.tableName}</p>
                   <p>{cuenta.persons} personas</p>
-                  <p className="text-sm text-gray-500">{cuenta.areaName}</p>
+                  <p className="text-sm text-gray-500">{cuenta.area.name}</p>
                 </Card>
               ))}
             </div>

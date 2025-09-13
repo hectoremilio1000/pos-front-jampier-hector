@@ -83,6 +83,7 @@ interface OrderItem {
   isModifier: boolean; // true si es una línea de modifier
   isCompositeProductMain: boolean; // true si es la línea principal del compuesto
   half: Mitad; // 0/1/2/3 (ver arriba)
+  route_area_id: number;
 }
 type Props = {
   visible: boolean;
@@ -93,7 +94,7 @@ type Props = {
     tableName: string;
     persons: number;
     area_id: number | null;
-    areaName: string | null;
+    area: Area;
     items: OrderItem[];
   }) => void;
 
@@ -109,6 +110,7 @@ const RegistroChequeModal: React.FC<Props> = ({
   onRegistrar,
   areas,
 }) => {
+  console.log(areas);
   const { user } = useAuth();
   const [step, setStep] = useState(0);
   const [cuenta, setCuenta] = useState("");
@@ -127,10 +129,7 @@ const RegistroChequeModal: React.FC<Props> = ({
     setPersonas("");
     setArea(null);
   };
-  const areaName = (area: number | null) => {
-    const a = areas.find((a) => a.id === area);
-    return a === undefined ? null : a.name;
-  };
+
   // onRegistrar ahora es async
   const registrar = async () => {
     const order = await apiOrder.post("/orders", {
@@ -149,7 +148,7 @@ const RegistroChequeModal: React.FC<Props> = ({
         tableName: cuenta,
         persons: Number(personas),
         area_id: area, // función helper
-        areaName: areaName(area), // función helper
+        area: order.data.area,
         items: [],
       });
       onClose();
@@ -202,7 +201,7 @@ const RegistroChequeModal: React.FC<Props> = ({
               {areas.map((a, index) => {
                 return (
                   <Option key={index} value={a.id}>
-                    a.name
+                    {a.name}
                   </Option>
                 );
               })}

@@ -88,6 +88,7 @@ type OrderItem = {
   isModifier: boolean; // true si es una línea de modifier
   isCompositeProductMain: boolean; // true si es la línea principal del compuesto
   half: half; // 0/1/2/3 (ver arriba)
+  route_area_id: number;
 };
 
 type Props = {
@@ -141,7 +142,7 @@ const CapturaComandaModal: React.FC<Props> = ({
       discountReason: null,
       product: opts.product,
       status: opts.status ?? null,
-
+      route_area_id: opts.product.printArea,
       // nuevos campos:
       compositeProductId: opts.compositeProductId,
       isModifier: opts.isModifier,
