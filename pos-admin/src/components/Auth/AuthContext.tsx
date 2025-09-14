@@ -61,7 +61,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     if (
       res.data.user.role.code === "owner" ||
-      res.data.user.role.code === "admin"
+      res.data.user.role.code === "admin" ||
+      res.data.user.role.code === "superadmin" // 👈 agregado
     ) {
       setToken(res.data.value);
       sessionStorage.setItem("token", res.data.value);
