@@ -1,4 +1,3 @@
-// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos_centro_front/src/components/PrivateLayout.tsx
 import { useState, useMemo } from "react";
 import {
   Layout,
@@ -18,7 +17,7 @@ import {
   WarningOutlined,
   LogoutOutlined,
 } from "@ant-design/icons";
-import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/components/Auth/useAuth";
 
 const { Header, Sider, Content } = Layout;
@@ -30,16 +29,18 @@ export default function PrivateLayout() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
-  // claves activas para el menú (resalta según la ruta)
+  // resalta item activo
   const selectedKeys: string[] = useMemo(() => {
     const p = location.pathname;
-    if (p.startsWith("/sa/restaurants")) return ["/sa/restaurants"];
-    if (p.startsWith("/sa/users")) return ["/sa/users"];
+    if (p.startsWith("/sa/plans")) return ["/sa/plans"];
     if (p.startsWith("/sa/subscriptions")) return ["/sa/subscriptions"];
     if (p.startsWith("/sa/invoices")) return ["/sa/invoices"];
+    if (p.startsWith("/sa/restaurants")) return ["/sa/restaurants"];
+    if (p.startsWith("/sa/users")) return ["/sa/users"];
     return ["/dashboard"];
   }, [location.pathname]);
-  // Menú principal (Super Admin)
+
+  // menú principal (sin <Link>, navegamos con onClick)
   const items: MenuProps["items"] = [
     {
       key: "/dashboard",
@@ -64,14 +65,28 @@ export default function PrivateLayout() {
     },
     {
       type: "group",
-      label: "Suscripciones",
+      label: "Billing",
       children: [
+        {
+          key: "/sa/plans",
+          icon: <DollarOutlined />,
+          label: (
+            <span>
+              Planes{" "}
+              <Badge
+                count="v0"
+                style={{ backgroundColor: token.colorWarning }}
+                offset={[8, -2]}
+              />
+            </span>
+          ),
+        },
         {
           key: "/sa/subscriptions",
           icon: <DollarOutlined />,
           label: (
             <span>
-              <Link to="/sa/subscriptions">Suscripciones</Link>{" "}
+              Suscripciones{" "}
               <Badge
                 count="v0"
                 style={{ backgroundColor: token.colorWarning }}
@@ -85,7 +100,7 @@ export default function PrivateLayout() {
           icon: <WarningOutlined />,
           label: (
             <span>
-              <Link to="/sa/invoices">Facturas</Link>{" "}
+              Facturas{" "}
               <Badge
                 count="v0"
                 style={{ backgroundColor: token.colorWarning }}
@@ -100,11 +115,7 @@ export default function PrivateLayout() {
       type: "group",
       label: "Sistema",
       children: [
-        {
-          key: "/settings",
-          icon: <ToolOutlined />,
-          label: <Link to="/settings">Configuración</Link>,
-        },
+        { key: "/settings", icon: <ToolOutlined />, label: "Configuración" },
       ],
     },
   ];
@@ -139,7 +150,7 @@ export default function PrivateLayout() {
           selectedKeys={selectedKeys}
           items={items}
           style={{ borderInlineEnd: 0, padding: "8px 0" }}
-          onClick={({ key }) => navigate(key)} // 👈 navegar al key
+          onClick={({ key }) => navigate(String(key))} // navega por key
         />
       </Sider>
 
@@ -181,13 +192,7 @@ export default function PrivateLayout() {
         </Header>
 
         <Content style={{ padding: 16, background: token.colorBgLayout }}>
-          <div
-            style={{
-              maxWidth: 1200,
-              margin: "0 auto",
-              padding: 12,
-            }}
-          >
+          <div style={{ maxWidth: 1200, margin: "0 auto", padding: 12 }}>
             <Outlet />
           </div>
         </Content>

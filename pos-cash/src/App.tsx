@@ -1,4 +1,4 @@
-// src/App.jsx
+// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos-cash/src/App.tsx
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import LoginScreen from "./pages/LoginScreen";
 

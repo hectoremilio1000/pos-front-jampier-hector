@@ -29,7 +29,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const login = async (email: string, password: string) => {
     const res = await axios.post(`${apiUrlLogin}/login`, { email, password });
-    if (["owner", "admin", "superadmin"].includes(res.data.user.role.code)) {
+    if (["superadmin"].includes(res.data.user.role.code)) {
       setToken(res.data.value);
       sessionStorage.setItem("token", res.data.value);
       const meRes = await apiAuth.get("/me");

@@ -8,6 +8,9 @@ import LoginScreen from "@/pages/LoginScreen";
 import Dashboard from "@/pages/Dashboard";
 import Restaurants from "@/pages/sa/Restaurants";
 import Users from "@/pages/sa/Users";
+import Plans from "@/pages/sa/Plans";
+import Subscriptions from "@/pages/sa/Subscriptions";
+import Invoices from "@/pages/sa/Invoices";
 
 function App() {
   return (
@@ -27,6 +30,10 @@ function App() {
             <Route path="/sa/users" element={<Users />} />
 
             {/* agrega más rutas protegidas aquí */}
+            {/* Centro de control (billing) */}
+            <Route path="/sa/plans" element={<Plans />} />
+            <Route path="/sa/subscriptions" element={<Subscriptions />} />
+            <Route path="/sa/invoices" element={<Invoices />} />
           </Route>
           <Route path="*" element={<LoginScreen />} />
         </Routes>
