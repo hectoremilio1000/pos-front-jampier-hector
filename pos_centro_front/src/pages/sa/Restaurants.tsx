@@ -1,39 +1,131 @@
+// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos_centro_front/src/pages/sa/Restaurants.tsx
 import { useEffect, useMemo, useState } from "react";
-import {
-  Button,
-  Card,
-  Form,
-  Input,
-  Modal,
-  Select,
-  Space,
-  Table,
-  Tag,
-  message,
-} from "antd";
+import { Button, Card, Input, Space, Table, Tag, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import apiAuth from "@/apis/apiAuth";
-import type { ValidateErrorEntity } from "rc-field-form/lib/interface";
+import RestaurantFormModal, {
+  type RestaurantFormValues,
+} from "@/components/RestaurantFormModal";
 
-type RestaurantStatus = "active" | "inactive" | null | undefined;
+/* ---------- Tipos ---------- */
 
+type NormalizedStatus = "active" | "inactive";
+type RestaurantStatus = NormalizedStatus | null | undefined;
+
+/** Shape que devuelve el backend (snake_case) */
+type RestaurantApi = {
+  id: number;
+  name: string;
+  slug?: string | null;
+
+  // snake_case
+  legal_name?: string | null;
+  address_line1?: string | null;
+  logo_url?: string | null;
+  created_at?: string;
+  updated_at?: string;
+
+  // camelCase (por si Lucid serializa así)
+  legalName?: string | null;
+  addressLine1?: string | null;
+  logoUrl?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+
+  city?: string | null;
+  state?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  timezone?: string | null;
+  currency?: string | null;
+  plan?: string | null;
+  status?: string | null;
+};
+
+/** Shape para enviar al backend en create/update (sin id/fechas) */
+type RestaurantUpsertApi = Omit<
+  RestaurantApi,
+  "id" | "created_at" | "updated_at"
+>;
+
+/** Shape interna para la UI (camelCase) */
 type Restaurant = {
   id: number;
   name: string;
   slug?: string | null;
+  legalName?: string | null;
+  addressLine1?: string | null;
+  city?: string | null;
+  state?: string | null;
+  phone?: string | null;
+  email?: string | null;
   timezone?: string | null;
   currency?: string | null;
-  plan?: string | null; // v0: lo tomamos simple desde la tabla restaurants
+  plan?: string | null;
   status?: RestaurantStatus;
-  created_at?: string;
-  updated_at?: string;
+  logoUrl?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 type PageMeta = { total: number; page: number; perPage: number };
 
+/* ---------- Helpers ---------- */
+
+const apiStatusToRestaurantStatus = (
+  s: string | null | undefined
+): RestaurantStatus => {
+  if (s === "active" || s === "inactive") return s;
+  if (s === null) return null;
+  return undefined;
+};
+
+const normalizeStatus = (s: RestaurantStatus): NormalizedStatus =>
+  s === "inactive" ? "inactive" : "active";
+
+/** API -> UI (snake_case a camelCase) */
+const fromApi = (row: RestaurantApi): Restaurant => ({
+  id: row.id,
+  name: row.name,
+  slug: row.slug ?? null,
+  legalName: row.legal_name ?? row.legalName ?? null,
+  addressLine1: row.address_line1 ?? row.addressLine1 ?? null,
+  city: row.city ?? null,
+  state: row.state ?? null,
+  phone: row.phone ?? null,
+  email: row.email ?? null,
+  timezone: row.timezone ?? null,
+  currency: row.currency ?? null,
+  plan: row.plan ?? null,
+  status: apiStatusToRestaurantStatus(row.status),
+  logoUrl: row.logo_url ?? row.logoUrl ?? null,
+  createdAt: row.created_at ?? row.createdAt ?? undefined,
+  updatedAt: row.updated_at ?? row.updatedAt ?? undefined,
+});
+
+/** UI -> API (camelCase a snake_case) para crear/editar */
+const toApi = (v: RestaurantFormValues): RestaurantUpsertApi => ({
+  name: v.name,
+  slug: v.slug ?? null,
+  legal_name: v.legalName ?? null,
+  address_line1: v.addressLine1 ?? null,
+  city: v.city ?? null,
+  state: v.state ?? null,
+  phone: v.phone ?? null,
+  email: v.email ?? null,
+  timezone: v.timezone ?? "America/Mexico_City",
+  currency: v.currency ?? "MXN",
+  plan: v.plan === "basic" ? "standard" : (v.plan ?? "free"),
+  status: v.status === "inactive" ? "suspended" : (v.status ?? "active"),
+  logo_url: v.logoUrl ?? null,
+});
+
+/* ---------- Componente ---------- */
+
 export default function Restaurants() {
   const [data, setData] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -43,32 +135,40 @@ export default function Restaurants() {
     perPage: 10,
   });
 
-  // Crear / Editar
+  // Modal state
   const [openModal, setOpenModal] = useState(false);
   const [editing, setEditing] = useState<Restaurant | null>(null);
-  const [form] = Form.useForm<Restaurant>();
+  const [initialValues, setInitialValues] = useState<
+    Partial<RestaurantFormValues>
+  >({});
 
   const fetchList = async () => {
     setLoading(true);
     try {
-      // Ajusta si tu backend usa otros nombres de query (page/perPage/search)
       const res = await apiAuth.get("/restaurants", {
         params: { page, perPage: pageSize, search },
       });
-      // Asumimos formato común: { data: Restaurant[], meta?: { total, page, perPage } }
-      const list: Restaurant[] = res.data.data ?? res.data;
-      const m = res.data.meta ?? {
-        total: list.length,
+
+      // soporta paginado (data/meta) o arreglo plano
+      const rawList: RestaurantApi[] = (res.data?.data ??
+        res.data ??
+        []) as RestaurantApi[];
+      const list = rawList.map(fromApi);
+
+      const m = res.data?.meta ?? {
+        total: Array.isArray(rawList) ? rawList.length : 0,
         page,
         perPage: pageSize,
       };
+
       setData(list);
+      console.log(list);
       setMeta({
         total: Number(m.total ?? list.length),
         page: Number(m.page ?? page),
         perPage: Number(m.perPage ?? pageSize),
       });
-    } catch (e: unknown) {
+    } catch (e) {
       console.error(e);
       message.error("No se pudo cargar restaurantes");
     } finally {
@@ -78,7 +178,9 @@ export default function Restaurants() {
 
   useEffect(() => {
     fetchList();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, pageSize]);
+
   const onSearch = () => {
     setPage(1);
     fetchList();
@@ -87,60 +189,69 @@ export default function Restaurants() {
 
   const openCreate = () => {
     setEditing(null);
-    form.resetFields();
+    setInitialValues({
+      plan: "free",
+      status: "active",
+      timezone: "America/Mexico_City",
+      currency: "MXN",
+    });
     setOpenModal(true);
   };
 
   const openEdit = (row: Restaurant) => {
     setEditing(row);
-    form.setFieldsValue({
+    setInitialValues({
       name: row.name,
       slug: row.slug ?? undefined,
+      legalName: row.legalName ?? undefined,
+      addressLine1: row.addressLine1 ?? undefined,
+      city: row.city ?? undefined,
+      state: row.state ?? undefined,
+      phone: row.phone ?? undefined,
+      email: row.email ?? undefined,
       timezone: row.timezone ?? undefined,
       currency: row.currency ?? undefined,
       plan: row.plan ?? "free",
-      status: row.status ?? "active",
+      status: normalizeStatus(row.status),
+      logoUrl: row.logoUrl ?? undefined,
     });
     setOpenModal(true);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (values: RestaurantFormValues) => {
     try {
-      const values = await form.validateFields();
+      setSaving(true);
+      const payload = toApi(values); // -> snake_case
+
       if (editing) {
-        await apiAuth.put(`/restaurants/${editing.id}`, values);
+        await apiAuth.put(`/restaurants/${editing.id}`, payload);
         message.success("Restaurante actualizado");
       } else {
-        await apiAuth.post("/restaurants", values);
+        await apiAuth.post("/restaurants", payload);
         message.success("Restaurante creado");
       }
+
       setOpenModal(false);
       fetchList();
-    } catch (err: unknown) {
-      if ((err as ValidateErrorEntity<Restaurant>)?.errorFields) return;
+    } catch (err) {
       console.error(err);
       message.error("No se pudo guardar");
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleDelete = async (row: Restaurant) => {
-    Modal.confirm({
-      title: `Eliminar "${row.name}"`,
-      content: "Esta acción no se puede deshacer.",
-      okType: "danger",
-      onOk: async () => {
-        try {
-          await apiAuth.delete(`/restaurants/${row.id}`);
-          message.success("Restaurante eliminado");
-          // si la página se quedó sin elementos, retrocede una página
-          if (data.length === 1 && page > 1) setPage((p) => p - 1);
-          else fetchList();
-        } catch (e: unknown) {
-          console.error(e);
-          message.error("No se pudo eliminar");
-        }
-      },
-    });
+    try {
+      await apiAuth.delete(`/restaurants/${row.id}`);
+    } catch (e) {
+      console.error(e);
+      message.error("No se pudo eliminar");
+      return;
+    }
+    message.success("Restaurante eliminado");
+    if (data.length === 1 && page > 1) setPage((p) => p - 1);
+    else fetchList();
   };
 
   const columns: ColumnsType<Restaurant> = useMemo(
@@ -155,28 +266,27 @@ export default function Restaurants() {
         title: "Plan",
         dataIndex: "plan",
         key: "plan",
-        render: (v: string | null) => <Tag color="blue">{v ?? "—"}</Tag>,
         width: 120,
+        render: (v) => <span>{v ?? "—"}</span>,
       },
       {
         title: "Status",
         dataIndex: "status",
         key: "status",
+        width: 120,
         render: (v: RestaurantStatus) =>
           v === "inactive" ? (
             <Tag color="red">inactive</Tag>
           ) : (
             <Tag color="green">{v ?? "active"}</Tag>
           ),
-        width: 120,
       },
-
       {
         title: "Creado",
-        dataIndex: "created_at",
+        dataIndex: "createdAt", // 👈
         key: "created_at",
-        render: (v?: string) => (v ? new Date(v).toLocaleString("es-MX") : "—"),
         width: 200,
+        render: (v?: string) => (v ? new Date(v).toLocaleString("es-MX") : "—"),
       },
       {
         title: "Acciones",
@@ -234,52 +344,15 @@ export default function Restaurants() {
         }}
       />
 
-      <Modal
-        title={editing ? `Editar: ${editing.name}` : "Nuevo restaurante"}
+      <RestaurantFormModal
         open={openModal}
-        onCancel={() => setOpenModal(false)}
-        onOk={handleSubmit}
+        loading={saving}
+        initialValues={initialValues}
+        title={editing ? `Editar: ${editing.name}` : "Nuevo restaurante"}
         okText={editing ? "Guardar" : "Crear"}
-        destroyOnClose
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item name="name" label="Nombre" rules={[{ required: true }]}>
-            <Input placeholder="Ej. Cantina La Llorona" />
-          </Form.Item>
-
-          <Form.Item name="slug" label="Slug">
-            <Input placeholder="ej. la-llorona" />
-          </Form.Item>
-
-          <Form.Item name="timezone" label="Zona horaria">
-            <Input placeholder="Ej. America/Mexico_City" />
-          </Form.Item>
-
-          <Form.Item name="currency" label="Moneda">
-            <Input placeholder="Ej. MXN" />
-          </Form.Item>
-
-          <Form.Item name="plan" label="Plan" initialValue="free">
-            <Select
-              options={[
-                { value: "free", label: "Free" },
-                { value: "basic", label: "Basic" },
-                { value: "pro", label: "Pro" },
-              ]}
-              allowClear
-            />
-          </Form.Item>
-
-          <Form.Item name="status" label="Status" initialValue="active">
-            <Select
-              options={[
-                { value: "active", label: "Active" },
-                { value: "inactive", label: "Inactive" },
-              ]}
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
+        onCancel={() => setOpenModal(false)}
+        onSubmit={handleSubmit}
+      />
     </Card>
   );
 }

@@ -1,45 +1,55 @@
 // /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos_centro_front/src/pages/sa/Users.tsx
 import { useEffect, useMemo, useState } from "react";
-import {
-  Button,
-  Card,
-  Form,
-  Input,
-  Modal,
-  Select,
-  Space,
-  Table,
-  Tag,
-  message,
-} from "antd";
+import { Button, Card, Input, Space, Table, Tag, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import type { ValidateErrorEntity } from "rc-field-form/lib/interface";
+import axios, { AxiosError } from "axios";
 import apiAuth from "@/apis/apiAuth";
-
-type Restaurant = {
-  id: number;
-  name: string;
-};
+import UserFormModal, {
+  type UserFormValues,
+  type RoleOption,
+  type RestaurantOption,
+} from "@/components/UserFormModal";
 
 type UserRole = "owner" | "admin" | "cashier" | "superadmin";
-
 type UserStatus = "active" | "inactive" | null | undefined;
+
+type Restaurant = { id: number; name: string };
+type Role = { id: number; code: string; name: string };
 
 type User = {
   id: number;
   fullName: string;
   email: string;
-  roleCode: UserRole;
+  role?: Role; // relación
+  roleCode?: UserRole; // algunos controladores ya lo devuelven directo
   status?: UserStatus;
-  restaurant?: Restaurant;
+  restaurant?: Restaurant; // relación
+  restaurantId?: number; // a veces plano
   created_at?: string;
+  createdAt?: string;
 };
 
 type PageMeta = { total: number; page: number; perPage: number };
 
-export default function Users() {
+const normalizeStatus = (s: UserStatus): "active" | "inactive" =>
+  s === "inactive" ? "inactive" : "active";
+
+const fmtDate = (v?: string) => (v ? new Date(v).toLocaleString("es-MX") : "—");
+
+type UserApiPayload = {
+  full_name: string;
+  email: string;
+  role_code: string;
+  status: "active" | "inactive";
+  restaurant_id?: number;
+  password?: string;
+};
+
+export default function Users(): React.ReactElement {
   const [data, setData] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -49,37 +59,60 @@ export default function Users() {
     perPage: 10,
   });
 
-  // Crear / Editar
+  // Modal
   const [openModal, setOpenModal] = useState(false);
   const [editing, setEditing] = useState<User | null>(null);
-  const [form] = Form.useForm<User>();
+  const [initialValues, setInitialValues] = useState<Partial<UserFormValues>>(
+    {}
+  );
 
-  // Restaurantes para el select
-  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  // Select options
+  const [roleOptions, setRoleOptions] = useState<RoleOption[]>([]);
+  const [restaurantOptions, setRestaurantOptions] = useState<
+    RestaurantOption[]
+  >([]);
 
-  const fetchRestaurants = async () => {
+  // ---- data fetching ----
+  const fetchRoles = async (): Promise<void> => {
     try {
-      const res = await apiAuth.get("/restaurants");
-      setRestaurants(res.data.data ?? res.data);
+      const res = await apiAuth.get("/roles");
+      const list: Role[] = res.data.data ?? res.data;
+      setRoleOptions(
+        list.map((r) => ({ value: r.code, label: r.name ?? r.code }))
+      );
+    } catch (e) {
+      console.error(e);
+      message.error("No se pudieron cargar roles");
+    }
+  };
+
+  const fetchRestaurants = async (): Promise<void> => {
+    try {
+      const res = await apiAuth.get("/restaurants", {
+        params: { perPage: 1000 },
+      });
+      const list: Restaurant[] = res.data.data ?? res.data;
+      setRestaurantOptions(list.map((r) => ({ value: r.id, label: r.name })));
     } catch (e) {
       console.error(e);
       message.error("No se pudieron cargar restaurantes");
     }
   };
 
-  const fetchList = async () => {
+  const fetchList = async (): Promise<void> => {
     setLoading(true);
     try {
       const res = await apiAuth.get("/users", {
         params: { page, perPage: pageSize, search },
       });
-      const list: User[] = res.data.data ?? res.data;
-      const m = res.data.meta ?? {
-        total: list.length,
-        page,
-        perPage: pageSize,
-      };
+      const raw: User[] = res.data.data ?? res.data;
+      const m = res.data.meta ?? { total: raw.length, page, perPage: pageSize };
+      const list = raw.map((u) => ({
+        ...u,
+        created_at: u.created_at ?? u.createdAt,
+      }));
       setData(list);
+      console.log(list);
       setMeta({
         total: Number(m.total ?? list.length),
         page: Number(m.page ?? page),
@@ -95,70 +128,108 @@ export default function Users() {
 
   useEffect(() => {
     fetchList();
-    fetchRestaurants();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, pageSize]);
 
-  const onSearch = () => {
+  useEffect(() => {
+    fetchRoles();
+    fetchRestaurants();
+  }, []);
+
+  // ---- actions ----
+  const onSearch = (): void => {
     setPage(1);
     fetchList();
   };
-  const onRefresh = () => fetchList();
+  const onRefresh = async (): Promise<void> => {
+    await fetchList();
+  };
 
-  const openCreate = () => {
+  const openCreate = (): void => {
     setEditing(null);
-    form.resetFields();
+    setInitialValues({ status: "active", roleCode: "owner" });
     setOpenModal(true);
   };
 
-  const openEdit = (row: User) => {
+  const openEdit = (row: User): void => {
     setEditing(row);
-    form.setFieldsValue({
+    const roleCode = (row.roleCode ?? row.role?.code) as string | undefined;
+    const restaurantId = row.restaurantId ?? row.restaurant?.id;
+
+    setInitialValues({
       fullName: row.fullName,
       email: row.email,
-      roleCode: row.roleCode,
-      restaurant: { id: row.restaurant?.id },
-      status: row.status ?? "active",
+      roleCode,
+      restaurantId: roleCode === "superadmin" ? undefined : restaurantId,
+      status: normalizeStatus(row.status),
     });
+    setOpenModal(true);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (values: UserFormValues): Promise<void> => {
     try {
-      const values = await form.validateFields();
+      setSaving(true);
+
+      const payloadApi: UserApiPayload = {
+        full_name: values.fullName,
+        email: values.email,
+        role_code: values.roleCode,
+        status: values.status,
+      };
+      if (values.roleCode !== "superadmin" && values.restaurantId != null) {
+        payloadApi.restaurant_id = values.restaurantId;
+      }
+      if (values.password) payloadApi.password = values.password;
+
+      console.log("➡️ Payload API /users:", payloadApi);
+
       if (editing) {
-        await apiAuth.put(`/users/${editing.id}`, values);
+        await apiAuth.put(`/users/${editing.id}`, payloadApi);
         message.success("Usuario actualizado");
       } else {
-        await apiAuth.post("/users", values);
+        await apiAuth.post("/users", payloadApi);
         message.success("Usuario creado");
       }
       setOpenModal(false);
       fetchList();
     } catch (err: unknown) {
-      if ((err as ValidateErrorEntity<User>)?.errorFields) return;
-      console.error(err);
-      message.error("No se pudo guardar");
+      if (axios.isAxiosError(err)) {
+        const ax = err as AxiosError<{
+          message?: string;
+          errors?: Array<{ message?: string }>;
+        }>;
+        const msg =
+          ax.response?.data?.errors?.[0]?.message ||
+          ax.response?.data?.message ||
+          "No se pudo guardar";
+        console.error(
+          "❌ Axios /users:",
+          ax.response?.status,
+          ax.response?.data
+        );
+        message.error(msg);
+      } else {
+        console.error("❌ Error /users:", err);
+        message.error("No se pudo guardar");
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleDelete = async (row: User) => {
-    Modal.confirm({
-      title: `Eliminar "${row.fullName}"`,
-      content: "Esta acción no se puede deshacer.",
-      okType: "danger",
-      onOk: async () => {
-        try {
-          await apiAuth.delete(`/users/${row.id}`);
-          message.success("Usuario eliminado");
-          if (data.length === 1 && page > 1) setPage((p) => p - 1);
-          else fetchList();
-        } catch (e) {
-          console.error(e);
-          message.error("No se pudo eliminar");
-        }
-      },
-    });
+  const handleDelete = async (row: User): Promise<void> => {
+    try {
+      await apiAuth.delete(`/users/${row.id}`);
+      message.success("Usuario eliminado");
+      if (data.length === 1 && page > 1) setPage((p) => p - 1);
+      else fetchList();
+    } catch (e) {
+      console.error(e);
+      message.error("No se pudo eliminar");
+    }
   };
 
+  // ---- table ----
   const columns: ColumnsType<User> = useMemo(
     () => [
       {
@@ -167,42 +238,39 @@ export default function Users() {
         key: "fullName",
         render: (v: string) => <strong>{v}</strong>,
       },
-      {
-        title: "Email",
-        dataIndex: "email",
-        key: "email",
-      },
+      { title: "Email", dataIndex: "email", key: "email" },
       {
         title: "Rol",
-        dataIndex: "roleCode",
-        key: "roleCode",
-        render: (v: string) => <Tag color="blue">{v}</Tag>,
+        key: "role",
         width: 120,
+        render: (_: unknown, row) => {
+          const code = row.roleCode ?? row.role?.code;
+          return <Tag color="blue">{code}</Tag>;
+        },
       },
       {
         title: "Restaurante",
-        dataIndex: ["restaurant", "name"],
         key: "restaurant",
-        render: (v?: string) => v ?? "—",
+        render: (_: unknown, row) => row.restaurant?.name ?? "—",
       },
       {
         title: "Status",
         dataIndex: "status",
         key: "status",
+        width: 120,
         render: (v: UserStatus) =>
           v === "inactive" ? (
             <Tag color="red">inactive</Tag>
           ) : (
             <Tag color="green">{v ?? "active"}</Tag>
           ),
-        width: 120,
       },
       {
         title: "Creado",
         dataIndex: "created_at",
         key: "created_at",
-        render: (v?: string) => (v ? new Date(v).toLocaleString("es-MX") : "—"),
         width: 200,
+        render: (v?: string) => fmtDate(v),
       },
       {
         title: "Acciones",
@@ -260,74 +328,18 @@ export default function Users() {
         }}
       />
 
-      <Modal
-        title={editing ? `Editar: ${editing.fullName}` : "Nuevo usuario"}
+      <UserFormModal
         open={openModal}
-        onCancel={() => setOpenModal(false)}
-        onOk={handleSubmit}
+        loading={saving}
+        isEditing={!!editing}
+        initialValues={initialValues}
+        title={editing ? `Editar: ${editing.fullName}` : "Nuevo usuario"}
         okText={editing ? "Guardar" : "Crear"}
-        destroyOnClose
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item
-            name="fullName"
-            label="Nombre completo"
-            rules={[{ required: true }]}
-          >
-            <Input />
-          </Form.Item>
-
-          <Form.Item
-            name="email"
-            label="Email"
-            rules={[{ required: true, type: "email" }]}
-          >
-            <Input />
-          </Form.Item>
-
-          {!editing && (
-            <Form.Item
-              name="password"
-              label="Contraseña"
-              rules={[{ required: true }]}
-            >
-              <Input.Password />
-            </Form.Item>
-          )}
-
-          <Form.Item name="roleCode" label="Rol" initialValue="owner">
-            <Select
-              options={[
-                { value: "owner", label: "Owner" },
-                { value: "admin", label: "Admin" },
-                { value: "cashier", label: "Cashier" },
-              ]}
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="restaurant"
-            label="Restaurante"
-            rules={[{ required: true }]}
-          >
-            <Select
-              options={restaurants.map((r) => ({
-                value: r.id,
-                label: r.name,
-              }))}
-            />
-          </Form.Item>
-
-          <Form.Item name="status" label="Status" initialValue="active">
-            <Select
-              options={[
-                { value: "active", label: "Active" },
-                { value: "inactive", label: "Inactive" },
-              ]}
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
+        roleOptions={roleOptions}
+        restaurantOptions={restaurantOptions}
+        onCancel={() => setOpenModal(false)}
+        onSubmit={handleSubmit}
+      />
     </Card>
   );
 }
