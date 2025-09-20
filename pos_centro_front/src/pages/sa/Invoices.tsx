@@ -1,54 +1,55 @@
-import { useEffect, useState } from "react";
-import {
-  Button,
-  Card,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Select,
-  Space,
-  Table,
-  Tag,
-  message,
-} from "antd";
-import type { ColumnsType } from "antd/es/table";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useEffect, useMemo, useState } from "react";
+import { Button, Card, Modal, Select, Space, message } from "antd";
+import dayjs, { Dayjs } from "dayjs";
 import apiCenter from "@/apis/apiCenter";
 import apiAuth from "@/apis/apiAuth";
+import InvoicesTable, {
+  type InvoiceRow,
+  type InvoiceStatus,
+} from "@/components/InvoicesTable";
+import InvoiceAdjustModal, {
+  type AdjustFormValues,
+} from "@/components/InvoiceAdjustModal";
+import InvoiceDueModal from "@/components/InvoiceDueModal";
+import PayModal from "@/components/PayModal";
+import PaymentsDrawer from "@/components/PaymentsDrawer";
 
 type Restaurant = { id: number; name: string };
-type InvoiceStatus = "pending" | "paid" | "past_due" | "void";
-
-type Invoice = {
-  id: number;
-  restaurantId: number;
-  subscriptionId: number;
-  amountBaseCents: number;
-  discountCents: number;
-  adjustmentsCents: number;
-  amountDueCents: number;
-  currency: string;
-  status: InvoiceStatus;
-  dueAt: string;
-  notes?: string | null;
-};
 
 export default function Invoices() {
-  const [rows, setRows] = useState<Invoice[]>([]);
+  const [rows, setRows] = useState<InvoiceRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<InvoiceStatus | undefined>(undefined);
+  const [status, setStatusFilter] = useState<InvoiceStatus | undefined>(
+    undefined
+  );
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [restaurantId, setRestaurantId] = useState<number | undefined>(
     undefined
   );
 
+  // Ajuste/Descuento
   const [adjustOpen, setAdjustOpen] = useState(false);
+  const [adjustLoading, setAdjustLoading] = useState(false);
   const [adjustId, setAdjustId] = useState<number | null>(null);
-  const [form] = Form.useForm<{
-    discountCents?: number;
-    adjustmentCents?: number;
-    notes?: string;
-  }>();
+  const [adjustInitial, setAdjustInitial] = useState<AdjustFormValues>({});
+
+  // Editar vencimiento
+  const [dueOpen, setDueOpen] = useState(false);
+  const [dueLoading, setDueLoading] = useState(false);
+  const [dueRow, setDueRow] = useState<InvoiceRow | null>(null);
+  const [dueAt, setDueAt] = useState<Dayjs | null>(null);
+  const [dueNotes, setDueNotes] = useState<string>("");
+
+  // Cobrar
+  const [payOpen, setPayOpen] = useState(false);
+  const [payInvoice, setPayInvoice] = useState<InvoiceRow | null>(null);
+
+  // Pagos (historial)
+  const [paymentsOpen, setPaymentsOpen] = useState(false);
+  const [paymentsInvoice, setPaymentsInvoice] = useState<InvoiceRow | null>(
+    null
+  );
 
   const fetchAll = async () => {
     setLoading(true);
@@ -56,7 +57,14 @@ export default function Invoices() {
       const { data } = await apiCenter.get("/invoices", {
         params: { status, restaurantId },
       });
-      setRows(data);
+      const norm: InvoiceRow[] = (data ?? []).map((r: any) => ({
+        ...r,
+        amountBase: Number(r.amountBase ?? 0),
+        discount: Number(r.discount ?? 0),
+        adjustments: Number(r.adjustments ?? 0),
+        amountDue: Number(r.amountDue ?? 0),
+      }));
+      setRows(norm);
     } catch (e) {
       console.error(e);
       message.error("No se pudieron cargar facturas");
@@ -73,7 +81,7 @@ export default function Invoices() {
     (async () => {
       try {
         const r = await apiAuth.get("/restaurants");
-        setRestaurants(r.data.data ?? r.data);
+        setRestaurants(r.data?.data ?? r.data ?? []);
       } catch (e) {
         console.error(e);
         message.error("No se pudieron cargar restaurantes");
@@ -81,114 +89,104 @@ export default function Invoices() {
     })();
   }, []);
 
-  const markPaid = async (id: number) => {
-    try {
-      await apiCenter.post(`/invoices/${id}/mark-paid`, {});
-      message.success("Marcada como pagada");
-      fetchAll();
-    } catch (e) {
-      console.error(e);
-      message.error("No se pudo marcar pagada");
-    }
+  // Handlers de acciones
+  const openPay = (row: InvoiceRow) => {
+    setPayInvoice(row);
+    setPayOpen(true);
   };
-
+  const openPayments = (row: InvoiceRow) => {
+    setPaymentsInvoice(row);
+    setPaymentsOpen(true);
+  };
   const openAdjust = (id: number) => {
+    const row = rows.find((r) => r.id === id);
     setAdjustId(id);
-    form.resetFields();
+    setAdjustInitial({
+      discount: row?.discount ?? 0,
+      adjustment: row?.adjustments ?? 0,
+      notes: row?.notes ?? "",
+    });
     setAdjustOpen(true);
   };
+  const openEditDue = (row: InvoiceRow) => {
+    setDueRow(row);
+    setDueAt(row.dueAt ? dayjs(row.dueAt) : null);
+    setDueNotes(row.notes ?? "");
+    setDueOpen(true);
+  };
 
-  const submitAdjust = async () => {
+  const submitAdjust = async (v: AdjustFormValues) => {
     try {
-      const v = await form.validateFields();
-      await apiCenter.post(`/invoices/${adjustId}/adjust`, v);
+      setAdjustLoading(true);
+      await apiCenter.post(`/invoices/${adjustId}/adjust`, {
+        mode: "set",
+        discount: v.discount ?? 0,
+        adjustments: v.adjustment ?? 0,
+        notes: v.notes ?? undefined,
+      });
       message.success("Ajuste aplicado");
       setAdjustOpen(false);
       fetchAll();
-    } catch (e) {
+    } catch (e: unknown) {
       console.error(e);
-      message.error("No se pudo ajustar");
+      const err = e as {
+        response?: { data?: { error?: string } };
+        message?: string;
+      };
+      const msg =
+        err?.response?.data?.error ?? err?.message ?? "No se pudo ajustar";
+      message.error(msg);
+    } finally {
+      setAdjustLoading(false);
     }
   };
 
-  const columns: ColumnsType<Invoice> = [
-    { title: "ID", dataIndex: "id", key: "id", width: 70 },
-    {
-      title: "Restaurante",
-      dataIndex: "restaurantId",
-      key: "restaurantId",
-      render: (id) => id,
-      width: 120,
-    },
-    {
-      title: "Base",
-      dataIndex: "amountBaseCents",
-      key: "amountBaseCents",
-      render: (v, r) => `$${(v / 100).toFixed(2)} ${r.currency}`,
-    },
-    {
-      title: "Descuento",
-      dataIndex: "discountCents",
-      key: "discountCents",
-      render: (v) => `-$${(v / 100).toFixed(2)}`,
-    },
-    {
-      title: "Ajustes",
-      dataIndex: "adjustmentsCents",
-      key: "adjustmentsCents",
-      render: (v) => `$${(v / 100).toFixed(2)}`,
-    },
-    {
-      title: "Total",
-      dataIndex: "amountDueCents",
-      key: "amountDueCents",
-      render: (v, r) => (
-        <b>
-          ${(v / 100).toFixed(2)} {r.currency}
-        </b>
-      ), // 👈 quité el doble $
-    },
-    {
-      title: "Vence",
-      dataIndex: "dueAt",
-      key: "dueAt",
-      width: 180,
-      render: (v?: string) => (v ? new Date(v).toLocaleString("es-MX") : "—"),
-    },
-    {
-      title: "Status",
-      dataIndex: "status",
-      key: "status",
-      width: 120,
-      render: (s: InvoiceStatus) =>
-        s === "paid" ? (
-          <Tag color="green">paid</Tag>
-        ) : s === "pending" ? (
-          <Tag color="blue">pending</Tag>
-        ) : s === "past_due" ? (
-          <Tag color="red">past_due</Tag>
-        ) : (
-          <Tag>void</Tag>
-        ),
-    },
-    {
-      title: "Acciones",
-      key: "actions",
-      width: 220,
-      render: (_, row) => (
-        <Space>
-          {row.status !== "paid" && (
-            <Button size="small" onClick={() => markPaid(row.id)}>
-              Marcar pagada
-            </Button>
-          )}
-          <Button size="small" onClick={() => openAdjust(row.id)}>
-            Ajuste/Desc.
-          </Button>
-        </Space>
-      ),
-    },
-  ];
+  const saveDue = async () => {
+    if (!dueRow) return;
+    try {
+      setDueLoading(true);
+      await apiCenter.post(`/invoices/${dueRow.id}/update-meta`, {
+        dueAt: dueAt ? dueAt.toISOString() : undefined,
+        notes: dueNotes,
+      });
+      message.success("Vencimiento actualizado");
+      setDueOpen(false);
+      fetchAll();
+    } catch (e) {
+      console.error(e);
+      message.error("No se pudo actualizar el vencimiento");
+    } finally {
+      setDueLoading(false);
+    }
+  };
+
+  const voidInvoice = (id: number) => {
+    Modal.confirm({
+      title: "Anular factura",
+      content: "Esta acción no se puede deshacer.",
+      okText: "Anular",
+      okButtonProps: { danger: true },
+      cancelText: "Cancelar",
+      async onOk() {
+        try {
+          await apiCenter.post(`/invoices/${id}/set-status`, {
+            status: "void",
+          });
+          message.success("Factura anulada");
+          fetchAll();
+        } catch (e) {
+          console.error(e);
+          message.error("No se pudo anular");
+        }
+      },
+    });
+  };
+
+  const restaurantsMap = useMemo(() => {
+    const m = new Map<number, string>();
+    restaurants.forEach((r) => m.set(r.id, r.name));
+    return m;
+  }, [restaurants]);
 
   return (
     <Card title="Facturas">
@@ -197,7 +195,7 @@ export default function Invoices() {
           allowClear
           placeholder="Filtrar status"
           value={status}
-          onChange={(v) => setStatus(v)}
+          onChange={(v) => setStatusFilter(v)}
           options={[
             { value: "pending", label: "pending" },
             { value: "paid", label: "paid" },
@@ -219,34 +217,53 @@ export default function Invoices() {
         <Button onClick={fetchAll}>Refrescar</Button>
       </Space>
 
-      <Table
-        rowKey="id"
+      <InvoicesTable
+        rows={rows}
+        restaurantsMap={restaurantsMap}
         loading={loading}
-        dataSource={rows}
-        columns={columns}
+        onOpenPay={openPay}
+        onOpenAdjust={openAdjust}
+        onOpenEditDue={openEditDue}
+        onOpenPayments={openPayments} // puedes quitarlo si aún no usas el Drawer
+        onVoid={voidInvoice}
       />
 
-      <Modal
-        title="Ajuste / Descuento"
+      {/* Ajuste / Descuento */}
+      <InvoiceAdjustModal
         open={adjustOpen}
+        loading={adjustLoading}
+        initialValues={adjustInitial}
         onCancel={() => setAdjustOpen(false)}
-        onOk={submitAdjust}
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item name="discountCents" label="Descuento one-off (centavos)">
-            <InputNumber min={0} step={100} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item
-            name="adjustmentCents"
-            label="Ajuste (cargo + / abono -) centavos"
-          >
-            <InputNumber step={100} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item name="notes" label="Notas">
-            <Input.TextArea rows={3} />
-          </Form.Item>
-        </Form>
-      </Modal>
+        onSubmit={submitAdjust}
+      />
+
+      {/* Vencimiento */}
+      <InvoiceDueModal
+        open={dueOpen}
+        loading={dueLoading}
+        value={dueAt}
+        notes={dueNotes}
+        onChangeDate={setDueAt}
+        onChangeNotes={setDueNotes}
+        onCancel={() => setDueOpen(false)}
+        onSubmit={saveDue}
+      />
+
+      {/* Cobrar */}
+      <PayModal
+        open={payOpen}
+        invoice={payInvoice}
+        onClose={() => setPayOpen(false)}
+        onPaid={fetchAll}
+      />
+
+      {/* Pagos… (historial) */}
+      <PaymentsDrawer
+        open={paymentsOpen}
+        invoice={paymentsInvoice}
+        onClose={() => setPaymentsOpen(false)}
+        onChanged={fetchAll}
+      />
     </Card>
   );
 }

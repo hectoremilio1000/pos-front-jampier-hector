@@ -48,3 +48,18 @@ POST /api/sa/subscriptions → { restaurantId, planCode }
 (opcional) POST /api/sa/invoices/:id/mark-paid si liquidas manualmente al inicio
 
 Con eso ya puedes ver si pagó, cuándo renueva, quién está en mora; y tu dashboard escala a KPIs.
+
+### PAQUETES - PLAN
+
+Plan Básico — funcionalidades core (POS, comandero, caja, monitor) → 1200 MXN / mes.
+Plan Pro — todo lo anterior + IA (chat con IA accesible por WhatsApp) → 2000 MXN / mes (tu precio sugerido).
+
+7. Ejemplo: reglas concretas (sugerencia)
+
+Pro: 2000 MXN/mes, incluye 500 consultas IA/mes. Overage: 1.00 MXN/consulta.
+
+Si la consulta > 300 tokens → trata como 2 consultas (o aplica factor).
+
+Límite por mensaje: 1024 tokens (incluye prompt+response).
+
+(Ajusta los números según tus costes reales.)
