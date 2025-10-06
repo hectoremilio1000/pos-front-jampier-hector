@@ -1,92 +1,96 @@
-import { useEffect, useMemo, useState } from "react";
-import { Button, Card, Modal, Space, Table, Tag, message } from "antd";
+// /src/pages/Admin/Subscriptions.tsx
+import { useEffect, useState } from "react";
+import {
+  Button,
+  Card,
+  DatePicker,
+  Drawer,
+  Form,
+  Input,
+  Select,
+  Space,
+  Table,
+  Tag,
+  message,
+} from "antd";
 import type { ColumnsType } from "antd/es/table";
+import dayjs, { type Dayjs } from "dayjs";
 import apiCenter from "@/apis/apiCenter";
-import apiAuth from "@/apis/apiAuth";
-import SubscriptionFormModal, {
-  type SubscriptionFormValues,
-  type RestaurantOpt,
-  type PlanOpt,
-} from "@/components/SubscriptionFormModal";
+import ManualSubscriptionModal from "@/components/ManualSubscriptionModal";
 
-type SubscriptionRow = {
+type PlanPrice = {
+  interval: "day" | "week" | "month" | "year";
+  intervalCount: number;
+  amount: number;
+  currency: string;
+};
+type Sub = {
   id: number;
   restaurantId: number;
-  restaurantName: string;
-  planCode: string;
-  planName: string;
-  planInterval: "month" | "semiannual" | "year";
-  priceOverride?: number | null; // 👈 PESOS
-  recurringDiscountPercent: number; // %
-  recurringDiscount: number; // 👈 PESOS
-  status: "active" | "trialing" | "past_due" | "canceled" | "paused";
+  planId: number;
+  planPriceId: number;
+  status: string;
+  startDate: string;
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
+  paidAt?: string | null;
+  stripePaymentId?: string | null;
+  planPrice?: PlanPrice;
+  plan?: { name: string };
+  restaurant?: { id: number; name: string };
 };
 
-type Restaurant = { id: number; name: string };
-type Plan = {
+type PayRow = {
   id: number;
-  code: string;
-  name: string;
-  amount: number; // 👈 PESOS
+  subscriptionId: number | null;
+  planPriceId: number | null;
+  restaurantId: number;
+  amount: number;
   currency: string;
-  interval: "month" | "semiannual" | "year";
+  provider: string;
+  providerPaymentId?: string | null;
+  providerSessionId?: string | null;
+  status: "succeeded" | "pending" | "failed" | "refunded";
+  paidAt?: string | null;
+  createdAt: string;
 };
+
+const { RangePicker } = DatePicker;
 
 export default function Subscriptions() {
-  const [rows, setRows] = useState<SubscriptionRow[]>([]);
+  const [rows, setRows] = useState<Sub[]>([]);
   const [loading, setLoading] = useState(false);
-
-  // catalogs
-  const [restaurants, setRestaurants] = useState<RestaurantOpt[]>([]);
-  const [plans, setPlans] = useState<PlanOpt[]>([]); // value, label, interval, amount
-
-  // modal state
   const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [editing, setEditing] = useState<SubscriptionRow | null>(null);
-  const [initialValues, setInitialValues] = useState<
-    Partial<SubscriptionFormValues>
-  >({});
 
-  const fetchCatalogs = async () => {
-    try {
-      const [r1, r2] = await Promise.all([
-        apiAuth.get("/restaurants"),
-        apiCenter.get("/plans"),
-      ]);
-      const rawR: Restaurant[] = r1.data?.data ?? r1.data ?? [];
-      const rawP: Plan[] = r2.data ?? [];
-      setRestaurants(rawR.map((r) => ({ value: r.id, label: r.name })));
-      setPlans(
-        rawP.map((p) => ({
-          value: p.code,
-          label: `${p.name} (${p.interval}) — $${Number(p.amount).toFixed(2)} ${p.currency}`,
-          interval: p.interval,
-          amount: Number(p.amount), // 👈 PESOS
-        }))
-      );
-    } catch (e) {
-      console.error(e);
-      message.error("No se pudieron cargar catálogos");
-    }
-  };
+  // filtros
+  const [form] = Form.useForm<{
+    restaurantName?: string;
+    status?: string;
+    dates?: [Dayjs, Dayjs];
+  }>();
 
-  const fetchRows = async () => {
+  // drawer de pagos
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerLoading, setDrawerLoading] = useState(false);
+  const [payments, setPayments] = useState<PayRow[]>([]);
+  const [activeSub, setActiveSub] = useState<Sub | null>(null);
+
+  const fetchData = async () => {
     setLoading(true);
     try {
-      const { data } = await apiCenter.get("/subscriptions");
-      // 🔧 Normaliza a number (el backend puede mandar DECIMAL como string)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const norm = (data ?? []).map((r: any) => ({
-        ...r,
-        priceOverride:
-          r.priceOverride === null || r.priceOverride === undefined
-            ? null
-            : Number(r.priceOverride),
-        recurringDiscountPercent: Number(r.recurringDiscountPercent ?? 0),
-        recurringDiscount: Number(r.recurringDiscount ?? 0),
-      }));
-      setRows(norm);
+      const v = form.getFieldsValue();
+      const params: Record<string, string> = {};
+      if (v.restaurantName) params.restaurantName = v.restaurantName;
+      if (v.status) params.status = v.status;
+      if (v.dates && v.dates?.length === 2) {
+        params.from = v.dates[0].startOf("day").toISOString();
+        params.to = v.dates[1].endOf("day").toISOString();
+      }
+      const qs = new URLSearchParams(params).toString();
+      const { data } = await apiCenter.get(
+        `/subscriptions${qs ? `?${qs}` : ""}`
+      );
+      setRows(data);
     } catch (e) {
       console.error(e);
       message.error("No se pudieron cargar suscripciones");
@@ -96,171 +100,152 @@ export default function Subscriptions() {
   };
 
   useEffect(() => {
-    fetchCatalogs();
-    fetchRows();
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const openCreate = () => {
-    setEditing(null);
-    setInitialValues({
-      priceOverridePesos: undefined, // form en pesos
-      recurringDiscountPercent: 0,
-      recurringDiscount: 0, // 👈 form en pesos
-    });
-    setOpen(true);
-  };
-
-  const openEdit = (row: SubscriptionRow) => {
-    setEditing(row);
-    setInitialValues({
-      restaurantId: row.restaurantId,
-      planCode: row.planCode,
-      priceOverridePesos: row.priceOverride ?? undefined, // 👈 PESOS
-      recurringDiscountPercent: row.recurringDiscountPercent,
-      recurringDiscount: row.recurringDiscount, // 👈 PESOS
-    });
-    setOpen(true);
-  };
-
-  const handleDelete = (row: SubscriptionRow) => {
-    Modal.confirm({
-      title: `Cancelar suscripción de "${row.restaurantName}"`,
-      content: "Esta acción no se puede deshacer.",
-      okText: "Eliminar",
-      okButtonProps: { danger: true },
-      cancelText: "Cancelar",
-      async onOk() {
-        try {
-          await apiCenter.delete(`/subscriptions/${row.id}`);
-          message.success("Suscripción eliminada");
-          fetchRows();
-        } catch (e) {
-          console.error(e);
-          message.error("No se pudo eliminar");
-        }
-      },
-    });
-  };
-
-  const handleSubmit = async (v: SubscriptionFormValues) => {
+  const openPayments = async (sub: Sub) => {
+    setActiveSub(sub);
+    setDrawerOpen(true);
+    setDrawerLoading(true);
     try {
-      setSaving(true);
-      const payload = {
-        restaurantId: v.restaurantId,
-        planCode: v.planCode,
-        priceOverride:
-          v.priceOverridePesos != null ? Number(v.priceOverridePesos) : null, // PESOS
-        recurringDiscountPercent: v.recurringDiscountPercent ?? 0, // %
-        recurringDiscount: v.recurringDiscount ?? 0, // PESOS
-      };
-
-      if (editing) {
-        await apiCenter.put(`/subscriptions/${editing.id}`, payload);
-        message.success("Suscripción actualizada");
-      } else {
-        await apiCenter.post("/subscriptions", payload);
-        message.success("Suscripción creada");
-      }
-      setOpen(false);
-      fetchRows();
+      const params = new URLSearchParams();
+      params.set("restaurantId", String(sub.restaurantId));
+      if (sub.id) params.set("subscriptionId", String(sub.id)); // requiere que agregues este filtro en backend
+      const { data } = await apiCenter.get(
+        `/subscription-payments?${params.toString()}`
+      );
+      setPayments(data);
     } catch (e) {
       console.error(e);
-      message.error("No se pudo guardar");
+      message.error("No se pudieron cargar los pagos");
     } finally {
-      setSaving(false);
+      setDrawerLoading(false);
     }
   };
 
-  const plansMap = useMemo(() => {
-    const m = new Map<string, { amount: number }>();
-    for (const p of plans) {
-      m.set(p.value, { amount: p.amount }); // 👈 PESOS
-    }
-    return m;
-  }, [plans]);
-
-  const columns: ColumnsType<SubscriptionRow> = useMemo(
-    () => [
-      {
-        title: "Restaurante",
-        dataIndex: "restaurantName",
-        key: "restaurantName",
-      },
-      {
-        title: "Plan",
-        dataIndex: "planName",
-        key: "planName",
-        render: (_: string | null, r: SubscriptionRow) =>
-          `${r.planName ?? "—"} (${r.planInterval ?? "—"})`,
-      },
-      {
-        title: "Precio final",
-        key: "finalPrice",
-        width: 160,
-        render: (_: unknown, r) => {
-          const plan = plansMap.get(r.planCode);
-          const planAmount = plan?.amount ?? 0; // PESOS
-          const base = r.priceOverride ?? planAmount; // PESOS
-          const afterPercent =
-            base - (base * (r.recurringDiscountPercent ?? 0)) / 100;
-          const final = Math.max(0, afterPercent - (r.recurringDiscount ?? 0)); // PESOS, nunca negativo
-          return `$${final.toFixed(2)}`;
-        },
-      },
-      {
-        title: "Descuento",
-        key: "discounts",
-        width: 180,
-        render: (_: unknown, r: SubscriptionRow) =>
-          r.recurringDiscountPercent || r.recurringDiscount
-            ? `${r.recurringDiscountPercent || 0}% + $${Number(r.recurringDiscount || 0).toFixed(2)}`
-            : "—",
-      },
-      {
-        title: "Status",
-        dataIndex: "status",
-        key: "status",
-        width: 120,
-        render: (s) => {
-          const color =
-            s === "active" || s === "trialing"
-              ? "green"
-              : s === "paused"
-                ? "orange"
-                : "red";
-          return <Tag color={color}>{s}</Tag>;
-        },
-      },
-      {
-        title: "Acciones",
-        key: "actions",
-        width: 220,
-        render: (_: unknown, row) => (
-          <Space>
-            <Button size="small" onClick={() => openEdit(row)}>
-              Editar
-            </Button>
-            <Button size="small" danger onClick={() => handleDelete(row)}>
-              Eliminar
-            </Button>
-          </Space>
+  const columns: ColumnsType<Sub> = [
+    { title: "ID", dataIndex: "id", key: "id", width: 80 },
+    {
+      title: "Restaurante",
+      key: "restaurant",
+      render: (_, r) =>
+        r.restaurant
+          ? `${r.restaurant.id} — ${r.restaurant.name}`
+          : r.restaurantId,
+    },
+    { title: "Plan", key: "plan", render: (_, r) => r.plan?.name || r.planId },
+    {
+      title: "Periodo",
+      key: "period",
+      render: (_, r) =>
+        r.planPrice ? (
+          <Tag>{`${r.planPrice.interval}/${r.planPrice.intervalCount}`}</Tag>
+        ) : (
+          "-"
         ),
-      },
-    ],
-    [plansMap]
-  );
+    },
+    {
+      title: "Monto",
+      key: "amount",
+      render: (_, r) =>
+        r.planPrice
+          ? `$${Number(r.planPrice.amount).toFixed(2)} ${r.planPrice.currency}`
+          : "-",
+    },
+    {
+      title: "Vigencia",
+      key: "dates",
+      render: (_, r) =>
+        `${new Date(r.currentPeriodStart).toLocaleDateString()} → ${new Date(r.currentPeriodEnd).toLocaleDateString()}`,
+    },
+    {
+      title: "Estado",
+      dataIndex: "status",
+      key: "status",
+      render: (v) => (
+        <Tag
+          color={
+            v === "active"
+              ? "green"
+              : v === "trialing"
+                ? "blue"
+                : v === "canceled"
+                  ? "red"
+                  : v === "expired"
+                    ? "default"
+                    : "default"
+          }
+        >
+          {v}
+        </Tag>
+      ),
+    },
+    {
+      title: "Acciones",
+      key: "actions",
+      render: (_, r) => (
+        <Space>
+          <Button size="small" onClick={() => openPayments(r)}>
+            Pagos
+          </Button>
+        </Space>
+      ),
+    },
+  ];
 
   return (
     <Card
       title="Suscripciones"
       extra={
-        <Space>
-          <Button type="primary" onClick={openCreate}>
-            Nueva suscripción
-          </Button>
-        </Space>
+        <Button type="primary" onClick={() => setOpen(true)}>
+          Nueva suscripción
+        </Button>
       }
     >
+      <Form
+        form={form}
+        layout="inline"
+        onFinish={fetchData}
+        style={{ marginBottom: 12 }}
+      >
+        <Form.Item name="restaurantName" label="Restaurante">
+          <Input placeholder="Buscar por nombre" allowClear />
+        </Form.Item>
+        <Form.Item name="status" label="Estado">
+          <Select
+            allowClear
+            style={{ width: 180 }}
+            options={[
+              { value: "active", label: "active" },
+              { value: "trialing", label: "trialing" },
+              { value: "paused", label: "paused" },
+              { value: "canceled", label: "canceled" },
+              { value: "expired", label: "expired" },
+            ]}
+            placeholder="—"
+          />
+        </Form.Item>
+        <Form.Item name="dates" label="Rango">
+          <RangePicker allowEmpty={[true, true]} />
+        </Form.Item>
+        <Form.Item>
+          <Space>
+            <Button
+              onClick={() => {
+                form.resetFields();
+                fetchData();
+              }}
+            >
+              Limpiar
+            </Button>
+            <Button type="primary" htmlType="submit">
+              Filtrar
+            </Button>
+          </Space>
+        </Form.Item>
+      </Form>
+
       <Table
         rowKey="id"
         loading={loading}
@@ -268,17 +253,71 @@ export default function Subscriptions() {
         columns={columns}
       />
 
-      <SubscriptionFormModal
+      {/* Crear manualmente */}
+      <ManualSubscriptionModal
         open={open}
-        loading={saving}
-        initialValues={initialValues}
-        restaurants={restaurants}
-        plans={plans}
-        title={editing ? `Editar suscripción` : "Nueva suscripción"}
-        okText={editing ? "Guardar" : "Crear"}
-        onCancel={() => setOpen(false)}
-        onSubmit={handleSubmit}
+        onClose={() => setOpen(false)}
+        onCreated={async () => {
+          setOpen(false);
+          await fetchData();
+        }}
       />
+
+      {/* Drawer de pagos */}
+      <Drawer
+        title={
+          activeSub
+            ? `Pagos — Sub #${activeSub.id} (${activeSub.restaurant?.name ?? activeSub.restaurantId})`
+            : "Pagos"
+        }
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        width={600}
+      >
+        <Table<PayRow>
+          rowKey="id"
+          loading={drawerLoading}
+          dataSource={payments}
+          columns={[
+            { title: "ID", dataIndex: "id" },
+            {
+              title: "Importe",
+              render: (_, r) => `$${r.amount.toFixed(2)} ${r.currency}`,
+            },
+            { title: "Proveedor", dataIndex: "provider" },
+            { title: "Ref", dataIndex: "providerPaymentId" },
+            {
+              title: "Estado",
+              dataIndex: "status",
+              render: (v) => (
+                <Tag
+                  color={
+                    v === "succeeded"
+                      ? "green"
+                      : v === "failed"
+                        ? "red"
+                        : v === "pending"
+                          ? "blue"
+                          : "default"
+                  }
+                >
+                  {v}
+                </Tag>
+              ),
+            },
+            {
+              title: "Pagado",
+              dataIndex: "paidAt",
+              render: (v) => (v ? new Date(v).toLocaleString() : "-"),
+            },
+            {
+              title: "Creado",
+              dataIndex: "createdAt",
+              render: (v) => new Date(v).toLocaleString(),
+            },
+          ]}
+        />
+      </Drawer>
     </Card>
   );
 }

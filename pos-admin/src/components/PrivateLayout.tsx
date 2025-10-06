@@ -1,4 +1,4 @@
-import { Outlet, NavLink } from "react-router-dom";
+import { Outlet, NavLink, useLocation } from "react-router-dom";
 import { Button, Drawer, Avatar, Tooltip } from "antd";
 import {
   MenuOutlined,
@@ -12,10 +12,11 @@ import {
   DownOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "./Auth/AuthContext";
-import { useState } from "react";
+import { useEffect, useState, type JSX } from "react";
 import {
   FaBox,
   FaBoxTissue,
+  FaPaperPlane,
   FaPlus,
   FaPrint,
   FaRulerCombined,
@@ -25,169 +26,320 @@ import { FiSettings } from "react-icons/fi";
 import { MdAssessment } from "react-icons/md";
 import { FaFileLines } from "react-icons/fa6";
 
-const navItems = [
-  // { to: "/dashboard", label: "Dashboard", icon: <FaPiedPiper /> },
-  { to: "/configuracion", label: "Configuracion", icon: <FiSettings /> },
-  { to: "/reportes", label: "Reportes", icon: <MdAssessment /> },
-  { to: "/usuarios", label: "Usuarios", icon: <UserOutlined /> },
-  { to: "/stations", label: "Estaciones/Cajas", icon: <FaBox /> },
-  { to: "/hour_cut", label: "Horario Turnos/Z corte", icon: <FaFileLines /> },
-  { to: "/areas", label: "Áreas", icon: <AppstoreOutlined /> },
-  { to: "/areasImpresion", label: "Áreas Impresion", icon: <FaPrint /> },
-  { to: "/generatePairing", label: "KDS Pairing", icon: <FaPrint /> },
+/** =========================
+ *  ESQUEMA DEL MENÚ (inline)
+ *  ========================= */
+
+type LinkItem = {
+  type: "link";
+  to: string;
+  label: string;
+  icon?: string;
+};
+
+type GroupItem = {
+  type: "group";
+  key: string; // clave única para estado (apertura/cierre)
+  label: string;
+  icon?: string;
+  defaultOpen?: boolean;
+  children: LinkItem[];
+};
+
+type MenuItem = LinkItem | GroupItem;
+
+// Mapa de íconos por nombre (para que el esquema sea declarativo)
+const ICONS: Record<string, JSX.Element> = {
+  // genéricos
+  settings: <FiSettings />,
+  reports: <MdAssessment />,
+  invoices: <FaPaperPlane />,
+  list: <FaFileLines />,
+  customers: <UserOutlined />,
+  user: <UserOutlined />,
+  box: <FaBox />,
+  file: <FaFileLines />,
+  app: <AppstoreOutlined />,
+  print: <FaPrint />,
+  shop: <ShopOutlined />,
+  table: <TableOutlined />,
+  // productos
+  plus: <FaPlus />,
+  meal: <GiHotMeal />,
+  box_tissue: <FaBoxTissue />,
+  ruler: <FaRulerCombined />,
+};
+
+function getIcon(name?: string) {
+  if (!name) return null;
+  return ICONS[name] ?? null;
+}
+
+// Menú data-driven (puedes editar/ordenar aquí)
+const MENU_SCHEMA: MenuItem[] = [
   {
-    to: "/productionMonitors",
-    label: "Monitores de produccion",
-    icon: <FaPrint />,
+    type: "link",
+    to: "/configuracion",
+    label: "Configuración",
+    icon: "settings",
   },
-  { to: "/productos", label: "Productos", icon: <ShopOutlined /> }, // tendrá submenú
-  { to: "/mesas", label: "Mesas", icon: <TableOutlined /> },
+  { type: "link", to: "/reportes", label: "Reportes", icon: "reports" },
+
+  {
+    type: "group",
+    key: "invoices",
+    label: "Facturas",
+    icon: "invoices",
+    defaultOpen: true,
+    children: [
+      { type: "link", to: "/invoices", label: "Lista", icon: "list" },
+      {
+        type: "link",
+        to: "/invoices/customers",
+        label: "Clientes",
+        icon: "customers",
+      },
+    ],
+  },
+
+  { type: "link", to: "/usuarios", label: "Usuarios", icon: "user" },
+  { type: "link", to: "/stations", label: "Estaciones/Cajas", icon: "box" },
+  {
+    type: "link",
+    to: "/hour_cut",
+    label: "Horario Turnos/Z corte",
+    icon: "file",
+  },
+  { type: "link", to: "/areas", label: "Áreas", icon: "app" },
+  {
+    type: "link",
+    to: "/areasImpresion",
+    label: "Áreas Impresión",
+    icon: "print",
+  },
+  { type: "link", to: "/generatePairing", label: "KDS Pairing", icon: "print" },
+  {
+    type: "link",
+    to: "/productionMonitors",
+    label: "Monitores de producción",
+    icon: "print",
+  },
+
+  {
+    type: "group",
+    key: "productos",
+    label: "Productos",
+    icon: "shop",
+    defaultOpen: true,
+    children: [
+      {
+        type: "link",
+        to: "/productos",
+        label: "Agregar producto",
+        icon: "plus",
+      },
+      {
+        type: "link",
+        to: "/productos/categorias",
+        label: "Categorías",
+        icon: "meal",
+      },
+      {
+        type: "link",
+        to: "/productos/grupos",
+        label: "Grupos de productos",
+        icon: "box_tissue",
+      },
+      {
+        type: "link",
+        to: "/productos/subgrupos",
+        label: "SubGrupos de productos",
+        icon: "box_tissue",
+      },
+      {
+        type: "link",
+        to: "/productos/modificadores",
+        label: "Modificadores",
+        icon: "ruler",
+      },
+    ],
+  },
+
+  { type: "link", to: "/mesas", label: "Mesas", icon: "table" },
 ];
 
+/** =========================
+ *  Persistencia UI (localStorage)
+ *  ========================= */
+const OPEN_STATE_STORAGE_KEY = "sidebar.openState.v1";
+const COLLAPSED_STORAGE_KEY = "sidebar.collapsed.v1";
+
+function loadOpenStateFromStorage(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(OPEN_STATE_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+function saveOpenStateToStorage(state: Record<string, boolean>) {
+  localStorage.setItem(OPEN_STATE_STORAGE_KEY, JSON.stringify(state));
+}
+function loadCollapsed(): boolean {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : false;
+  } catch {
+    return false;
+  }
+}
+function saveCollapsed(val: boolean) {
+  localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify(val));
+}
+
+/** =========================
+ *  Componente
+ *  ========================= */
 const PrivateLayout = () => {
   const { user, logout } = useAuth();
+  const location = useLocation();
+
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
-  const [productosOpen, setProductosOpen] = useState(true); // submenú expandido por defecto
+  const [collapsed, setCollapsed] = useState<boolean>(loadCollapsed());
+
+  // estado de apertura por grupo
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    const persisted = loadOpenStateFromStorage();
+    const initial: Record<string, boolean> = { ...persisted };
+    MENU_SCHEMA.forEach((it) => {
+      if (it.type === "group" && initial[it.key] === undefined) {
+        initial[it.key] = !!it.defaultOpen;
+      }
+    });
+    return initial;
+  });
+
+  useEffect(() => {
+    saveCollapsed(collapsed);
+  }, [collapsed]);
+
+  useEffect(() => {
+    saveOpenStateToStorage(openGroups);
+  }, [openGroups]);
+
+  // ¿algún hijo del grupo está activo?
+  const groupIsActive = (group: GroupItem) =>
+    group.children.some((c) => location.pathname.startsWith(c.to));
+
+  const CollapsedLink: React.FC<{ item: LinkItem }> = ({ item }) => (
+    <Tooltip title={item.label} placement="right">
+      <NavLink
+        to={item.to}
+        onClick={() => setDrawerOpen(false)}
+        className={({ isActive }) =>
+          `flex items-center justify-center w-full h-12 rounded ${
+            isActive
+              ? "bg-blue-600 text-white"
+              : "text-gray-700 hover:bg-blue-100"
+          }`
+        }
+      >
+        <span className="text-xl">{getIcon(item.icon)}</span>
+      </NavLink>
+    </Tooltip>
+  );
 
   const SidebarContent = () => (
     <div className="flex flex-col justify-between h-full">
       <nav className="flex flex-col gap-1 p-2">
-        {navItems.map((item) => {
-          if (item.label === "Productos") {
-            // Menú expandible para "Productos"
+        {MENU_SCHEMA.map((item, idx) => {
+          if (item.type === "link") {
+            if (collapsed) {
+              return <CollapsedLink key={`${item.to}-${idx}`} item={item} />;
+            }
             return (
-              <div key={item.label}>
+              <NavLink
+                key={`${item.to}-${idx}`}
+                to={item.to}
+                onClick={() => setDrawerOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-4 py-2 rounded transition-all ${
+                    isActive
+                      ? "bg-blue-600 text-white"
+                      : "text-gray-700 hover:bg-blue-100"
+                  }`
+                }
+              >
+                <span className="text-xl">{getIcon(item.icon)}</span>
+                <span className="font-medium">{item.label}</span>
+              </NavLink>
+            );
+          }
+
+          const isOpen = !!openGroups[item.key];
+          const active = groupIsActive(item);
+
+          if (collapsed) {
+            return (
+              <Tooltip key={item.key} title={item.label} placement="right">
                 <button
-                  onClick={() => setProductosOpen(!productosOpen)}
-                  className={`flex items-center w-full gap-3 px-4 py-2 rounded transition-all ${
-                    location.pathname.startsWith("/productos")
+                  onClick={() =>
+                    setOpenGroups((s) => ({ ...s, [item.key]: !s[item.key] }))
+                  }
+                  className={`flex items-center justify-center w-full h-12 rounded ${
+                    active
                       ? "bg-blue-600 text-white"
                       : "text-gray-700 hover:bg-blue-100"
                   }`}
                 >
-                  <span className="text-xl">{item.icon}</span>
-                  {!collapsed && (
-                    <>
-                      <span className="font-medium">{item.label}</span>
-                      <span className="ml-auto">
-                        {productosOpen ? <UpOutlined /> : <DownOutlined />}
-                      </span>
-                    </>
-                  )}
+                  <span className="text-xl">{getIcon(item.icon)}</span>
                 </button>
-
-                {/* Submenú */}
-                {!collapsed && productosOpen && (
-                  <div className="ml-4 mt-1 flex flex-col gap-1 text-sm">
-                    <NavLink
-                      to="/productos"
-                      end
-                      className={({ isActive }) =>
-                        `rounded flex gap-2 items-center px-2 py-1 ${
-                          isActive
-                            ? "bg-blue-100 text-blue-800"
-                            : "text-gray-700 hover:bg-gray-100"
-                        }`
-                      }
-                    >
-                      <FaPlus /> Agregar producto
-                    </NavLink>
-                    <NavLink
-                      to="/productos/categorias"
-                      end
-                      className={({ isActive }) =>
-                        `rounded flex gap-2 items-center px-2 py-1 ${
-                          isActive
-                            ? "bg-blue-100 text-blue-800"
-                            : "text-gray-700 hover:bg-gray-100"
-                        }`
-                      }
-                    >
-                      <GiHotMeal /> Categorias
-                    </NavLink>
-
-                    <NavLink
-                      to="/productos/grupos"
-                      className={({ isActive }) =>
-                        `rounded flex gap-2 items-center px-2 py-1 ${
-                          isActive
-                            ? "bg-blue-100 text-blue-800"
-                            : "text-gray-700 hover:bg-gray-100"
-                        }`
-                      }
-                    >
-                      <FaBoxTissue /> Grupos de productos
-                    </NavLink>
-                    <NavLink
-                      to="/productos/subgrupos"
-                      className={({ isActive }) =>
-                        `rounded flex gap-2 items-center px-2 py-1 ${
-                          isActive
-                            ? "bg-blue-100 text-blue-800"
-                            : "text-gray-700 hover:bg-gray-100"
-                        }`
-                      }
-                    >
-                      <FaBoxTissue /> SubGrupos de productos
-                    </NavLink>
-                    <NavLink
-                      to="/productos/modificadores"
-                      className={({ isActive }) =>
-                        `rounded flex gap-2 items-center px-2 py-1 ${
-                          isActive
-                            ? "bg-blue-100 text-blue-800"
-                            : "text-gray-700 hover:bg-gray-100"
-                        }`
-                      }
-                    >
-                      <FaRulerCombined /> Modificadores
-                    </NavLink>
-                  </div>
-                )}
-              </div>
-            );
-          }
-
-          // Renderiza los demás items como antes
-          const isCollapsed = collapsed;
-
-          if (isCollapsed) {
-            return (
-              <Tooltip key={item.to} title={item.label} placement="right">
-                <NavLink
-                  to={item.to}
-                  onClick={() => setDrawerOpen(false)}
-                  className={({ isActive }) =>
-                    `flex items-center justify-center w-full h-12 rounded ${
-                      isActive
-                        ? "bg-blue-600 text-white"
-                        : "text-gray-700 hover:bg-blue-100"
-                    }`
-                  }
-                >
-                  <span className="text-xl">{item.icon}</span>
-                </NavLink>
               </Tooltip>
             );
           }
 
           return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              onClick={() => setDrawerOpen(false)}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-4 py-2 rounded transition-all ${
-                  isActive
+            <div key={item.key}>
+              <button
+                onClick={() =>
+                  setOpenGroups((s) => ({ ...s, [item.key]: !s[item.key] }))
+                }
+                className={`flex items-center w-full gap-3 px-4 py-2 rounded transition-all ${
+                  active
                     ? "bg-blue-600 text-white"
                     : "text-gray-700 hover:bg-blue-100"
-                }`
-              }
-            >
-              <span className="text-xl">{item.icon}</span>
-              <span className="font-medium">{item.label}</span>
-            </NavLink>
+                }`}
+              >
+                <span className="text-xl">{getIcon(item.icon)}</span>
+                <span className="font-medium">{item.label}</span>
+                <span className="ml-auto">
+                  {isOpen ? <UpOutlined /> : <DownOutlined />}
+                </span>
+              </button>
+
+              {isOpen && (
+                <div className="ml-4 mt-1 flex flex-col gap-1 text-sm">
+                  {item.children.map((child) => (
+                    <NavLink
+                      key={child.to}
+                      to={child.to}
+                      end
+                      onClick={() => setDrawerOpen(false)}
+                      className={({ isActive }) =>
+                        `rounded flex gap-2 items-center px-2 py-1 ${
+                          isActive
+                            ? "bg-blue-100 text-blue-800"
+                            : "text-gray-700 hover:bg-gray-100"
+                        }`
+                      }
+                    >
+                      <span className="text-base">{getIcon(child.icon)}</span>
+                      {child.label}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </div>
           );
         })}
       </nav>
@@ -196,7 +348,7 @@ const PrivateLayout = () => {
       <div className="hidden md:flex justify-center p-2 border-t">
         <Button
           size="small"
-          onClick={() => setCollapsed(!collapsed)}
+          onClick={() => setCollapsed((v) => !v)}
           icon={collapsed ? <RightOutlined /> : <LeftOutlined />}
         />
       </div>
@@ -242,7 +394,7 @@ const PrivateLayout = () => {
             collapsed ? "w-20" : "w-64"
           }`}
         >
-          {/* Usuario (solo en móvil) */}
+          {/* Usuario (solo móvil; oculto aquí por ahora) */}
           <div className="md:hidden p-4 border-b flex flex-col items-center text-center gap-1">
             <Avatar size={64}>
               {user?.fullName?.charAt(0).toUpperCase() || "👤"}
@@ -260,7 +412,7 @@ const PrivateLayout = () => {
         <Drawer
           title="Menú"
           placement="left"
-          closable={true}
+          closable
           onClose={() => setDrawerOpen(false)}
           open={drawerOpen}
           bodyStyle={{ padding: 0 }}

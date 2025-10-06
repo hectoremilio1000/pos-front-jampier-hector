@@ -1,30 +1,45 @@
+// /src/pages/Admin/Plans.tsx
 import { useEffect, useState } from "react";
-import { Button, Card, Modal, Space, Table, Tag, message } from "antd";
+import { Button, Card, Modal, Space, Table, Tag, message, Divider } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import apiCenter from "@/apis/apiCenter";
 import PlanFormModal, { type PlanFormValues } from "@/components/PlanFormModal";
-
-type Plan = {
-  id: number;
-  code: string;
-  name: string;
-  amount: number; // 👈 ahora en pesos (antes amountCents)
-  currency: string;
-  interval: "month" | "semiannual" | "year";
-  isActive: boolean;
-};
+import PlanPriceFormModal, {
+  type PlanPriceFormValues,
+} from "@/components/PlanPriceFormModal";
+import type { Plan, PlanPrice } from "@/types/billing";
+// helper al inicio del archivo (debajo de imports)
+function humanizeInterval(interval: string, count: number) {
+  const n = Number(count || 1);
+  const unit = String(interval);
+  const map: Record<string, { s: string; p: string }> = {
+    day: { s: "día", p: "días" },
+    week: { s: "semana", p: "semanas" },
+    month: { s: "mes", p: "meses" },
+    year: { s: "año", p: "años" },
+  };
+  const m = map[unit] || { s: unit, p: unit + "s" };
+  return n === 1 ? m.s : `${n} ${m.p}`;
+}
 
 export default function Plans() {
   const [rows, setRows] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // modal state
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<Plan | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [initialValues, setInitialValues] = useState<Partial<PlanFormValues>>(
-    {}
-  );
+  // modales Plan
+  const [openPlan, setOpenPlan] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
+  const [savingPlan, setSavingPlan] = useState(false);
+  const [initialPlan, setInitialPlan] = useState<Partial<PlanFormValues>>({});
+
+  // modales Price
+  const [openPrice, setOpenPrice] = useState(false);
+  const [editingPrice, setEditingPrice] = useState<PlanPrice | null>(null);
+  const [parentPlan, setParentPlan] = useState<Plan | null>(null);
+  const [savingPrice, setSavingPrice] = useState(false);
+  const [initialPrice, setInitialPrice] = useState<
+    Partial<PlanPriceFormValues>
+  >({});
 
   const fetchData = async () => {
     setLoading(true);
@@ -38,45 +53,74 @@ export default function Plans() {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     fetchData();
   }, []);
 
-  const handleCreate = () => {
-    setEditing(null);
-    setInitialValues({
+  // PLAN handlers
+  const handleCreatePlan = () => {
+    setEditingPlan(null);
+    setInitialPlan({
       code: "",
       name: "",
-      interval: "month",
-      amountPesos: undefined,
-      currency: "MXN",
+      description: "",
+      isPublic: true,
       isActive: true,
     });
-    setOpen(true);
+    setOpenPlan(true);
   };
-
-  const handleEdit = (row: Plan) => {
-    setEditing(row);
-    setInitialValues({
+  const handleEditPlan = (row: Plan) => {
+    setEditingPlan(row);
+    setInitialPlan({
       code: row.code,
       name: row.name,
-      interval: row.interval,
-      amountPesos: row.amount, // 👈 ya viene en pesos
-      currency: row.currency,
+      description: row.description || "",
+      isPublic: row.isPublic,
       isActive: row.isActive,
+      defaultPriceId: row.defaultPriceId ?? undefined,
     });
-    setOpen(true);
+    setOpenPlan(true);
   };
-
-  const handleDelete = async (row: Plan) => {
+  const handleSavePlan = async (values: PlanFormValues) => {
+    setSavingPlan(true);
+    try {
+      if (editingPlan) {
+        await apiCenter.put(`/plans/${editingPlan.id}`, {
+          name: values.name,
+          description: values.description,
+          isPublic: values.isPublic,
+          isActive: values.isActive,
+          defaultPriceId: values.defaultPriceId ?? null,
+        });
+        message.success("Plan actualizado");
+      } else {
+        await apiCenter.post("/plans", {
+          code: values.code,
+          name: values.name,
+          description: values.description,
+          isPublic: values.isPublic,
+          isActive: values.isActive,
+          // opcional: puedes mandar un price inicial desde aquí si quieres
+        });
+        message.success("Plan creado");
+      }
+      setOpenPlan(false);
+      await fetchData();
+    } catch (e) {
+      console.error(e);
+      message.error("No se pudo guardar el plan");
+    } finally {
+      setSavingPlan(false);
+    }
+  };
+  const handleDeletePlan = (row: Plan) => {
     Modal.confirm({
       title: `Eliminar plan "${row.name}"`,
       content: "Esta acción no se puede deshacer.",
       okText: "Eliminar",
       okButtonProps: { danger: true },
       cancelText: "Cancelar",
-      onOk: async () => {
+      async onOk() {
         try {
           await apiCenter.delete(`/plans/${row.id}`);
           message.success("Plan eliminado");
@@ -89,53 +133,113 @@ export default function Plans() {
     });
   };
 
-  const handleSubmit = async (values: PlanFormValues) => {
-    try {
-      setSaving(true);
-      const payload = {
-        code: values.code,
-        name: values.name,
-        interval: values.interval,
-        amount: Number(values.amountPesos), // 👈 pesos → se envía tal cual
-        currency: (values.currency || "").toUpperCase(),
-        isActive: values.isActive,
-      };
+  // PRICE handlers
+  const openCreatePrice = (plan: Plan) => {
+    setParentPlan(plan);
+    setEditingPrice(null);
+    // openCreatePrice
+    setInitialPrice({
+      planId: plan.id,
+      interval: "month",
+      intervalCount: 1,
+      amount: undefined,
+      currency: "MXN",
+      isDefault: plan.defaultPriceId ? false : true,
+    });
 
-      if (editing) {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { code, ...rest } = payload; // normalmente no cambiamos code en update
-        await apiCenter.put(`/plans/${editing.id}`, rest);
-        message.success("Plan actualizado");
+    setOpenPrice(true);
+  };
+  const openEditPrice = (plan: Plan, price: PlanPrice) => {
+    setParentPlan(plan);
+    setEditingPrice(price);
+    // openEditPrice
+    setInitialPrice({
+      planId: plan.id,
+      interval: price.interval,
+      intervalCount: price.intervalCount,
+      amount: price.amount,
+      currency: price.currency,
+      isDefault: price.isDefault,
+    });
+
+    setOpenPrice(true);
+  };
+  const handleSavePrice = async (values: PlanPriceFormValues) => {
+    setSavingPrice(true);
+    try {
+      if (editingPrice) {
+        await apiCenter.put(`/plan-prices/${editingPrice.id}`, values);
+        message.success("Precio actualizado");
       } else {
-        await apiCenter.post("/plans", payload);
-        message.success("Plan creado");
+        await apiCenter.post(`/plan-prices`, values);
+        message.success("Precio creado");
       }
-      setOpen(false);
+      setOpenPrice(false);
       await fetchData();
     } catch (e) {
       console.error(e);
-      message.error("No se pudo guardar");
+      message.error("No se pudo guardar el precio");
     } finally {
-      setSaving(false);
+      setSavingPrice(false);
     }
+  };
+  const handleDeletePrice = (price: PlanPrice) => {
+    Modal.confirm({
+      // handleDeletePrice (título)
+      title: `Eliminar precio ${humanizeInterval(price.interval, price.intervalCount)}`,
+      content: "Esta acción no se puede deshacer.",
+      okText: "Eliminar",
+      okButtonProps: { danger: true },
+      cancelText: "Cancelar",
+      async onOk() {
+        try {
+          await apiCenter.delete(`/plan-prices/${price.id}`);
+          message.success("Precio eliminado");
+          await fetchData();
+        } catch (e) {
+          console.error(e);
+          message.error("No se pudo eliminar");
+        }
+      },
+    });
   };
 
   const columns: ColumnsType<Plan> = [
     { title: "Code", dataIndex: "code", key: "code" },
     { title: "Nombre", dataIndex: "name", key: "name" },
     {
-      title: "Intervalo",
-      dataIndex: "interval",
-      key: "interval",
-      width: 130,
-      render: (v) => <Tag>{v}</Tag>,
-    },
-    {
-      title: "Precio",
-      dataIndex: "amount",
-      key: "amount",
-      width: 150,
-      render: (v: number, r) => `$${Number(v).toFixed(2)} ${r.currency}`, // 👈 sin /100
+      title: "Precios",
+      key: "prices",
+      render: (_, row) => (
+        <div>
+          {row.prices.length === 0 ? <Tag color="red">Sin precios</Tag> : null}
+          {row.prices.map((pr: any) => (
+            <div key={pr.id} style={{ marginBottom: 6 }}>
+              <Tag>{humanizeInterval(pr.interval, pr.intervalCount)}</Tag>{" "}
+              <b>
+                ${Number(pr.amount).toFixed(2)} {pr.currency}
+              </b>{" "}
+              {pr.isDefault ? <Tag color="green">default</Tag> : null}
+              <Space size="small" style={{ marginLeft: 8 }}>
+                <Button size="small" onClick={() => openEditPrice(row, pr)}>
+                  Editar
+                </Button>
+                <Button
+                  size="small"
+                  danger
+                  onClick={() => handleDeletePrice(pr)}
+                >
+                  Eliminar
+                </Button>
+              </Space>
+            </div>
+          ))}
+          <Divider style={{ margin: "8px 0" }} />
+          <Button size="small" onClick={() => openCreatePrice(row)}>
+            Agregar precio
+          </Button>
+        </div>
+      ),
     },
     {
       title: "Activo",
@@ -151,10 +255,10 @@ export default function Plans() {
       width: 220,
       render: (_, row) => (
         <Space>
-          <Button size="small" onClick={() => handleEdit(row)}>
-            Editar
+          <Button size="small" onClick={() => handleEditPlan(row)}>
+            Editar plan
           </Button>
-          <Button size="small" danger onClick={() => handleDelete(row)}>
+          <Button size="small" danger onClick={() => handleDeletePlan(row)}>
             Eliminar
           </Button>
         </Space>
@@ -168,7 +272,7 @@ export default function Plans() {
       extra={
         <Space>
           <Button onClick={fetchData}>Refrescar</Button>
-          <Button type="primary" onClick={handleCreate}>
+          <Button type="primary" onClick={handleCreatePlan}>
             Nuevo plan
           </Button>
         </Space>
@@ -182,14 +286,28 @@ export default function Plans() {
       />
 
       <PlanFormModal
-        open={open}
-        loading={saving}
-        initialValues={initialValues}
-        title={editing ? `Editar: ${editing.name}` : "Nuevo plan"}
-        okText={editing ? "Guardar" : "Crear"}
-        disableCode={!!editing}
-        onCancel={() => setOpen(false)}
-        onSubmit={handleSubmit}
+        open={openPlan}
+        loading={savingPlan}
+        initialValues={initialPlan}
+        title={editingPlan ? `Editar: ${editingPlan.name}` : "Nuevo plan"}
+        okText={editingPlan ? "Guardar" : "Crear"}
+        disableCode={!!editingPlan}
+        onCancel={() => setOpenPlan(false)}
+        onSubmit={handleSavePlan}
+      />
+
+      <PlanPriceFormModal
+        open={openPrice}
+        loading={savingPrice}
+        initialValues={initialPrice}
+        title={
+          editingPrice
+            ? `Editar precio (${humanizeInterval(editingPrice.interval, editingPrice.intervalCount)})`
+            : `Nuevo precio para ${parentPlan?.name}`
+        }
+        okText={editingPrice ? "Guardar" : "Crear"}
+        onCancel={() => setOpenPrice(false)}
+        onSubmit={handleSavePrice}
       />
     </Card>
   );

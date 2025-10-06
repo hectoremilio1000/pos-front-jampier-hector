@@ -4,7 +4,6 @@ import LoginScreen from "./pages/LoginScreen";
 import ControlComandero from "./pages/ControlComandero";
 
 import "@ant-design/v5-patch-for-react-19";
-import { ProtectedRoute } from "./components/Auth/ProtectedRoute";
 import { AuthProvider } from "./components/Auth/AuthContext";
 import PrivateLayout from "./components/PrivateLayout";
 import Dashboard from "./pages/Dashboard";
@@ -21,6 +20,11 @@ import Stations from "./pages/Stations";
 import FiscalCutSettings from "./pages/FiscalCutSettings";
 import ProductionMonitors from "./pages/ProductionMonitors";
 import { AdminMonitorPairing } from "./pages/AdminPairing";
+import InvoicesPage from "./pages/Billing/Inovoices";
+import CustomersPage from "./pages/Billing/Customers";
+import { SubscriptionProvider } from "./components/Billing/SubscriptionContext";
+import RequireSubscription from "./components/Billing/RequireSubscription";
+import CheckoutSuccess from "./pages/Billing/CheckoutSuccess";
 
 function App() {
   return (
@@ -31,9 +35,11 @@ function App() {
 
           <Route
             element={
-              <ProtectedRoute>
-                <PrivateLayout />
-              </ProtectedRoute>
+              <SubscriptionProvider>
+                <RequireSubscription>
+                  <PrivateLayout />
+                </RequireSubscription>
+              </SubscriptionProvider>
             }
           >
             <Route path="/dashboard" element={<Dashboard />} />
@@ -42,6 +48,8 @@ function App() {
             <Route path="/areas" element={<Areas />} />
             <Route path="/areasImpresion" element={<AreasImpresion />} />
             <Route path="/generatePairing" element={<AdminMonitorPairing />} />
+            <Route path="/invoices" element={<InvoicesPage />} />
+            <Route path="/invoices/customers" element={<CustomersPage />} />
             <Route
               path="/productionMonitors"
               element={<ProductionMonitors />}
@@ -58,6 +66,7 @@ function App() {
             />
             <Route path="/control" element={<ControlComandero />} />
             {/* Aquí puedes añadir más rutas protegidas */}
+            <Route path="/checkout/success" element={<CheckoutSuccess />} />
           </Route>
         </Routes>
       </AuthProvider>
