@@ -1,80 +1,84 @@
 import axios from "axios";
 import { createContext, useContext, useEffect, useState } from "react";
-
 import { useNavigate } from "react-router-dom";
-import apiAuth from "../apis/apiAuth";
+import apiAuth from "@/components/apis/apiAuth";
 import { message } from "antd";
 
-interface Restaurant {
-  id: number;
-  name: string;
-  address?: string;
-  // Puedes agregar más campos si los necesitas (phone, city, etc.)
-}
-interface User {
-  id: number;
-  email: string;
-  fullName: string;
-  role: {
-    code: string;
-    name: string;
-  };
-  restaurant: Restaurant;
-}
-
 interface AuthContextType {
-  user: User | null;
-  token: string | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  user: any | null;
+  token: string | null; // opaco (admin_session_token)
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
-
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [user, setUser] = useState<any | null>(null);
+  const [token, setToken] = useState<string | null>(null); // opaco del panel
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
+  const apiUrlAuth = import.meta.env.VITE_API_URL_AUTH; // ej: http://localhost:3333/api
+
+  // MONTAR: si hay opaco pero NO refresh_token ⇒ sesión vieja → forzar login
   useEffect(() => {
-    const storedToken = sessionStorage.getItem("token");
-    if (storedToken) {
-      setToken(storedToken);
-      // Obtiene el usuario desde el backend
+    const opaque = sessionStorage.getItem("token");
+    const hasRefresh = !!sessionStorage.getItem("refresh_token");
+
+    if (opaque && !hasRefresh) {
+      sessionStorage.clear();
+      navigate("/login");
+      setLoading(false);
+      return;
+    }
+
+    if (opaque) {
+      setToken(opaque);
       apiAuth
         .get("/me")
         .then((res) => setUser(res.data))
         .catch(() => logout());
     }
     setLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const apiUrlLogin = import.meta.env.VITE_API_URL_AUTH;
-  const login = async (email: string, password: string) => {
-    const res = await axios.post(`${apiUrlLogin}/login`, {
-      email,
-      password,
-    });
-    if (
-      res.data.user.role.code === "cashier"
-      // || res.data.user.role.code === "waiter ..." //puede ser capitan mesero
-    ) {
-      setToken(res.data.value);
-      sessionStorage.setItem("token", res.data.value);
-      // Pide los datos del usuario desde /me
-      const meRes = await apiAuth.get("/me");
-      setUser(meRes.data);
 
-      navigate("/turnos");
-    } else {
-      navigate("/");
-      message.error(
-        "No tienes el rol de waiter(mesero), para entrar a esta plataforma, porfavor revisa tus credenciales e intentalo de nuevo"
-      );
+  const login = async (email: string, password: string) => {
+    const res = await axios.post(`${apiUrlAuth}/login`, { email, password });
+
+    const role = res.data.user?.role?.code;
+    if (!["cashier", "owner", "admin", "superadmin"].includes(role)) {
+      message.error("No tienes permisos para entrar");
+      return;
     }
+
+    // 1) OPACO para panel (pos-auth con guard api)
+    const opaque = res.data.admin_session_token as string;
+    setToken(opaque);
+    sessionStorage.setItem("token", opaque);
+
+    // 2) JWT corto + refresh para microservicios (pos-cash-api, pos-order-api)
+    const access = res.data.access_jwt as string | undefined;
+    const refresh = res.data.refresh_token as string | undefined;
+    if (access) {
+      const ttl = Number(res.data.expires_in ?? 600);
+      sessionStorage.setItem("access_jwt", access);
+      sessionStorage.setItem("access_jwt_exp", String(Date.now() + ttl * 1000));
+    }
+    if (refresh) {
+      sessionStorage.setItem("refresh_token", refresh);
+    }
+
+    // 3) /me con opaco
+    const meRes = await apiAuth.get("/me");
+    setUser(meRes.data);
+
+    navigate("/dashboard");
   };
 
   const logout = () => {

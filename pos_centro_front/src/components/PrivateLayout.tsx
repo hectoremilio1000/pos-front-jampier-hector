@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
   Layout,
   Menu,
@@ -18,7 +18,7 @@ import {
   LogoutOutlined,
 } from "@ant-design/icons";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "@/components/Auth/useAuth";
+import { useAuth } from "./Auth/AuthContext";
 
 const { Header, Sider, Content } = Layout;
 
@@ -32,93 +32,95 @@ export default function PrivateLayout() {
   // resalta item activo
   const selectedKeys: string[] = useMemo(() => {
     const p = location.pathname;
-    if (p.startsWith("/sa/plans")) return ["/sa/plans"];
-    if (p.startsWith("/sa/subscriptions")) return ["/sa/subscriptions"];
-    if (p.startsWith("/sa/invoices")) return ["/sa/invoices"];
-    if (p.startsWith("/sa/restaurants")) return ["/sa/restaurants"];
-    if (p.startsWith("/sa/users")) return ["/sa/users"];
+    if (p.startsWith("/restaurants")) return ["/restaurants"];
+    if (p.startsWith("/users")) return ["/users"];
+    if (p.startsWith("/plans")) return ["/plans"];
+    if (p.startsWith("/subscriptions")) return ["/subscriptions"];
+    if (p.startsWith("/invoices")) return ["/invoices"];
     return ["/dashboard"];
   }, [location.pathname]);
 
   // menú principal (sin <Link>, navegamos con onClick)
-  const items: MenuProps["items"] = [
-    {
-      key: "/dashboard",
-      icon: <DashboardOutlined />,
-      label: "Dashboard",
+  const items: MenuProps["items"] = useMemo(
+    () => [
+      { key: "/dashboard", icon: <DashboardOutlined />, label: "Dashboard" },
+      {
+        type: "group",
+        label: "Clientes",
+        children: [
+          {
+            key: "/restaurants",
+            icon: <ShopOutlined />,
+            label: "Restaurantes",
+          },
+          { key: "/users", icon: <UserOutlined />, label: "Owners / Usuarios" },
+        ],
+      },
+      {
+        type: "group",
+        label: "Billing",
+        children: [
+          {
+            key: "/plans",
+            icon: <DollarOutlined />,
+            label: (
+              <span>
+                Planes{" "}
+                <Badge
+                  count="v0"
+                  style={{ backgroundColor: token.colorWarning }}
+                  offset={[8, -2]}
+                />
+              </span>
+            ),
+          },
+          {
+            key: "/subscriptions",
+            icon: <DollarOutlined />,
+            label: (
+              <span>
+                Suscripciones{" "}
+                <Badge
+                  count="v0"
+                  style={{ backgroundColor: token.colorWarning }}
+                  offset={[8, -2]}
+                />
+              </span>
+            ),
+          },
+          {
+            key: "/invoices",
+            icon: <WarningOutlined />,
+            label: (
+              <span>
+                Facturas{" "}
+                <Badge
+                  count="v0"
+                  style={{ backgroundColor: token.colorWarning }}
+                  offset={[8, -2]}
+                />
+              </span>
+            ),
+          },
+        ],
+      },
+      {
+        type: "group",
+        label: "Sistema",
+        children: [
+          { key: "/settings", icon: <ToolOutlined />, label: "Configuración" },
+        ],
+      },
+    ],
+    [token.colorWarning] // solo cambia cuando cambia el tema
+  );
+
+  const onMenuClick = useCallback(
+    ({ key }: { key: string | number }) => {
+      navigate(String(key));
     },
-    {
-      type: "group",
-      label: "Clientes",
-      children: [
-        {
-          key: "/sa/restaurants",
-          icon: <ShopOutlined />,
-          label: "Restaurantes",
-        },
-        {
-          key: "/sa/users",
-          icon: <UserOutlined />,
-          label: "Owners / Usuarios",
-        },
-      ],
-    },
-    {
-      type: "group",
-      label: "Billing",
-      children: [
-        {
-          key: "/sa/plans",
-          icon: <DollarOutlined />,
-          label: (
-            <span>
-              Planes{" "}
-              <Badge
-                count="v0"
-                style={{ backgroundColor: token.colorWarning }}
-                offset={[8, -2]}
-              />
-            </span>
-          ),
-        },
-        {
-          key: "/sa/subscriptions",
-          icon: <DollarOutlined />,
-          label: (
-            <span>
-              Suscripciones{" "}
-              <Badge
-                count="v0"
-                style={{ backgroundColor: token.colorWarning }}
-                offset={[8, -2]}
-              />
-            </span>
-          ),
-        },
-        {
-          key: "/sa/invoices",
-          icon: <WarningOutlined />,
-          label: (
-            <span>
-              Facturas{" "}
-              <Badge
-                count="v0"
-                style={{ backgroundColor: token.colorWarning }}
-                offset={[8, -2]}
-              />
-            </span>
-          ),
-        },
-      ],
-    },
-    {
-      type: "group",
-      label: "Sistema",
-      children: [
-        { key: "/settings", icon: <ToolOutlined />, label: "Configuración" },
-      ],
-    },
-  ];
+    [navigate]
+  );
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
@@ -150,7 +152,7 @@ export default function PrivateLayout() {
           selectedKeys={selectedKeys}
           items={items}
           style={{ borderInlineEnd: 0, padding: "8px 0" }}
-          onClick={({ key }) => navigate(String(key))} // navega por key
+          onClick={onMenuClick}
         />
       </Sider>
 

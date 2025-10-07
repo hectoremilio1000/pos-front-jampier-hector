@@ -12,8 +12,8 @@ import {
   message,
 } from "antd";
 import type { TabsProps } from "antd";
-import apiCenter from "@/apis/apiCenter";
-import type { InvoiceRow } from "@/components/InvoicesTable";
+import apiCenter from "@/components/apis/apiCenter";
+import type { InvoiceRow } from "@/pages/Invoices/InvoicesTable";
 
 type Props = {
   open: boolean;

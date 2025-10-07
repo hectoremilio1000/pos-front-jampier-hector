@@ -1,198 +1,222 @@
-import { Outlet, NavLink } from "react-router-dom";
-import { Button, Drawer, Avatar, Tooltip } from "antd";
-import {
-  MenuOutlined,
-  UserOutlined,
-  AppstoreOutlined,
-  ShopOutlined,
-  TableOutlined,
-  LeftOutlined,
-  RightOutlined,
-  UpOutlined,
-  DownOutlined,
-} from "@ant-design/icons";
+import { Outlet, NavLink, useLocation } from "react-router-dom";
+import { Button, Drawer, Tooltip } from "antd";
+import { useEffect, useState } from "react";
 import { useAuth } from "./Auth/AuthContext";
-import { useState } from "react";
-import {
-  FaBox,
-  FaBoxTissue,
-  FaPlus,
-  FaPrint,
-  FaRulerCombined,
-} from "react-icons/fa";
-import { GiHotMeal } from "react-icons/gi";
-import { FiSettings } from "react-icons/fi";
-import { MdAssessment } from "react-icons/md";
-import { FaFileLines } from "react-icons/fa6";
 
-const navItems = [
-  // { to: "/dashboard", label: "Dashboard", icon: <FaPiedPiper /> },
-  { to: "/configuracion", label: "Configuracion", icon: <FiSettings /> },
-  { to: "/reportes", label: "Reportes", icon: <MdAssessment /> },
-  { to: "/usuarios", label: "Usuarios", icon: <UserOutlined /> },
-  { to: "/stations", label: "Estaciones/Cajas", icon: <FaBox /> },
-  { to: "/hour_cut", label: "Horario Turnos/Z corte", icon: <FaFileLines /> },
-  { to: "/areas", label: "Áreas", icon: <AppstoreOutlined /> },
-  { to: "/areasImpresion", label: "Áreas Impresion", icon: <FaPrint /> },
-  { to: "/generatePairing", label: "KDS Pairing", icon: <FaPrint /> },
+import { MenuOutlined, LeftOutlined, RightOutlined } from "@ant-design/icons";
+
+type Item = { to: string; label: string; icon?: React.ReactNode };
+type Section =
+  | { kind: "header"; label: string; items: Item[] }
+  | { kind: "single"; label: string; to: string; icon?: React.ReactNode };
+
+const SECTIONS: Section[] = [
   {
-    to: "/productionMonitors",
-    label: "Monitores de produccion",
-    icon: <FaPrint />,
+    kind: "header",
+    label: "🚀 INICIO",
+    items: [
+      { to: "/dashboard", label: "🏠 Dashboard" },
+      { to: "/reportes", label: "📊 Reportes" },
+    ],
   },
-  { to: "/productos", label: "Productos", icon: <ShopOutlined /> }, // tendrá submenú
-  { to: "/mesas", label: "Mesas", icon: <TableOutlined /> },
+  {
+    kind: "single",
+    label: "Punto de venta",
+    to: "/control",
+    icon: <>🛒</>, // icono para cuando el sidebar está colapsado
+  },
+
+  {
+    kind: "header",
+    label: "📘 ADMINISTRACIÓN",
+    items: [
+      { to: "/stations", label: "💵 Cajas" },
+      { to: "/usuarios", label: "👥 Usuarios" },
+      { to: "/facturas", label: "🧾 Facturas (CFDI)" },
+      { to: "/metodos-pago", label: "💳 Métodos de pago y Propinas" },
+      { to: "/hour_cut", label: "⏰ Parámetros fiscales" },
+      { to: "/admin/cuentas", label: "💵 Cuentas (histórico / auditoría)" },
+    ],
+  },
+  {
+    kind: "header",
+    label: "📦 CATÁLOGO",
+    items: [
+      { to: "/productos/categorias", label: "🗂️ Categorías" },
+      { to: "/productos/grupos", label: "📑 Grupos" },
+      { to: "/productos", label: "🍩 Productos" },
+      { to: "/productos/subgrupos", label: "🧩 Subgrupos" },
+      { to: "/productos/modificadores", label: "🎛️ Modificadores" },
+      { to: "/mesas", label: "🍽️ Área de mesas" },
+    ],
+  },
+  {
+    kind: "header",
+    label: "🛠️ INFRAESTRUCTURA",
+    items: [
+      // { to: "/infra", label: "✅ Checklist" },
+      { to: "/stations", label: "🧾 Caja" },
+      { to: "/productionMonitors", label: "🖥️ Monitores de producción" },
+      { to: "/generatePairing", label: "🔗 Tabletas y Commanderos" },
+      { to: "/areasImpresion", label: "🖨️ Áreas de impresión" },
+    ],
+  },
 ];
 
-const PrivateLayout = () => {
+function SidebarLink({
+  to,
+  label,
+  icon,
+  collapsed,
+  onClick,
+}: {
+  to: string;
+  label: string;
+  icon?: React.ReactNode;
+  collapsed: boolean;
+  onClick?: () => void;
+}) {
+  return collapsed ? (
+    <Tooltip title={label} placement="right">
+      <NavLink
+        to={to}
+        end
+        onClick={onClick}
+        className={({ isActive }) =>
+          `flex items-center justify-center w-full h-11 rounded transition ${
+            isActive
+              ? "bg-blue-600 text-white"
+              : "text-gray-700 hover:bg-blue-100"
+          }`
+        }
+      >
+        <span className="text-xl">{icon}</span>
+      </NavLink>
+    </Tooltip>
+  ) : (
+    <NavLink
+      to={to}
+      end
+      onClick={onClick}
+      className={({ isActive }) =>
+        `flex items-center gap-3 px-4 py-2 rounded transition ${
+          isActive
+            ? "bg-blue-600 text-white"
+            : "text-gray-700 hover:bg-blue-100"
+        }`
+      }
+    >
+      <span className="text-xl">{icon}</span>
+      <span className="font-medium">{label}</span>
+    </NavLink>
+  );
+}
+
+export default function PrivateLayout() {
   const { user, logout } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const [productosOpen, setProductosOpen] = useState(true); // submenú expandido por defecto
+  const location = useLocation();
+
+  // estado de expansión por sección header
+
+  const [openMap, setOpenMap] = useState<Record<string, boolean>>({});
+
+  // auto-abrir la sección que contiene la ruta actual
+  // auto-abrir la sección que contiene la ruta actual; si no, abrir INICIO
+  useEffect(() => {
+    // índice del header que contiene la ruta actual
+    const foundHeaderIdx = SECTIONS.findIndex(
+      (s) =>
+        s.kind === "header" &&
+        s.items.some((it) => location.pathname.startsWith(it.to))
+    );
+
+    // índice del primer header (INICIO) como fallback
+    const firstHeaderIdx = SECTIONS.findIndex((s) => s.kind === "header");
+    const openIdx = foundHeaderIdx >= 0 ? foundHeaderIdx : firstHeaderIdx;
+
+    // construir el mapa: solo ese header en true
+    const next: Record<string, boolean> = {};
+    let headerOrdinal = -1;
+    SECTIONS.forEach((s, i) => {
+      if (s.kind === "header") {
+        headerOrdinal += 1;
+        next[`sec-${i}`] = headerOrdinal === openIdx;
+      }
+    });
+    setOpenMap(next);
+  }, [location.pathname]);
+
+  const toggle = (k: string) => setOpenMap((m) => ({ ...m, [k]: !m[k] }));
 
   const SidebarContent = () => (
     <div className="flex flex-col justify-between h-full">
       <nav className="flex flex-col gap-1 p-2">
-        {navItems.map((item) => {
-          if (item.label === "Productos") {
-            // Menú expandible para "Productos"
+        {SECTIONS.map((sec, i) => {
+          if (sec.kind === "single") {
             return (
-              <div key={item.label}>
-                <button
-                  onClick={() => setProductosOpen(!productosOpen)}
-                  className={`flex items-center w-full gap-3 px-4 py-2 rounded transition-all ${
-                    location.pathname.startsWith("/productos")
-                      ? "bg-blue-600 text-white"
-                      : "text-gray-700 hover:bg-blue-100"
-                  }`}
-                >
-                  <span className="text-xl">{item.icon}</span>
-                  {!collapsed && (
-                    <>
-                      <span className="font-medium">{item.label}</span>
-                      <span className="ml-auto">
-                        {productosOpen ? <UpOutlined /> : <DownOutlined />}
-                      </span>
-                    </>
-                  )}
-                </button>
-
-                {/* Submenú */}
-                {!collapsed && productosOpen && (
-                  <div className="ml-4 mt-1 flex flex-col gap-1 text-sm">
-                    <NavLink
-                      to="/productos"
-                      end
-                      className={({ isActive }) =>
-                        `rounded flex gap-2 items-center px-2 py-1 ${
-                          isActive
-                            ? "bg-blue-100 text-blue-800"
-                            : "text-gray-700 hover:bg-gray-100"
-                        }`
-                      }
-                    >
-                      <FaPlus /> Agregar producto
-                    </NavLink>
-                    <NavLink
-                      to="/productos/categorias"
-                      end
-                      className={({ isActive }) =>
-                        `rounded flex gap-2 items-center px-2 py-1 ${
-                          isActive
-                            ? "bg-blue-100 text-blue-800"
-                            : "text-gray-700 hover:bg-gray-100"
-                        }`
-                      }
-                    >
-                      <GiHotMeal /> Categorias
-                    </NavLink>
-
-                    <NavLink
-                      to="/productos/grupos"
-                      className={({ isActive }) =>
-                        `rounded flex gap-2 items-center px-2 py-1 ${
-                          isActive
-                            ? "bg-blue-100 text-blue-800"
-                            : "text-gray-700 hover:bg-gray-100"
-                        }`
-                      }
-                    >
-                      <FaBoxTissue /> Grupos de productos
-                    </NavLink>
-                    <NavLink
-                      to="/productos/subgrupos"
-                      className={({ isActive }) =>
-                        `rounded flex gap-2 items-center px-2 py-1 ${
-                          isActive
-                            ? "bg-blue-100 text-blue-800"
-                            : "text-gray-700 hover:bg-gray-100"
-                        }`
-                      }
-                    >
-                      <FaBoxTissue /> SubGrupos de productos
-                    </NavLink>
-                    <NavLink
-                      to="/productos/modificadores"
-                      className={({ isActive }) =>
-                        `rounded flex gap-2 items-center px-2 py-1 ${
-                          isActive
-                            ? "bg-blue-100 text-blue-800"
-                            : "text-gray-700 hover:bg-gray-100"
-                        }`
-                      }
-                    >
-                      <FaRulerCombined /> Modificadores
-                    </NavLink>
-                  </div>
-                )}
+              <div key={`single-${i}`} className="mt-2">
+                <SidebarLink
+                  to={sec.to}
+                  label={sec.label} // ← ya no quitamos el emoji
+                  icon={sec.icon} // ← usa el icono que definiste
+                  collapsed={collapsed}
+                  onClick={() => setDrawerOpen(false)}
+                />
               </div>
             );
           }
 
-          // Renderiza los demás items como antes
-          const isCollapsed = collapsed;
-
-          if (isCollapsed) {
-            return (
-              <Tooltip key={item.to} title={item.label} placement="right">
-                <NavLink
-                  to={item.to}
-                  onClick={() => setDrawerOpen(false)}
-                  className={({ isActive }) =>
-                    `flex items-center justify-center w-full h-12 rounded ${
-                      isActive
-                        ? "bg-blue-600 text-white"
-                        : "text-gray-700 hover:bg-blue-100"
-                    }`
-                  }
-                >
-                  <span className="text-xl">{item.icon}</span>
-                </NavLink>
-              </Tooltip>
-            );
-          }
+          // headers colapsables
+          const key = `sec-${i}`;
+          const isOpen = openMap[key] ?? false;
 
           return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              onClick={() => setDrawerOpen(false)}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-4 py-2 rounded transition-all ${
-                  isActive
-                    ? "bg-blue-600 text-white"
-                    : "text-gray-700 hover:bg-blue-100"
-                }`
-              }
-            >
-              <span className="text-xl">{item.icon}</span>
-              <span className="font-medium">{item.label}</span>
-            </NavLink>
+            <div key={key} className="mt-2">
+              <button
+                onClick={() => toggle(key)}
+                className={`w-full flex items-center px-4 py-1 ${
+                  collapsed ? "justify-center" : "justify-between"
+                } text-xs uppercase tracking-wider text-gray-500 hover:text-gray-700`}
+              >
+                {!collapsed ? (
+                  <>
+                    <span>{sec.label}</span>
+                    <span
+                      className={`transition ${isOpen ? "rotate-0" : "rotate-180"}`}
+                    >
+                      ▾
+                    </span>
+                  </>
+                ) : (
+                  <Tooltip title={sec.label} placement="right">
+                    <span>▤</span>
+                  </Tooltip>
+                )}
+              </button>
+
+              {/* contenido del header */}
+              {isOpen && (
+                <div className="flex flex-col gap-1 mt-1">
+                  {sec.items.map((it) => (
+                    <SidebarLink
+                      key={it.to}
+                      to={it.to}
+                      label={it.label}
+                      icon={it.icon}
+                      collapsed={collapsed}
+                      onClick={() => setDrawerOpen(false)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           );
         })}
       </nav>
 
-      {/* Colapsar sidebar en desktop */}
+      {/* colapsar sidebar en desktop */}
       <div className="hidden md:flex justify-center p-2 border-t">
         <Button
           size="small"
@@ -205,10 +229,8 @@ const PrivateLayout = () => {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Header */}
       <header className="bg-blue-800 text-white px-4 py-2 flex justify-between items-center">
         <div className="flex items-center gap-2">
-          {/* Drawer en móvil */}
           <button
             className="md:hidden text-white text-xl"
             onClick={() => setDrawerOpen(true)}
@@ -223,10 +245,9 @@ const PrivateLayout = () => {
             </span>
           </h1>
         </div>
-
-        {/* Info usuario solo en desktop */}
         <div className="hidden md:flex gap-4 items-center">
           <span className="font-semibold">{user?.restaurant?.name}</span>
+
           <span className="font-semibold">👨‍🍳 {user?.fullName}</span>
           <Button onClick={logout} className="bg-red-500 text-white">
             Cerrar sesión
@@ -234,33 +255,17 @@ const PrivateLayout = () => {
         </div>
       </header>
 
-      {/* Layout principal */}
       <div className="flex flex-grow min-h-0">
-        {/* Sidebar en desktop */}
         <aside
-          className={`hidden md:flex flex-col bg-gray-100 border-r transition-all duration-200 ${
-            collapsed ? "w-20" : "w-64"
-          }`}
+          className={`hidden md:flex flex-col bg-gray-100 border-r transition-all duration-200 ${collapsed ? "w-20" : "w-64"}`}
         >
-          {/* Usuario (solo en móvil) */}
-          <div className="md:hidden p-4 border-b flex flex-col items-center text-center gap-1">
-            <Avatar size={64}>
-              {user?.fullName?.charAt(0).toUpperCase() || "👤"}
-            </Avatar>
-            <div className="font-semibold">{user?.fullName}</div>
-            <div className="text-sm text-gray-600">{user?.role?.code}</div>
-            <div className="text-sm text-gray-500">
-              {user?.restaurant?.name}
-            </div>
-          </div>
           <SidebarContent />
         </aside>
 
-        {/* Drawer en móvil */}
         <Drawer
           title="Menú"
           placement="left"
-          closable={true}
+          closable
           onClose={() => setDrawerOpen(false)}
           open={drawerOpen}
           bodyStyle={{ padding: 0 }}
@@ -268,13 +273,10 @@ const PrivateLayout = () => {
           <SidebarContent />
         </Drawer>
 
-        {/* Contenido principal */}
         <main className="flex-grow p-4 overflow-y-auto">
           <Outlet />
         </main>
       </div>
     </div>
   );
-};
-
-export default PrivateLayout;
+}

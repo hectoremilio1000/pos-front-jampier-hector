@@ -1,44 +1,54 @@
-// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos_centro_front/src/App.tsx
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import "@ant-design/v5-patch-for-react-19";
 import { ProtectedRoute } from "@/components/Auth/ProtectedRoute";
-import { AuthProvider } from "@/components/Auth/AuthProvider";
+
 import PrivateLayout from "@/components/PrivateLayout";
 import LoginScreen from "@/pages/LoginScreen";
 import Dashboard from "@/pages/Dashboard";
-import Restaurants from "@/pages/sa/Restaurants";
-import Users from "@/pages/sa/Users";
-import Plans from "@/pages/sa/Plans";
-import Subscriptions from "@/pages/sa/Subscriptions";
-import Invoices from "@/pages/sa/Invoices";
+
+import Invoices from "@/pages/Invoices/Invoices";
+import { AuthProvider } from "./components/Auth/AuthContext";
+import Restaurants from "./pages/Restaurants";
+import Users from "./pages/Users";
+import Plans from "./pages/Plans";
+import Subscriptions from "./pages/Suscriptions";
 
 function App() {
   return (
-    <Router>
-      <AuthProvider>
-        <Routes>
-          <Route path="/" element={<LoginScreen />} />
-          <Route
-            element={
-              <ProtectedRoute>
-                <PrivateLayout />
-              </ProtectedRoute>
-            }
-          >
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/sa/restaurants" element={<Restaurants />} />
-            <Route path="/sa/users" element={<Users />} />
+    <AuthProvider>
+      <Routes>
+        {/* Login en "/" */}
+        <Route path="/login" element={<LoginScreen />} />
 
-            {/* agrega más rutas protegidas aquí */}
-            {/* Centro de control (billing) */}
-            <Route path="/sa/plans" element={<Plans />} />
-            <Route path="/sa/subscriptions" element={<Subscriptions />} />
-            <Route path="/sa/invoices" element={<Invoices />} />
-          </Route>
-          <Route path="*" element={<LoginScreen />} />
-        </Routes>
-      </AuthProvider>
-    </Router>
+        {/* Zona protegida */}
+        <Route
+          element={
+            <ProtectedRoute>
+              <PrivateLayout />
+            </ProtectedRoute>
+          }
+        >
+          {/* Al entrar al layout, manda a /dashboard */}
+          <Route index element={<Navigate to="/dashboard" replace />} />
+
+          {/* Rutas del Centro de Control */}
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/restaurants" element={<Restaurants />} />
+          <Route path="/users" element={<Users />} />
+
+          {/* Billing */}
+          <Route path="/plans" element={<Plans />} />
+          <Route path="/subscriptions" element={<Subscriptions />} />
+          <Route path="/invoices" element={<Invoices />} />
+
+          {/* (opcional) Sistema */}
+          {/* <Route path="/settings" element={<Settings />} /> */}
+        </Route>
+
+        {/* comodín: redirige al login */}
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    </AuthProvider>
   );
 }
 

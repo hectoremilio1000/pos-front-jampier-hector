@@ -21,6 +21,7 @@ const AREAS = ["Todas", "Comedor", "Terraza", "1er Piso"];
 const ControlComandero: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [detalle_cheque, setDetalle_cheque] = useState([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [cheques, setCheques] = useState<any[]>([
     { cuenta: "G5", personas: 5, area: "Comedor" },
     { cuenta: "S15", personas: 1, area: "Terrazas" },
@@ -123,7 +124,7 @@ const ControlComandero: React.FC = () => {
             </div>
           </div>
           <div className="col-span-1 flex flex-col gap-6 bg-gray-100 p-4">
-            <Card title="Mesero" bordered className="w-40 text-center w-full">
+            <Card title="Mesero" className="w-40 text-center w-full">
               <p className="text-lg font-bold">Jampier Me</p>
             </Card>
             <div className="w-full">

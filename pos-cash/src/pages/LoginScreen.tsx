@@ -12,7 +12,7 @@ const LoginScreen: React.FC = () => {
   const { token, login } = useAuth();
   const navigate = useNavigate();
   useEffect(() => {
-    if (token) navigate("/control"); // 🔁 Si ya está logueado, redirige
+    if (token) navigate("/dashboard"); // 🔁 Si ya está logueado, redirige
   }, [token]);
 
   const handleLogin = async () => {

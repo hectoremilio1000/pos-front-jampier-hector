@@ -1,6 +1,6 @@
 // src/pages/LoginScreen.tsx
-import { useAuth } from "@/components/Auth/useAuth";
 
+import { useAuth } from "@/components/Auth/AuthContext";
 import TecladoVirtual from "@/components/TecladoVirtual";
 import { Button, message, Modal } from "antd";
 import { useEffect, useState } from "react";

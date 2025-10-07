@@ -17,7 +17,7 @@ import apiOrder from "@/components/apis/apiOrder";
 import ModifierGroupCard, {
   type ModifierGroupConfig,
 } from "../components/Producto/ModifierGroupCard";
-import SelectorModal from "../components/Producto/ModifierGroupSelectorModal";
+import SelectorModal from "./Productos/ModifierGroupSelectorModal";
 import { nextCodeForGroup } from "@/utils/nextCode";
 import { BiTrash } from "react-icons/bi";
 

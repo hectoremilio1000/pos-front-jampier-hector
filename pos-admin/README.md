@@ -1,54 +1,149 @@
-# React + TypeScript + Vite
+### lista de permisos hacer por roles!!
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+###
 
-Currently, two official plugins are available:
+"owner", "admin", definir bien que es cada cosa por ejemplo dueño y gerente
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+###meter en mi pos
+🧭 Fronts y quién entra a cada uno
 
-## Expanding the ESLint configuration
+pos-admin (config & análisis)
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Acceso: owner, admin, manager
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
-```
+Vistas: Inicio (Dashboard/Reportes), Administración (Usuarios, Facturas, Métodos de pago, Parámetros fiscales, Roles\*), Operación (Cajas/Mesas/Órdenes), Menú (Productos + tabs internas), Infraestructura (Áreas impresión, Monitores, Pairing), General (Configuración).
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+pos-cash (cajas/turnos/pagos)
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Acceso: cashier, manager, admin
 
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
-```
+Vistas: abrir/cerrar turno, cobros, cortes Z.
+
+pos-comandero (piso/captura)
+
+Acceso: waiter, manager
+
+Vistas: abrir mesa, capturar comanda, enviar a impresión.
+
+pos-monitor (KDS/Expo)
+
+Acceso: kds_kitchen, kds_bar, expo (o vía pairing de dispositivo)
+
+Vistas: cola de producción por área, estados.
+
+\*“Roles y permisos” en Administración será solo gestión de roles (no permisos finos), o lo omitimos si no quieres que el dueño cambie roles.
+
+### estructura sidebar
+
+🚀Inicio
+🏠 Dashboard
+📊 Reportes
+
+🛒 Punto de venta
+
+📘 Administración
+💵 Cajas / Turnos Z
+👥 Usuarios
+🧾 Facturas (CFDI)
+💳 Métodos de pago y Propinas
+⏰ Parámetros fiscales
+💵 Cuentas (histórico / auditoría)
+
+📦 Catálogo
+📑 Grupos
+🗂️ Categorías
+🍩 Productos
+🧩 Subgrupos
+🎛️ Modificadores
+🍽️ Mesas (Administración)
+
+🛠️ Infraestructura
+🖨️ Áreas de impresión
+🖥️ Monitores de producción
+🔗 KDS Pairing
+
+### DASHBOARD
+
+🟦 Fila 1 – Tarjetas principales (KPIs rápidos)
+
+💵 Ventas de hoy (MXN)
+
+🍽️ Tickets/Mesas atendidas
+
+📊 Ticket promedio
+
+💸 Propina % promedio
+
+👉 Tarjetas grandes, color de fondo según estado (verde 🔼, rojo 🔽), número en grande y debajo un mini comparativo “vs. ayer”.
+
+🟩 Fila 2 – Estado operativo (en vivo)
+
+En un bloque tipo “panel de control”:
+
+Cajas abiertas → nombre del cajero, saldo actual.
+
+Mesas abiertas → total y por área (Comedor, Terraza, Bar).
+
+Órdenes activas → cocina, barra, expo (con chips de colores).
+
+Staff en turno → lista corta de meseros/cajeros activos (nombre + emoji de rol).
+
+👉 Todo como numeritos y chips claros, no tablas.
+
+🟨 Fila 3 – Visualización rápida
+
+Top 5 productos más vendidos (lista con cantidades y $).
+
+Categorías más fuertes (ej. bebidas vs. alimentos, gráfico de barras).
+
+Horas pico del día (mini gráfico lineal de horas).
+
+👉 Esto ayuda a responder la pregunta del dueño: “¿qué se está moviendo hoy?”.
+
+🟥 Fila 4 – Alertas simples
+
+Tarjetas pequeñas con icono ❗:
+
+Mesas sin cobrar después de 3h.
+
+Impresora sin papel.
+
+Caja con diferencia provisional.
+
+CFDI o CSD por vencer.
+
+👉 Que sean obvias: icono grande, color rojo/amarillo, texto corto.
+
+🟧 Fila 5 – Acciones rápidas
+
+Botones grandes estilo call-to-action:
+
+🛒 Abrir Punto de venta
+
+🧾 Emitir factura
+
+📈 Reporte detallado del día
+
+👉 Siempre visibles, accesibles en un clic.
+
+🎨 Estilo visual
+
+Moderno pero simple → tarjetas planas, iconos grandes, colores primarios.
+
+Lenguaje claro → “Mesas abiertas”, no “Active sessions”.
+
+Semáforo visual → verde = bien, rojo = mal, amarillo = alerta.
+
+Adaptado a móvil → KPIs primero, scroll para lo demás.
+
+📌 Con esto, un restaurantero que no domina tecnología puede entrar y en 10 segundos ver:
+
+Cuánto lleva vendido.
+
+Cuántas mesas tiene.
+
+Qué productos se están vendiendo más.
+
+Si hay alguna alerta.
+
+Y un botón grande para abrir ventas o sacar reporte.

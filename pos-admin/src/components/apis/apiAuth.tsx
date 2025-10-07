@@ -5,8 +5,8 @@ const apiAuth = axios.create({
 });
 
 apiAuth.interceptors.request.use((config) => {
-  const token = sessionStorage.getItem("token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  const t = sessionStorage.getItem("token"); // ← admin_session_token
+  if (t) config.headers.Authorization = `Bearer ${t}`;
   return config;
 });
 

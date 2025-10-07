@@ -1,15 +1,32 @@
+/* /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos-admin/src/index.css */
 @import "tailwindcss";
+
 :root {
+  /* Tipografía y base */
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
+  /* Esquema de color */
   color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #fcfcfc;
+  color: var(--color-text);
+  background-color: var(--color-bg);
 
+  /* Variables de colores */
+  --color-primary: #1d4ed8; /* Azul (botones/links principales) */
+  --color-secondary: #facc15; /* Amarillo (acciones destacadas) */
+  --color-bg: #fcfcfc; /* Fondo claro */
+  --color-text: #111827; /* Texto base gris oscuro */
+
+  /* Optimización tipográfica */
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Soporte para modo oscuro (opcional, si activas dark mode en Tailwind) */
+.dark {
+  --color-bg: #111827;
+  --color-text: #fcfcfc;
 }

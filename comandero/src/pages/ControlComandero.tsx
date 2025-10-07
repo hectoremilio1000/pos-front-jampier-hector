@@ -114,7 +114,7 @@ const ControlComandero: React.FC = () => {
       tableName: string;
       persons: number;
       area_id: number | null;
-      area: Area;
+      area: Area | null;
       items: OrderItem[];
     }[]
   >([]);
@@ -162,7 +162,9 @@ const ControlComandero: React.FC = () => {
   const chequesFiltrados =
     areaSeleccionada === "Todas"
       ? cheques
-      : cheques.filter((c) => c.area.name === areaSeleccionada);
+      : cheques.filter(
+          (c) => (c.area?.name ?? "Sin área") === areaSeleccionada
+        );
 
   const chequesPaginados = chequesFiltrados.slice(
     (paginaActual - 1) * viewPaginate,
@@ -188,6 +190,7 @@ const ControlComandero: React.FC = () => {
       setModalConsultaVisible(true);
     }
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleAccionesCheque = (cuenta: any, i: number) => {
     //indice
     setOrderIdCurrent(cuenta.id);
@@ -258,7 +261,9 @@ const ControlComandero: React.FC = () => {
                   <FaTable className="text-4xl text-blue-500 mx-auto" />
                   <p className="font-bold mt-2">{cuenta.tableName}</p>
                   <p>{cuenta.persons} personas</p>
-                  <p className="text-sm text-gray-500">{cuenta.area.name}</p>
+                  <p className="text-sm text-gray-500">
+                    {cuenta.area?.name ?? "Sin área"}
+                  </p>
                 </Card>
               ))}
             </div>
