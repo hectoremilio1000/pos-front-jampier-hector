@@ -1,157 +1,242 @@
-// src/pages/LoginScreen.tsx
-import { useAuth } from "@/components/Auth/AuthContext";
-import TecladoVirtual from "@/components/TecladoVirtual";
-import { Button, message, Modal } from "antd";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Button, Card, Input, Typography, message } from "antd";
 import { useNavigate } from "react-router-dom";
+import {
+  kioskPairStart,
+  kioskPairConfirm,
+  kioskLoginWithPin,
+} from "@/components/Kiosk/token";
 
-const LoginScreen: React.FC = () => {
-  const [password, setPassword] = useState<string>("");
-  const [email, setEmail] = useState<string>("");
+const { Title } = Typography;
 
-  const { token, login } = useAuth();
+const SAFE_ALLOW_UNPAIR = false; // ⬅️ dejar en false en producción
+
+export default function LoginScreen() {
   const navigate = useNavigate();
-  useEffect(() => {
-    if (token) navigate("/control"); // 🔁 Si ya está logueado, redirige
-  }, [token]);
 
-  const handleLogin = async () => {
-    if (email === "" || password === "") {
-      message.warning(
-        "EL Email y el password deben estar llenos para continuar"
-      );
-    }
+  const [hasPair, setHasPair] = useState<boolean>(
+    !!sessionStorage.getItem("kiosk_token")
+  );
+  const [code, setCode] = useState("");
+  const [deviceName, setDeviceName] = useState("Comandero");
+  const [pin, setPin] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // layout responsive: ancho de la tarjeta y tamaño de keypad
+  const isMobile = useMemo(() => window.innerWidth < 640, []);
+  const cardWidth = isMobile ? 360 : 760;
+
+  // si ya hay kiosk_jwt válido → directo a /control
+  useEffect(() => {
+    const expStr = sessionStorage.getItem("kiosk_jwt_exp");
+    const jwt = sessionStorage.getItem("kiosk_jwt");
+    const valid = expStr ? Number(expStr) - Date.now() > 15_000 : false;
+    if (jwt && valid) navigate("/control", { replace: true });
+  }, [navigate]);
+
+  async function doPair() {
     try {
-      await login(email, password);
-    } catch (err) {
-      console.log(err);
-      alert("Error de autenticación");
+      if (!code.trim()) return message.warning("Ingresa el pairing code");
+      setLoading(true);
+      const start = await kioskPairStart(code.trim(), "commander");
+      if (start.requireStation) {
+        message.error("Commander no requiere estación; revisa deviceType");
+        return;
+      }
+      await kioskPairConfirm({
+        code: code.trim(),
+        deviceType: "commander",
+        deviceName: deviceName.trim() || "Comandero",
+      });
+      setHasPair(true);
+      message.success("Dispositivo emparejado");
+    } catch (e: any) {
+      console.error(e);
+      message.error("No se pudo emparejar");
+    } finally {
+      setLoading(false);
     }
-    // if (password === "1234") navigate("/control");
+  }
+
+  async function doLogin() {
+    try {
+      if (!/^\d{6}$/.test(pin))
+        return message.warning("PIN inválido (6 dígitos)");
+      setLoading(true);
+      await kioskLoginWithPin(pin);
+      navigate("/control", { replace: true });
+    } catch (e: any) {
+      console.error(e);
+      message.error("PIN incorrecto o servidor no disponible");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // keypad
+  const press = (d: string) => {
+    if (pin.length >= 6) return;
+    setPin((p) => p + d);
   };
-  const [modalActiveTeclado, setModalActiveTeclado] = useState(false);
-  const [tecladoActive, setTecladoActive] = useState("");
-  const handleClickInput = (input: string) => {
-    setModalActiveTeclado(true);
-    setTecladoActive(input);
-  };
+  const back = () => setPin((p) => p.slice(0, -1));
+  const clear = () => setPin("");
+
+  // “oculto”: desemparejar (para soporte)
+  function unpair() {
+    if (!SAFE_ALLOW_UNPAIR) return;
+    sessionStorage.removeItem("kiosk_token");
+    sessionStorage.removeItem("kiosk_jwt");
+    sessionStorage.removeItem("kiosk_jwt_exp");
+    setHasPair(false);
+    setPin("");
+    message.info("Dispositivo desemparejado");
+  }
 
   return (
-    <div className="p-4 w-full min-h-screen flex flex-col justify-center items-center bg-blue-700  text-gray-800 font-sans">
-      <div className="grid grid-cols-4 gap-4 w-full">
-        <div className="w-full mb-8 col-span-4 md:col-span-2 lg:col-span-2"></div>
-
-        <div className="flex flex-col gap-4 justify-center items-center col-span-4 md:col-span-2 lg:col-span-2">
-          <div className="w-full mt-8 text-white text-lg">
-            🕒 {new Date().toLocaleString("es-MX", { hour12: false })}
+    <div className="min-h-screen flex items-center justify-center bg-blue-700">
+      <Card
+        style={{ width: cardWidth }}
+        bodyStyle={{ padding: isMobile ? 20 : 28 }}
+      >
+        {/* Header estilo “SoftRestaurant” */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <Title level={2} style={{ margin: 0, color: "#ff6b00" }}>
+              GrowthSuite
+            </Title>
+            <Title level={3} style={{ margin: 0, color: "#0b63ff" }}>
+              Comandero
+            </Title>
           </div>
-          <div className="py-12 w-full">
-            <h1 className="font-bold">
-              <span className="text-white  w-full inline-block text-3xl md:text-4xl">
-                GrowthSuite
-              </span>
-              <span className="text-yellow-500 w-full inline-block  text-3xl md:text-6xl">
-                Comandero
-              </span>
-            </h1>
+          <div className="text-right text-xs text-gray-500">
+            {new Date().toLocaleString("es-MX", { hour12: false })}
           </div>
-          <label
-            className="w-full text-start font-bold text-white"
-            htmlFor="Username"
-          >
-            Username Email
-          </label>
-          <input
-            type="email"
-            className="w-full border text-center py-2 px-4 rounded shadow bg-white"
-            placeholder="EMAIL"
-            value={email}
-            onClick={() => handleClickInput("email")}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <label
-            className="w-full text-start font-bold text-white"
-            htmlFor="Password"
-          >
-            Password
-          </label>
-          <input
-            type="password"
-            className="w-full border text-center py-2 px-4 rounded shadow bg-white"
-            placeholder="CONTRASEÑA"
-            value={password}
-            onClick={() => handleClickInput("password")}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          {/* <div className="grid grid-cols-3 gap-2 w-full">
-            {[7, 8, 9, 4, 5, 6, 1, 2, 3, "🔢", 0, "❌"].map((val, idx) => (
-              <button
-                key={idx}
-                onClick={() =>
-                  val === "❌"
-                    ? handleDelete()
-                    : val === "🔢"
-                      ? null
-                      : handleClick(val)
-                }
-                className={`p-4 font-bold text-xl ${
-                  val === "❌"
-                    ? "bg-red-600 text-white"
-                    : "bg-white text-blue-800"
-                } rounded shadow`}
-              >
-                {val}
-              </button>
-            ))}
-          </div> */}
-          <Modal
-            open={modalActiveTeclado}
-            onOk={() => setModalActiveTeclado(false)}
-            okText="Cerrar"
-            onCancel={() => setModalActiveTeclado(false)}
-            footer={[
-              <Button
-                key="ok"
-                type="primary"
-                onClick={() => setModalActiveTeclado(false)}
-              >
-                Cerrar
-              </Button>,
-            ]}
-          >
-            <TecladoVirtual
-              onKeyPress={(v) =>
-                tecladoActive === "email"
-                  ? setEmail((prev) => prev + v)
-                  : setPassword((prev) => prev + v)
-              }
-              onBackspace={() =>
-                tecladoActive === "email"
-                  ? setEmail((prev) => prev.slice(0, -1))
-                  : setPassword((prev) => prev.slice(0, -1))
-              }
-              onSpace={() =>
-                tecladoActive === "email"
-                  ? setEmail((prev) => prev + " ")
-                  : setPassword((prev) => prev + " ")
-              }
-              onClear={() =>
-                tecladoActive === "email" ? setEmail("") : setPassword("")
-              }
-              text={tecladoActive === "email" ? email : password}
-              setTexto={tecladoActive === "email" ? setEmail : setPassword}
-            />
-          </Modal>
-          <button
-            onClick={() => handleLogin()}
-            className="bg-yellow-500 text-white text-center justify-center py-2 px-6 rounded w-full shadow text-lg flex items-center gap-2"
-          >
-            ENTRAR <span>➡️</span>
-          </button>
         </div>
-      </div>
+
+        {/* Layout: input a la izquierda, keypad a la derecha (desktop) */}
+        <div className={isMobile ? "" : "grid grid-cols-2 gap-6"}>
+          <div className="space-y-3">
+            {!hasPair ? (
+              <>
+                <div className="text-sm font-semibold">Pairing code</div>
+                <Input
+                  placeholder="031180"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                />
+                <div className="text-sm font-semibold">
+                  Nombre del dispositivo
+                </div>
+                <Input
+                  placeholder="iPad Barra"
+                  value={deviceName}
+                  onChange={(e) => setDeviceName(e.target.value)}
+                />
+                <Button
+                  type="primary"
+                  block
+                  loading={loading}
+                  onClick={doPair}
+                  className="mt-2"
+                >
+                  Emparejar
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="text-sm font-semibold">PIN de operador</div>
+                <Input.Password
+                  value={pin}
+                  onChange={(e) =>
+                    setPin(e.target.value.replace(/\D/g, "").slice(0, 6))
+                  }
+                  placeholder="••••••"
+                  style={{
+                    textAlign: "center",
+                    letterSpacing: 4,
+                    fontSize: isMobile ? 20 : 24,
+                  }}
+                />
+                <div className="flex gap-2 mt-2">
+                  <Button block onClick={clear}>
+                    Borrar
+                  </Button>
+                  <Button
+                    type="primary"
+                    block
+                    loading={loading}
+                    onClick={doLogin}
+                  >
+                    Entrar
+                  </Button>
+                </div>
+              </>
+            )}
+            {/* Botón oculto de soporte para desemparejar */}
+            {SAFE_ALLOW_UNPAIR && (
+              <Button danger block onClick={unpair}>
+                Desemparejar dispositivo
+              </Button>
+            )}
+          </div>
+
+          {/* Keypad a la derecha (o debajo en móvil) */}
+          <div className={isMobile ? "mt-6" : ""}>
+            {hasPair && (
+              <div className="grid grid-cols-3 gap-2">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                  <Button
+                    key={n}
+                    onClick={() => press(String(n))}
+                    style={{
+                      height: isMobile ? 44 : 64,
+                      fontSize: isMobile ? 18 : 22,
+                    }}
+                  >
+                    {n}
+                  </Button>
+                ))}
+                <Button disabled style={{ height: isMobile ? 44 : 64 }} />
+                <Button
+                  onClick={() => press("0")}
+                  style={{
+                    height: isMobile ? 44 : 64,
+                    fontSize: isMobile ? 18 : 22,
+                  }}
+                >
+                  0
+                </Button>
+                <Button
+                  danger
+                  onClick={back}
+                  style={{
+                    height: isMobile ? 44 : 64,
+                    fontSize: isMobile ? 18 : 22,
+                  }}
+                >
+                  ←
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer tipo tablero (solo visual, como la app de referencia) */}
+        <div className="grid grid-cols-6 gap-2 mt-6 text-center text-xs">
+          {[
+            "Clientes",
+            "Meseros",
+            "Asistencias",
+            "Promociones",
+            "Consultar precios",
+            "Suspender productos",
+          ].map((t, i) => (
+            <div key={i} className="py-2 bg-orange-100 rounded">
+              {t}
+            </div>
+          ))}
+        </div>
+      </Card>
     </div>
   );
-};
-
-export default LoginScreen;
+}

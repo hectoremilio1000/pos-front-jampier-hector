@@ -71,7 +71,7 @@ const ConsultarItemModal: React.FC<Props> = ({
     },
   ];
   const columnas = [
-    { title: "Producto", dataIndex: ["producto", "name"] },
+    { title: "Producto", dataIndex: ["product", "name"] }, // ✅
     { title: "Cant", dataIndex: "qty" },
     {
       title: "Tiempo",
@@ -135,7 +135,9 @@ const ConsultarItemModal: React.FC<Props> = ({
           className="w-full"
           dataSource={detalle_cheque}
           columns={columnas}
-          rowKey={(_, i) => i?.toString() || ""}
+          rowKey={(row) =>
+            String(row.productId) + "-" + String(row.id ?? Math.random())
+          }
           pagination={false}
           style={{ width: "100%" }}
         />

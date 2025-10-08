@@ -1,8 +1,7 @@
 // src/components/RegistroMesaModal.tsx
 import React, { useState } from "react";
-import { Modal, Button, Input, Select, Steps, message } from "antd";
+import { Modal, Button, Select, Steps, message } from "antd";
 import TecladoVirtual from "./TecladoVirtual";
-import { useAuth } from "./Auth/AuthContext";
 import apiOrder from "./apis/apiOrder";
 interface Area {
   id: number | null;
@@ -111,15 +110,10 @@ const RegistroChequeModal: React.FC<Props> = ({
   areas,
 }) => {
   console.log(areas);
-  const { user } = useAuth();
   const [step, setStep] = useState(0);
   const [cuenta, setCuenta] = useState("");
-  const [mesa, setMesa] = useState(null);
   const [personas, setPersonas] = useState("");
   const [area, setArea] = useState(null);
-  const [fecha_inicio, setFecha_inicio] = useState(null);
-  const [fecha_cierre, setFecha_cierre] = useState(null);
-  const [mesero_id, setMesero_id] = useState(null);
 
   const avanzar = () => setStep((s) => s + 1);
   const retroceder = () => setStep((s) => s - 1);
@@ -132,30 +126,48 @@ const RegistroChequeModal: React.FC<Props> = ({
 
   // onRegistrar ahora es async
   const registrar = async () => {
-    const order = await apiOrder.post("/orders", {
-      restaurantId: user?.restaurant.id,
-      tableName: cuenta,
-      persons: Number(personas),
-      areaId: area, // puede ser null
-      waiterId: user?.id, // mesero logueado
-      service: "DINING",
-      shiftId: null,
-    });
-    if (order.data.id) {
-      onRegistrar({
-        shiftId: null,
-        id: order.data.id,
-        tableName: cuenta,
+    // Validaciones mínimas para alias
+    if (!cuenta?.trim()) {
+      message.warning("Escribe el nombre de mesa/alias");
+      return;
+    }
+    if (!area) {
+      message.warning("Selecciona un área");
+      return;
+    }
+    if (!/^\d+$/.test(personas)) {
+      message.warning("Número de personas inválido");
+      return;
+    }
+
+    try {
+      const { data } = await apiOrder.post("/orders", {
+        tableName: cuenta.trim(), // alias
         persons: Number(personas),
-        area_id: area, // función helper
-        area: order.data.area,
-        items: [],
+        areaId: area, // requerido por alias
+        service: "DINING",
       });
-      onClose();
-      limpiar();
-      setStep(0);
-    } else {
-      message.error("no se pudo crear la orden");
+
+      if (data?.id) {
+        onRegistrar({
+          shiftId: null,
+          id: data.id,
+          tableName: data.tableName,
+          persons: data.persons,
+          area_id: data.areaId ?? null,
+          area: data.area, // ya lo devuelve con { id, name }
+          items: [],
+        });
+        onClose();
+        limpiar();
+        setStep(0);
+        message.success("Mesa registrada");
+      } else {
+        message.error("No se pudo crear la orden");
+      }
+    } catch (e) {
+      console.error(e);
+      message.error("No se pudo crear la orden");
     }
   };
 

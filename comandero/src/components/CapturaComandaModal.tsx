@@ -5,7 +5,7 @@ import React, {
   type SetStateAction,
   useMemo,
 } from "react";
-import { Modal, Button, Table, Tag, message, Space, InputNumber } from "antd";
+import { Modal, Button, Tag, message, Space, InputNumber } from "antd";
 import { DeleteOutlined } from "@ant-design/icons";
 import TecladoVirtual from "./TecladoVirtual";
 import ComentarioProductoModal from "./ComentarioProductoModal (1)";
@@ -14,6 +14,7 @@ import { FaPrint } from "react-icons/fa";
 import DescuentoProductoModal from "./DescuentoProductoModal";
 import { useAuth } from "./Auth/AuthContext";
 import ComandaTable from "./Comandero/ComandaTable";
+
 type SelectedMod = { id: number; half: 1 | 2 | 3 }; // 1=todo, 2=1ra half, 3=2da half
 type Grupo = {
   id: number;
@@ -186,24 +187,27 @@ const CapturaComandaModal: React.FC<Props> = ({
   // Si esta función se usa en varios lugares, conviene memorizarla con useCallback
   const fetchProducts = async () => {
     try {
-      const res = await apiOrder.get("/products");
-
-      // Filtra productos cuyo grupo exista y esté habilitado
+      const res = await apiOrder.get("/kiosk/products");
       const productosHabilitados = res.data.filter(
         (p: { group?: { isEnabled?: boolean }; isEnabled: boolean }) =>
-          p.group?.isEnabled && p.isEnabled
+          (p.group?.isEnabled ?? true) && p.isEnabled
       );
-
       setProductos(productosHabilitados);
     } catch (error) {
+      console.error(error);
       message.error("No se pudieron cargar productos");
     }
   };
 
+  // carga cuando el modal se abre
+  useEffect(() => {
+    if (visible) fetchProducts();
+  }, [visible]);
+
   // Sigue igual tu efecto de carga inicial
   useEffect(() => {
-    fetchProducts();
-  }, []);
+    if (visible) fetchProducts();
+  }, [visible]);
 
   const applyFilters = () => {
     const productosFiltrados = productos.filter(
@@ -230,9 +234,6 @@ const CapturaComandaModal: React.FC<Props> = ({
     getGrupos();
   }, [productos]);
 
-  const [productIdCompuest, setProductIdCompuest] = useState<number | null>(
-    null
-  );
   const [isModalCompuest, setIsModalCompuest] = useState<boolean>(false);
 
   const [configModifiersCurrentProduct, setConfigModifiersCurrentProduct] =
@@ -308,7 +309,6 @@ const CapturaComandaModal: React.FC<Props> = ({
     [configModifiersCurrentProduct]
   );
 
-  const getSelectedIds = (groupId: number) => selectedByGroup[groupId] ?? [];
   const EPS = 1e-6; // evita problemas 0.5+0.5=0.999999
   const canSubmit = useMemo(() => {
     return configOrdenada.every((cfg) => {

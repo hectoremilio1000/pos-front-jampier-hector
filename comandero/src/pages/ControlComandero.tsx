@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, Card, Select, Pagination, Modal, message } from "antd";
 import { FaCashRegister, FaTable, FaUserEdit } from "react-icons/fa";
 import CapturaComandaModal from "@/components/CapturaComandaModal";
@@ -15,6 +15,12 @@ import RegistroChequeModal from "@/components/RegistroChequeModal";
 import { RiPrinterLine } from "react-icons/ri";
 import apiOrder from "@/components/apis/apiOrder";
 import ConsultarItemModal from "@/components/ConsultarItemModal";
+
+import { useNavigate } from "react-router-dom";
+import {
+  kioskLogoutOperator,
+  kioskUnpairDevice,
+} from "@/components/Kiosk/session";
 
 const { Option } = Select;
 
@@ -92,15 +98,16 @@ interface OrderItem {
   discountReason: string | null;
   product: Producto;
   status: string | null;
-  // NUEVOS CAMPOS:
-  compositeProductId: number | null; // id del producto principal al que pertenece el item
-  isModifier: boolean; // true si es una línea de modifier
-  isCompositeProductMain: boolean; // true si es la línea principal del compuesto
-  half: Mitad; // 0/1/2/3 (ver arriba)
+  compositeProductId: number | null;
+  isModifier: boolean;
+  isCompositeProductMain: boolean;
+  half: Mitad;
   route_area_id: number;
 }
 
 const ControlComandero: React.FC = () => {
+  const [ready, setReady] = useState(false);
+  const initRef = useRef(false); // 👈 nuevo
   const [modalVisible, setModalVisible] = useState(false);
   const [orderIdCurrent, setOrderIdCurrent] = useState<number | null>(null);
   const [detalle_cheque, setDetalle_cheque] = useState<OrderItem[]>([]);
@@ -120,45 +127,79 @@ const ControlComandero: React.FC = () => {
   >([]);
   const [areas, setAreas] = useState<Area[]>([]);
   const [areasFilter, setAreasFilter] = useState<Area[]>([]);
+
   const fetchAreas = async () => {
     try {
-      const res = await apiOrder.get("/areas");
+      const res = await apiOrder.get("/kiosk/areas");
       const newArea: Area = {
         id: null,
         name: "Todas",
         sortOrder: 0,
         restaurantId: 0,
       };
-      setAreas(res.data);
-      // Suponiendo que res.data es un array de Area
       const areasFromAPI: Area[] = res.data;
-
-      const newAreas = [newArea, ...areasFromAPI];
-      setAreasFilter(newAreas);
-    } catch {
-      message.error("Error al cargar las areas");
+      setAreas(areasFromAPI);
+      setAreasFilter([newArea, ...areasFromAPI]);
+    } catch (e) {
+      console.error(e);
+      message.error("Error al cargar las áreas");
     }
   };
 
-  useEffect(() => {
-    fetchAreas();
-  }, []);
   const fetchCheques = async () => {
     try {
       const res = await apiOrder.get("/orders", { params: { shift: "null" } });
       setCheques(res.data);
-    } catch {
-      message.error("Error al cargar las areas");
+    } catch (e) {
+      console.error(e);
+      message.error("Error al cargar las órdenes");
     }
   };
 
+  const navigate = useNavigate();
+  function cerrarSesion() {
+    kioskLogoutOperator();
+    message.success("Sesión cerrada");
+    navigate("/kiosk-login");
+  }
+
+  function desemparejar() {
+    kioskUnpairDevice();
+    message.success("Dispositivo desemparejado");
+    navigate("/kiosk-login");
+  }
+
+  /** Inicialización: Pairing (si falta) + PIN → luego cargar datos */
   useEffect(() => {
-    fetchCheques();
+    // si no hay kiosk_jwt válido -> a login
+    const expStr = sessionStorage.getItem("kiosk_jwt_exp");
+    const jwt = sessionStorage.getItem("kiosk_jwt");
+    const valid = expStr ? Number(expStr) - Date.now() > 15_000 : false;
+    if (!jwt || !valid) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    if (initRef.current) return;
+    initRef.current = true;
+
+    (async () => {
+      try {
+        setReady(true);
+        await fetchAreas();
+        await fetchCheques();
+      } catch (e: any) {
+        console.error(e);
+        message.error("No se pudo cargar datos");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const [areaSeleccionada, setAreaSeleccionada] = useState("Todas");
   const [paginaActual, setPaginaActual] = useState(1);
   const viewPaginate = 10;
+
   const chequesFiltrados =
     areaSeleccionada === "Todas"
       ? cheques
@@ -170,47 +211,47 @@ const ControlComandero: React.FC = () => {
     (paginaActual - 1) * viewPaginate,
     paginaActual * viewPaginate
   );
+
   const [accionesChequeVisible, setAccionesChequeVisible] = useState(false);
   const [modalComandaVisible, setModalComandaVisible] = useState(false);
   const [modalConsultaVisible, setModalConsultaVisible] = useState(false);
   const [mesaReciente, setMesaReciente] = useState(-1);
-  const handleCapturaModal = () => {
-    setModalComandaVisible(true);
-  };
+
+  const handleCapturaModal = () => setModalComandaVisible(true);
+
   const handleConsultaModal = () => {
-    const itemsCurrentCheque = cheques.find(
-      (c) => c.id === orderIdCurrent
-    )?.items;
-    if (itemsCurrentCheque) {
-      const itemsPendient = itemsCurrentCheque.filter(
-        (c) => c.status === "pending"
-      );
-      console.log(itemsPendient);
-      setDetalle_cheque_consulta(itemsPendient);
-      setModalConsultaVisible(true);
-    }
+    const itemsCurrentCheque =
+      cheques.find((c) => c.id === orderIdCurrent)?.items ?? [];
+    setDetalle_cheque_consulta(itemsCurrentCheque); // 👈 sin filtrar a "pending"
+    setModalConsultaVisible(true);
   };
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleAccionesCheque = (cuenta: any, i: number) => {
-    //indice
     setOrderIdCurrent(cuenta.id);
     setMesaReciente(i);
     setAccionesChequeVisible(true);
   };
+
   const mandarComanda = async () => {
-    console.log(detalle_cheque);
     try {
-      const res = await apiOrder.post(`/orders/${orderIdCurrent}/items`, {
+      await apiOrder.post(`/orders/${orderIdCurrent}/items`, {
         orderItems: detalle_cheque,
       });
       setDetalle_cheque([]);
       setModalComandaVisible(false);
-      console.log(res);
+      await fetchCheques();
+      message.success("Ítems enviados");
     } catch (error) {
-      message.error("Ocurrio un error");
-      console.log(error);
+      console.error(error);
+      message.error("Ocurrió un error al enviar ítems");
     }
   };
+
+  if (!ready) {
+    return <div className="p-6">Inicializando Comandero…</div>;
+  }
+
   return (
     <>
       <div className="p-6 bg-gray-200 min-h-screen">
@@ -224,19 +265,20 @@ const ControlComandero: React.FC = () => {
               >
                 <MdTableBar /> Abrir Mesa
               </Button>
-              <Button
-                className="bg-blue-800"
-                // onClick={() => setModalVisible(true)}
-              >
+              <Button className="bg-blue-800">
                 <MdPointOfSale /> Mis ventas
               </Button>
-              <Button
-                className="bg-blue-800"
-                // onClick={() => setModalVisible(true)}
-              >
+              <Button className="bg-blue-800">
                 <GiForkKnifeSpoon /> Monitoreo de pedidos
               </Button>
+
+              <div style={{ marginLeft: "auto" }} />
+              <Button danger onClick={cerrarSesion}>
+                Cerrar sesión
+              </Button>
+              {/* <Button onClick={desemparejar}>Salir y desemparejar</Button> */}
             </div>
+
             <div className="filter my-4">
               <Select
                 defaultValue="Todas"
@@ -251,6 +293,7 @@ const ControlComandero: React.FC = () => {
                 ))}
               </Select>
             </div>
+
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
               {chequesPaginados.map((cuenta, i) => (
                 <Card
@@ -267,6 +310,7 @@ const ControlComandero: React.FC = () => {
                 </Card>
               ))}
             </div>
+
             <div className="mt-6 flex justify-center">
               <Pagination
                 current={paginaActual}
@@ -276,6 +320,7 @@ const ControlComandero: React.FC = () => {
               />
             </div>
           </div>
+
           <div className="col-span-1 flex flex-col gap-6 bg-gray-100 p-4">
             <div className="w-full">
               <button className="w-full px-3 py-2 bg-blue-600 text-white text-sm font-bold flex flex-col rounded justify-center items-center gap-2 ">
@@ -284,6 +329,7 @@ const ControlComandero: React.FC = () => {
             </div>
           </div>
         </div>
+
         <Modal
           footer={false}
           closeIcon={false}
@@ -344,12 +390,13 @@ const ControlComandero: React.FC = () => {
           onClose={() => setModalVisible(false)}
           onRegistrar={async (cheque) => {
             setCheques([...cheques, cheque]);
-            setMesaReciente(cheques.length); // índice del array
+            setMesaReciente(cheques.length);
             await fetchCheques();
             setOrderIdCurrent(cheque.id);
             setModalComandaVisible(true);
           }}
         />
+
         <CapturaComandaModal
           orderIdCurrent={orderIdCurrent}
           visible={modalComandaVisible}
@@ -362,6 +409,7 @@ const ControlComandero: React.FC = () => {
           }}
           mandarComanda={mandarComanda}
         />
+
         <ConsultarItemModal
           visible={modalConsultaVisible}
           mesa={mesaReciente}
