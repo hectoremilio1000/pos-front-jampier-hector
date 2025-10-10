@@ -14,31 +14,12 @@ import {
   message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import dayjs, { type Dayjs } from "dayjs";
+import { type Dayjs } from "dayjs";
 import apiCenter from "@/apis/apiCenter";
 import ManualSubscriptionModal from "@/components/ManualSubscriptionModal";
-
-type PlanPrice = {
-  interval: "day" | "week" | "month" | "year";
-  intervalCount: number;
-  amount: number;
-  currency: string;
-};
-type Sub = {
-  id: number;
-  restaurantId: number;
-  planId: number;
-  planPriceId: number;
-  status: string;
-  startDate: string;
-  currentPeriodStart: string;
-  currentPeriodEnd: string;
-  paidAt?: string | null;
-  stripePaymentId?: string | null;
-  planPrice?: PlanPrice;
-  plan?: { name: string };
-  restaurant?: { id: number; name: string };
-};
+import SubscriptionEditModal from "@/components/SubscriptionEditModal";
+import PaymentFormModal from "@/components/PaymentFormModal";
+import type { SubscriptionRow } from "@/types/billing";
 
 type PayRow = {
   id: number;
@@ -58,7 +39,7 @@ type PayRow = {
 const { RangePicker } = DatePicker;
 
 export default function Subscriptions() {
-  const [rows, setRows] = useState<Sub[]>([]);
+  const [rows, setRows] = useState<SubscriptionRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -73,8 +54,13 @@ export default function Subscriptions() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [payments, setPayments] = useState<PayRow[]>([]);
-  const [activeSub, setActiveSub] = useState<Sub | null>(null);
-
+  const [activeSub, setActiveSub] = useState<SubscriptionRow | null>(null);
+  // modal editar suscripción
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingSub, setEditingSub] = useState<SubscriptionRow | null>(null);
+  // modal pago (crear/editar)
+  const [payModalOpen, setPayModalOpen] = useState(false);
+  const [editingPay, setEditingPay] = useState<PayRow | null>(null);
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -104,7 +90,7 @@ export default function Subscriptions() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const openPayments = async (sub: Sub) => {
+  const openPayments = async (sub: SubscriptionRow) => {
     setActiveSub(sub);
     setDrawerOpen(true);
     setDrawerLoading(true);
@@ -124,7 +110,7 @@ export default function Subscriptions() {
     }
   };
 
-  const columns: ColumnsType<Sub> = [
+  const columns: ColumnsType<SubscriptionRow> = [
     { title: "ID", dataIndex: "id", key: "id", width: 80 },
     {
       title: "Restaurante",
@@ -163,23 +149,33 @@ export default function Subscriptions() {
       title: "Estado",
       dataIndex: "status",
       key: "status",
-      render: (v) => (
-        <Tag
-          color={
-            v === "active"
-              ? "green"
-              : v === "trialing"
-                ? "blue"
-                : v === "canceled"
-                  ? "red"
-                  : v === "expired"
-                    ? "default"
-                    : "default"
-          }
-        >
-          {v}
-        </Tag>
-      ),
+      render: (v, r) => {
+        const leftDays = Math.max(
+          Math.floor(
+            (new Date(r.currentPeriodEnd).getTime() - Date.now()) /
+              (1000 * 60 * 60 * 24)
+          ),
+          0
+        );
+        const nearing = (v === "active" || v === "trialing") && leftDays <= 7;
+        return (
+          <Tag
+            color={
+              v === "active"
+                ? "green"
+                : v === "trialing"
+                  ? "blue"
+                  : v === "canceled"
+                    ? "red"
+                    : v === "expired"
+                      ? "default"
+                      : "default"
+            }
+          >
+            {v} {nearing ? `· vence en ${leftDays}d` : ""}
+          </Tag>
+        );
+      },
     },
     {
       title: "Acciones",
@@ -188,6 +184,16 @@ export default function Subscriptions() {
         <Space>
           <Button size="small" onClick={() => openPayments(r)}>
             Pagos
+          </Button>
+          <Button
+            size="small"
+            type="default"
+            onClick={() => {
+              setEditingSub(r);
+              setEditOpen(true);
+            }}
+          >
+            Editar
           </Button>
         </Space>
       ),
@@ -274,6 +280,18 @@ export default function Subscriptions() {
         onClose={() => setDrawerOpen(false)}
         width={600}
       >
+        {/* <Space style={{ marginBottom: 12 }}>
+          <Button
+            type="primary"
+            onClick={() => {
+              setEditingPay(null);
+              setPayModalOpen(true);
+            }}
+            disabled={!activeSub}
+          >
+            Agregar pago
+          </Button>
+        </Space> */}
         <Table<PayRow>
           rowKey="id"
           loading={drawerLoading}
@@ -282,7 +300,7 @@ export default function Subscriptions() {
             { title: "ID", dataIndex: "id" },
             {
               title: "Importe",
-              render: (_, r) => `$${r.amount.toFixed(2)} ${r.currency}`,
+              render: (_, r) => `$${Number(r.amount).toFixed(2)} ${r.currency}`,
             },
             { title: "Proveedor", dataIndex: "provider" },
             { title: "Ref", dataIndex: "providerPaymentId" },
@@ -315,9 +333,52 @@ export default function Subscriptions() {
               dataIndex: "createdAt",
               render: (v) => new Date(v).toLocaleString(),
             },
+            {
+              title: "Acciones",
+              render: (_, row) => (
+                <Space>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setEditingPay(row);
+                      setPayModalOpen(true);
+                    }}
+                  >
+                    Editar
+                  </Button>
+                </Space>
+              ),
+            },
           ]}
         />
       </Drawer>
+      {/* Modal Editar suscripción */}
+      <SubscriptionEditModal
+        open={editOpen}
+        subscription={editingSub}
+        onClose={() => setEditOpen(false)}
+        onSaved={async () => {
+          setEditOpen(false);
+          await fetchData();
+        }}
+      />
+
+      {/* Modal Pago (crear/editar) */}
+      <PaymentFormModal
+        open={payModalOpen}
+        mode={editingPay ? "edit" : "create"}
+        restaurantId={activeSub?.restaurantId ?? 0}
+        subscriptionId={activeSub?.id ?? null}
+        row={editingPay ?? undefined}
+        onClose={() => setPayModalOpen(false)}
+        onSaved={async () => {
+          setPayModalOpen(false);
+          // recargar pagos del drawer
+          if (activeSub) {
+            await openPayments(activeSub);
+          }
+        }}
+      />
     </Card>
   );
 }

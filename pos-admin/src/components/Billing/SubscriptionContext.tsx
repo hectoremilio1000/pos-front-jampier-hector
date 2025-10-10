@@ -21,6 +21,7 @@ type CurrentSub = {
     | "canceled"
     | "expired"
     | "paused";
+  currentPeriodStart: string;
   currentPeriodEnd: string;
   plan?: { id: number; name: string };
   planPrice?: PlanPrice;

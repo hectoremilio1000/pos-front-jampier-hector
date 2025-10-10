@@ -2,6 +2,7 @@ import { Spin, Card } from "antd";
 import { useLocation } from "react-router-dom";
 import { useSubscription } from "./SubscriptionContext";
 import ChoosePlan from "./ChoosePlan";
+import Subscribe from "@/pages/Billing/Suscribe";
 
 // Rutas que deben poder verse sin suscripción (checkout/success/cancel)
 const WHITELIST_PATHS = [
@@ -41,7 +42,7 @@ export default function RequireSubscription({
           No tienes una suscripción activa en este momento. Elige un plan para
           continuar:
         </p>
-        <ChoosePlan />
+        <Subscribe />
       </Card>
     );
   }

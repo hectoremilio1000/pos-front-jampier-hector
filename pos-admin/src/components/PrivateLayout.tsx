@@ -20,6 +20,7 @@ import {
   FaPlus,
   FaPrint,
   FaRulerCombined,
+  FaUser,
 } from "react-icons/fa";
 import { GiHotMeal } from "react-icons/gi";
 import { FiSettings } from "react-icons/fi";
@@ -53,6 +54,7 @@ const ICONS: Record<string, JSX.Element> = {
   // genéricos
   settings: <FiSettings />,
   reports: <MdAssessment />,
+  account: <FaUser />,
   invoices: <FaPaperPlane />,
   list: <FaFileLines />,
   customers: <UserOutlined />,
@@ -84,6 +86,7 @@ const MENU_SCHEMA: MenuItem[] = [
     icon: "settings",
   },
   { type: "link", to: "/reportes", label: "Reportes", icon: "reports" },
+  { type: "link", to: "/account", label: "Mi Cuenta", icon: "account" },
 
   {
     type: "group",

@@ -25,6 +25,8 @@ import CustomersPage from "./pages/Billing/Customers";
 import { SubscriptionProvider } from "./components/Billing/SubscriptionContext";
 import RequireSubscription from "./components/Billing/RequireSubscription";
 import CheckoutSuccess from "./pages/Billing/CheckoutSuccess";
+import Account from "./pages/Billing/Account";
+import Subscribe from "./pages/Billing/Suscribe";
 
 function App() {
   return (
@@ -64,6 +66,7 @@ function App() {
               path="/productos/modificadores"
               element={<Modificadores />}
             />
+            <Route path="/account" element={<Account />} />
             <Route path="/control" element={<ControlComandero />} />
             {/* Aquí puedes añadir más rutas protegidas */}
             <Route path="/checkout/success" element={<CheckoutSuccess />} />
