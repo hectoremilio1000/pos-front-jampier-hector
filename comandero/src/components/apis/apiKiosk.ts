@@ -1,3 +1,4 @@
+// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/comandero/src/components/apis/apiKiosk.ts
 import axios from "axios";
 
 const apiKiosk = axios.create({

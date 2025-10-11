@@ -1,3 +1,4 @@
+// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/comandero/src/App.tsx
 import {
   BrowserRouter as Router,
   Routes,
@@ -24,7 +25,7 @@ function App() {
           <Route path="/control" element={<ControlComandero />} />
 
           {/* raíz: redirige a comandero */}
-          <Route path="/" element={<Navigate to="/control" replace />} />
+          <Route path="/" element={<Navigate to="/kiosk-login" replace />} />
         </Routes>
       </AuthProvider>
     </Router>

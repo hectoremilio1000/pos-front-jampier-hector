@@ -1,4 +1,4 @@
-// src/components/Auth/AuthContext.tsx
+// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/comandero/src/components/Auth/AuthContext.tsx
 import axios from "axios";
 import { createContext, useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";

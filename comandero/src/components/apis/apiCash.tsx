@@ -1,3 +1,4 @@
+// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/comandero/src/components/apis/apiCash.tsx
 import axios from "axios";
 import { getFreshAccessJwt } from "@/components/Auth/token";
 

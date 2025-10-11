@@ -1,12 +1,9 @@
-// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/comandero/src/components/Kiosk/session.ts
-// Operador: cerrar sesión (mantiene pairing)
 export function kioskLogoutOperator() {
   sessionStorage.removeItem("kiosk_jwt");
   sessionStorage.removeItem("kiosk_jwt_exp");
 }
-
-// Desemparejar (borra todo y fuerza pairing de nuevo)
 export function kioskUnpairDevice() {
   kioskLogoutOperator();
   sessionStorage.removeItem("kiosk_token");
+  sessionStorage.removeItem("cash_shift_id");
 }

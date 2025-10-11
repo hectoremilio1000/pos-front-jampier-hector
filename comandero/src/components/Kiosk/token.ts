@@ -1,3 +1,4 @@
+// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/comandero/src/components/Kiosk/token.ts
 import apiKiosk from "@/components/apis/apiKiosk";
 
 export function getKioskJwtSync(): string | null {

@@ -1,3 +1,4 @@
+// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/comandero/src/components/Auth/token.ts
 import apiAuth from "@/components/apis/apiAuth";
 
 let refreshInFlight: Promise<void> | null = null;

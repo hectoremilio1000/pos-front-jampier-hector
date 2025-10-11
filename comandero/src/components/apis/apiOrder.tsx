@@ -1,3 +1,5 @@
+// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/comandero/src/components/apis/apiOrder.tsx
+
 import axios from "axios";
 import { getFreshKioskJwt } from "@/components/Kiosk/token";
 

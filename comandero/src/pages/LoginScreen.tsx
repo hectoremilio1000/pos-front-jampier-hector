@@ -1,3 +1,4 @@
+// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/comandero/src/pages/LoginScreen.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Button, Card, Input, Typography, message } from "antd";
 import { useNavigate } from "react-router-dom";

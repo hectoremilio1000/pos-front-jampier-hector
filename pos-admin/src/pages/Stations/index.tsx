@@ -1,3 +1,4 @@
+// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos-admin/src/pages/Stations/index.tsx
 import { useEffect, useMemo, useState } from "react";
 import {
   Table,
@@ -24,8 +25,14 @@ type Station = {
   mode: Mode;
   isEnabled: boolean;
   openingRequired: boolean;
+  // ↓ campos originales pueden venir vacíos si no hay JOIN en backend
   users?: { id: number; full_name: string }[];
+
+  // ↓ resueltos en el front cruzando pivote + pos-auth
+  _cashierIds?: number[]; // varios IDs
+  _cashierNames?: string[];
 };
+
 type Cashier = { id: number; full_name: string };
 
 const MODE_OPTS = [
@@ -41,9 +48,7 @@ export default function Stations() {
   const [editing, setEditing] = useState<Station | null>(null);
   const [form] = Form.useForm<Partial<Station>>();
   const [cashiers, setCashiers] = useState<Cashier[]>([]);
-  const [selectedCashierId, setSelectedCashierId] = useState<
-    number | undefined
-  >(undefined);
+  const [selectedCashierIds, setSelectedCashierIds] = useState<number[]>([]);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -59,8 +64,29 @@ export default function Stations() {
   async function load() {
     setLoading(true);
     try {
-      const res = await apiCash.get("/stations"); // ← tu API
-      setRows(res.data || []);
+      // 1) estaciones en pos-cash-api
+      const { data: stations } = await apiCash.get("/stations");
+
+      // 2) cajeros en pos-auth (del restaurante actual)
+      const { data: cashierList } = await apiAuth.get("/users/cashiers");
+
+      // 3) por estación, obtener pivote y resolver nombre de cajero
+      const rowsWithCashier: Station[] = await Promise.all(
+        (stations || []).map(async (st: Station) => {
+          const { data: links } = await apiCash.get(`/stations/${st.id}/users`);
+          // links = [{ userId }, ...]
+          const ids = Array.isArray(links)
+            ? links.map((l: any) => Number(l.userId)).filter(Boolean)
+            : [];
+          const names = ids
+            .map((id) => (cashierList || []).find((c: any) => c.id === id))
+            .map((c) => c?.fullName || c?.full_name)
+            .filter(Boolean) as string[];
+          return { ...st, _cashierIds: ids, _cashierNames: names };
+        })
+      );
+
+      setRows(rowsWithCashier);
     } catch {
       message.error("No se pudieron cargar estaciones");
     } finally {
@@ -90,7 +116,7 @@ export default function Stations() {
       isEnabled: true,
       openingRequired: true,
     });
-    setSelectedCashierId(undefined);
+    setSelectedCashierIds([]); // 👈 vacío (multi-selección)
     setIsModalOpen(true);
   }
 
@@ -103,26 +129,33 @@ export default function Stations() {
       isEnabled: st.isEnabled,
       openingRequired: st.openingRequired,
     });
-    setSelectedCashierId(st.users?.[0]?.id);
+    // usar la pivote resuelta
+    setSelectedCashierIds(
+      st._cashierIds ?? (st.users?.[0]?.id ? [st.users[0].id] : [])
+    );
+
     setIsModalOpen(true);
   }
 
   async function save() {
     const values = await form.validateFields();
     try {
+      let stationId: number;
+
       if (editing) {
-        await apiCash.put(`/stations/${editing.id}`, {
-          ...values,
-          cashierId: selectedCashierId,
-        });
-        message.success("Estación actualizada");
+        await apiCash.put(`/stations/${editing.id}`, { ...values });
+        stationId = editing.id;
       } else {
-        await apiCash.post(`/stations`, {
-          ...values,
-          cashierId: selectedCashierId,
-        });
-        message.success("Estación creada");
+        const { data } = await apiCash.post(`/stations`, { ...values });
+        stationId = data.id;
       }
+
+      // sincroniza pivote station_users con el cajero seleccionado
+      await apiCash.post(`/stations/${stationId}/users`, {
+        userIds: selectedCashierIds,
+      });
+
+      message.success(editing ? "Estación actualizada" : "Estación creada");
       setIsModalOpen(false);
       load();
     } catch (e: any) {
@@ -167,11 +200,22 @@ export default function Stations() {
       render: (v: boolean) => (v ? "Sí" : "No"),
     },
     {
-      title: "Cajero asignado",
+      title: "Cajeros asignados",
       key: "user",
-      render: (_: any, st: Station) =>
-        st.users?.[0]?.full_name || <span className="opacity-60">—</span>,
+      render: (_: any, st: Station) => {
+        const names = st._cashierNames?.length
+          ? st._cashierNames
+          : st.users
+            ? [st.users[0]?.full_name].filter(Boolean)
+            : [];
+        return names?.length ? (
+          names.join(", ")
+        ) : (
+          <span className="opacity-60">—</span>
+        );
+      },
     },
+
     {
       title: "Acciones",
       key: "actions",
@@ -249,13 +293,14 @@ export default function Stations() {
               Cajero inicial (opcional)
             </label>
             <Select
+              mode="multiple"
               allowClear
-              placeholder="Asignar cajero"
+              placeholder="Asignar cajeros"
               suffixIcon={<UserOutlined />}
-              value={selectedCashierId}
-              onChange={(v) => setSelectedCashierId(v)}
-              options={cashiers.map((c) => ({
-                label: c.full_name,
+              value={selectedCashierIds}
+              onChange={(v) => setSelectedCashierIds(v)}
+              options={cashiers.map((c: any) => ({
+                label: c.full_name ?? c.fullName ?? c.email, // 👈 normalizado
                 value: c.id,
               }))}
               className="w-full"
