@@ -30,7 +30,7 @@ const SECTIONS: Section[] = [
     kind: "header",
     label: "📘 ADMINISTRACIÓN",
     items: [
-      { to: "/stations", label: "💵 Cajas" },
+      // { to: "/stations", label: "💵 Cajas" },
       { to: "/usuarios", label: "👥 Usuarios" },
       { to: "/facturas", label: "🧾 Facturas (CFDI)" },
       { to: "/metodos-pago", label: "💳 Métodos de pago y Propinas" },
