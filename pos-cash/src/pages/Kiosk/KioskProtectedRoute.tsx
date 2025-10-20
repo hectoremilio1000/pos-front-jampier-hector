@@ -1,6 +1,7 @@
+// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos-cash/src/pages/Kiosk/KioskProtectedRoute.tsx
 import { Navigate } from "react-router-dom";
 
-function isKioskJwtValid(): boolean {
+function isJwtValid() {
   const expStr = sessionStorage.getItem("kiosk_jwt_exp");
   if (!expStr) return false;
   return Number(expStr) - Date.now() > 15_000;
@@ -11,7 +12,10 @@ export const KioskProtectedRoute = ({
 }: {
   children: JSX.Element;
 }) => {
-  const jwt = sessionStorage.getItem("kiosk_jwt");
-  if (!jwt || !isKioskJwtValid()) return <Navigate to="/kiosk-login" replace />;
+  const hasToken = !!sessionStorage.getItem("kiosk_token");
+  const okJwt = isJwtValid();
+  if (!hasToken || !okJwt) {
+    return <Navigate to="/kiosk-login" replace />;
+  }
   return children;
 };

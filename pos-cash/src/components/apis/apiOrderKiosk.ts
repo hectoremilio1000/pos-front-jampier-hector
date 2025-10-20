@@ -1,4 +1,4 @@
-// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos-cash/src/components/apis/apiCashKiosk.ts
+// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos-cash/src/components/apis/apiOrderKiosk.ts
 
 import axios from "axios";
 
@@ -10,16 +10,15 @@ function isValidKioskJwt() {
 async function ensureKioskJwt(): Promise<string> {
   const jwt = sessionStorage.getItem("kiosk_jwt");
   if (jwt && isValidKioskJwt()) return jwt;
-  // En kiosk, si falta/expira el jwt, volvemos a /kiosk-login (no /login)
   throw new Error("kiosk_jwt_missing");
 }
 
-const apiCashKiosk = axios.create({
-  baseURL: import.meta.env.VITE_API_URL_CASH,
+const apiOrderKiosk = axios.create({
+  baseURL: import.meta.env.VITE_API_URL_ORDER, // ej: http://localhost:3334/api
   timeout: 20000,
 });
 
-apiCashKiosk.interceptors.request.use(async (config) => {
+apiOrderKiosk.interceptors.request.use(async (config) => {
   const jwt = await ensureKioskJwt();
   config.headers = config.headers ?? {};
   (config.headers as Record<string, string>)["Authorization"] = `Bearer ${jwt}`;
@@ -28,7 +27,7 @@ apiCashKiosk.interceptors.request.use(async (config) => {
   return config;
 });
 
-apiCashKiosk.interceptors.response.use(
+apiOrderKiosk.interceptors.response.use(
   (r) => r,
   async (err) => {
     const msg = String(err?.message || "");
@@ -46,4 +45,4 @@ apiCashKiosk.interceptors.response.use(
   }
 );
 
-export default apiCashKiosk;
+export default apiOrderKiosk;

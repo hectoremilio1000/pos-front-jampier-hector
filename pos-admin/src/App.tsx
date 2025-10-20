@@ -10,7 +10,7 @@ import PrivateLayout from "./components/PrivateLayout";
 
 import FiscalCutSettings from "./pages/FiscalCutSettings";
 import ProductionMonitors from "./pages/ProductionMonitors";
-import { AdminMonitorPairing } from "./pages/Dispositivos/AdminPairing";
+
 import Dashboard from "./pages/Dashboard";
 import Stations from "./pages/Stations";
 import Categorias from "./pages/Categorias";
@@ -22,6 +22,7 @@ import ModificadoresPage from "./pages/Modificadores";
 import Mesas from "./pages/Mesas";
 import Usuarios from "./pages/Usuarios";
 import Areas from "./pages/AreasMesa";
+import Dispositivos from "./pages/Dispositivos";
 
 function App() {
   return (
@@ -44,7 +45,7 @@ function App() {
           <Route path="/hour_cut" element={<FiscalCutSettings />} />
           <Route path="/areas" element={<Areas />} />
           <Route path="/areasImpresion" element={<AreasImpresionPage />} />
-          <Route path="/generatePairing" element={<AdminMonitorPairing />} />
+          <Route path="/generatePairing" element={<Dispositivos />} />
           <Route path="/productionMonitors" element={<ProductionMonitors />} />
           <Route path="/usuarios" element={<Usuarios />} />
           <Route path="/mesas" element={<Mesas />} />

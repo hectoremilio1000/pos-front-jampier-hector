@@ -25,7 +25,7 @@ function App() {
           <Route path="/control" element={<ControlComandero />} />
 
           {/* raíz: redirige a comandero */}
-          <Route path="/" element={<Navigate to="/kiosk-login" replace />} />
+          <Route path="/" element={<Navigate to="/control" replace />} />
         </Routes>
       </AuthProvider>
     </Router>

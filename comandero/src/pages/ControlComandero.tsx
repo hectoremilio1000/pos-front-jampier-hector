@@ -158,15 +158,9 @@ const ControlComandero: React.FC = () => {
 
   const navigate = useNavigate();
   function cerrarSesion() {
-    kioskLogoutOperator();
+    kioskLogoutOperator(); // borra solo kiosk_jwt y exp
     message.success("Sesión cerrada");
-    navigate("/kiosk-login");
-  }
-
-  function desemparejar() {
-    kioskUnpairDevice();
-    message.success("Dispositivo desemparejado");
-    navigate("/kiosk-login");
+    navigate("/login", { replace: true }); // ← regresa al login correcto
   }
 
   /** Inicialización: Pairing (si falta) + PIN → luego cargar datos */

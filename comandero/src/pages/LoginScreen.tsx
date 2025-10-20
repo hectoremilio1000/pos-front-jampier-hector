@@ -1,16 +1,32 @@
 // /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/comandero/src/pages/LoginScreen.tsx
-import { useEffect, useMemo, useState } from "react";
-import { Button, Card, Input, Typography, message } from "antd";
+
+import { useEffect, useRef, useState } from "react";
+import type { InputRef } from "antd";
+import { Card, Typography, message } from "antd";
 import { useNavigate } from "react-router-dom";
 import {
   kioskPairStart,
   kioskPairConfirm,
   kioskLoginWithPin,
 } from "@/components/Kiosk/token";
+import Numpad from "@/components/Kiosk/Numpad";
+import { kioskCheckPairedStatus } from "@/components/Kiosk/session";
+import PairingForm from "@/components/Kiosk/PairingForm";
+import PinForm from "@/components/Kiosk/PinForm";
+import HeaderStatus from "@/components/Kiosk/HeaderStatus";
 
 const { Title } = Typography;
 
-const SAFE_ALLOW_UNPAIR = false; // ⬅️ dejar en false en producción
+const SAFE_ALLOW_UNPAIR = false;
+
+function getFingerprint(): string {
+  const KEY = "kiosk_fp";
+  const saved = localStorage.getItem(KEY);
+  if (saved) return saved;
+  const fp = `web-${crypto.randomUUID()}`;
+  localStorage.setItem(KEY, fp);
+  return fp;
+}
 
 export default function LoginScreen() {
   const navigate = useNavigate();
@@ -20,14 +36,49 @@ export default function LoginScreen() {
   );
   const [code, setCode] = useState("");
   const [deviceName, setDeviceName] = useState("Comandero");
+  const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(null);
+
   const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
+  const [now, setNow] = useState(
+    new Date().toLocaleString("es-MX", { hour12: false })
+  );
+  const [deviceLabel, setDeviceLabel] = useState<string>(
+    sessionStorage.getItem("kiosk_device_name") || ""
+  );
 
-  // layout responsive: ancho de la tarjeta y tamaño de keypad
-  const isMobile = useMemo(() => window.innerWidth < 640, []);
-  const cardWidth = isMobile ? 360 : 760;
+  type PairState = "none" | "paired" | "revoked";
+  const [pairState, setPairState] = useState<PairState>(
+    sessionStorage.getItem("kiosk_token") ? "paired" : "none"
+  );
 
-  // si ya hay kiosk_jwt válido → directo a /control
+  // campo activo para keypad
+  const [target, setTarget] = useState<"pair" | "pin">(
+    hasPair ? "pin" : "pair"
+  );
+  const codeRef = useRef<InputRef>(null);
+  const pinRef = useRef<InputRef>(null);
+
+  // reloj
+  useEffect(() => {
+    const id = setInterval(
+      () => setNow(new Date().toLocaleString("es-MX", { hour12: false })),
+      1000
+    );
+    return () => clearInterval(id);
+  }, []);
+
+  // focus según pairing
+  useEffect(() => {
+    setTarget(hasPair ? "pin" : "pair");
+  }, [hasPair]);
+
+  useEffect(() => {
+    if (target === "pair") codeRef.current?.focus();
+    else pinRef.current?.focus();
+  }, [target]);
+
+  // si hay kiosk_jwt válido → directo a /control
   useEffect(() => {
     const expStr = sessionStorage.getItem("kiosk_jwt_exp");
     const jwt = sessionStorage.getItem("kiosk_jwt");
@@ -35,8 +86,35 @@ export default function LoginScreen() {
     if (jwt && valid) navigate("/control", { replace: true });
   }, [navigate]);
 
+  // verifica estado del dispositivo al montar
+  useEffect(() => {
+    (async () => {
+      const status = await kioskCheckPairedStatus();
+      if (status === "paired") {
+        setHasPair(true);
+        setPairState("paired");
+      } else if (status === "revoked") {
+        sessionStorage.removeItem("kiosk_token");
+        sessionStorage.removeItem("kiosk_device_name");
+        setHasPair(false);
+        setPairState("revoked");
+        message.warning(
+          "Este dispositivo fue revocado desde Admin. Vuelve a emparejarlo."
+        );
+      } else if (status === "invalid") {
+        setHasPair(false);
+        setPairState("none");
+      }
+    })();
+  }, []);
+
   async function doPair() {
     try {
+      if (sessionStorage.getItem("kiosk_token")) {
+        setHasPair(true);
+        setPairState("paired");
+        return message.info("Este dispositivo ya está emparejado");
+      }
       if (!code.trim()) return message.warning("Ingresa el pairing code");
       setLoading(true);
       const start = await kioskPairStart(code.trim(), "commander");
@@ -48,12 +126,24 @@ export default function LoginScreen() {
         code: code.trim(),
         deviceType: "commander",
         deviceName: deviceName.trim() || "Comandero",
+        fingerprint: getFingerprint(),
+        deviceId: selectedDeviceId ?? undefined,
       });
+      const label = deviceName.trim() || "Comandero";
+      sessionStorage.setItem("kiosk_device_name", label);
+      setDeviceLabel(label);
       setHasPair(true);
+      setPairState("paired");
       message.success("Dispositivo emparejado");
     } catch (e: any) {
-      console.error(e);
-      message.error("No se pudo emparejar");
+      const txt = String(e?.message || "");
+      if (txt.includes("DEVICE_IN_USE")) {
+        message.error(
+          "Ese dispositivo ya está emparejado en otro equipo. Elige otro o desemparéjalo desde Admin."
+        );
+      } else {
+        message.error(txt || "No se pudo emparejar");
+      }
     } finally {
       setLoading(false);
     }
@@ -67,40 +157,53 @@ export default function LoginScreen() {
       await kioskLoginWithPin(pin);
       navigate("/control", { replace: true });
     } catch (e: any) {
-      console.error(e);
-      message.error("PIN incorrecto o servidor no disponible");
+      const msg =
+        e?.message || e?.response?.data?.error || "No se pudo iniciar sesión";
+      if (/revocado/i.test(msg)) {
+        sessionStorage.removeItem("kiosk_token");
+        sessionStorage.removeItem("kiosk_device_name");
+        setHasPair(false);
+        setPairState("revoked");
+        message.error("Dispositivo revocado. Vuelve a emparejar.");
+      } else {
+        message.error(msg);
+      }
     } finally {
       setLoading(false);
     }
   }
 
   // keypad
-  const press = (d: string) => {
-    if (pin.length >= 6) return;
-    setPin((p) => p + d);
+  const onDigit = (d: string) => {
+    if (target === "pair")
+      setCode((c) => (c + d).replace(/\D/g, "").slice(0, 6));
+    else setPin((p) => (p + d).replace(/\D/g, "").slice(0, 6));
   };
-  const back = () => setPin((p) => p.slice(0, -1));
-  const clear = () => setPin("");
+  const onBack = () => {
+    if (target === "pair") setCode((c) => c.slice(0, -1));
+    else setPin((p) => p.slice(0, -1));
+  };
+  const onClearPin = () => setPin("");
+  const onEnter = () => (target === "pair" ? doPair() : doLogin());
 
-  // “oculto”: desemparejar (para soporte)
   function unpair() {
     if (!SAFE_ALLOW_UNPAIR) return;
     sessionStorage.removeItem("kiosk_token");
     sessionStorage.removeItem("kiosk_jwt");
     sessionStorage.removeItem("kiosk_jwt_exp");
+    sessionStorage.removeItem("kiosk_device_name");
+    setDeviceLabel("");
     setHasPair(false);
+    setPairState("none");
     setPin("");
     message.info("Dispositivo desemparejado");
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-blue-700">
-      <Card
-        style={{ width: cardWidth }}
-        bodyStyle={{ padding: isMobile ? 20 : 28 }}
-      >
-        {/* Header estilo “SoftRestaurant” */}
-        <div className="flex items-center justify-between mb-6">
+    <div className="min-h-screen flex items-center justify-center bg-blue-700 p-4">
+      <Card className="w-full max-w-5xl" styles={{ body: { padding: 24 } }}>
+        {/* Header */}
+        <div className="flex items-start justify-between mb-6">
           <div>
             <Title level={2} style={{ margin: 0, color: "#ff6b00" }}>
               GrowthSuite
@@ -109,121 +212,67 @@ export default function LoginScreen() {
               Comandero
             </Title>
           </div>
-          <div className="text-right text-xs text-gray-500">
-            {new Date().toLocaleString("es-MX", { hour12: false })}
-          </div>
+          <HeaderStatus
+            now={now}
+            pairState={pairState}
+            deviceLabel={deviceLabel}
+          />
         </div>
 
-        {/* Layout: input a la izquierda, keypad a la derecha (desktop) */}
-        <div className={isMobile ? "" : "grid grid-cols-2 gap-6"}>
+        {/* Layout */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
           <div className="space-y-3">
             {!hasPair ? (
-              <>
-                <div className="text-sm font-semibold">Pairing code</div>
-                <Input
-                  placeholder="031180"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                />
-                <div className="text-sm font-semibold">
-                  Nombre del dispositivo
-                </div>
-                <Input
-                  placeholder="iPad Barra"
-                  value={deviceName}
-                  onChange={(e) => setDeviceName(e.target.value)}
-                />
-                <Button
-                  type="primary"
-                  block
-                  loading={loading}
-                  onClick={doPair}
-                  className="mt-2"
-                >
-                  Emparejar
-                </Button>
-              </>
+              <PairingForm
+                code={code}
+                deviceName={deviceName}
+                loading={loading}
+                selectedDeviceId={selectedDeviceId}
+                deviceType="commander"
+                onCodeChange={(v) => setCode(v)}
+                onDeviceNameChange={(v) => setDeviceName(v)}
+                onSelectDeviceId={(id, name) => {
+                  setSelectedDeviceId(id);
+                  if (name) setDeviceName(name);
+                }}
+                onPair={doPair}
+                onCodeFocus={() => setTarget("pair")}
+              />
             ) : (
-              <>
-                <div className="text-sm font-semibold">PIN de operador</div>
-                <Input.Password
-                  value={pin}
-                  onChange={(e) =>
-                    setPin(e.target.value.replace(/\D/g, "").slice(0, 6))
-                  }
-                  placeholder="••••••"
-                  style={{
-                    textAlign: "center",
-                    letterSpacing: 4,
-                    fontSize: isMobile ? 20 : 24,
-                  }}
-                />
-                <div className="flex gap-2 mt-2">
-                  <Button block onClick={clear}>
-                    Borrar
-                  </Button>
-                  <Button
-                    type="primary"
-                    block
-                    loading={loading}
-                    onClick={doLogin}
-                  >
-                    Entrar
-                  </Button>
-                </div>
-              </>
+              <PinForm
+                pin={pin}
+                loading={loading}
+                disabled={pairState !== "paired" || loading}
+                onPinChange={(v) => setPin(v)}
+                onEnter={doLogin}
+                onClear={onClearPin}
+                onFocusPin={() => setTarget("pin")}
+              />
             )}
-            {/* Botón oculto de soporte para desemparejar */}
+
             {SAFE_ALLOW_UNPAIR && (
-              <Button danger block onClick={unpair}>
+              <button className="text-red-600 underline" onClick={unpair}>
                 Desemparejar dispositivo
-              </Button>
+              </button>
             )}
           </div>
 
-          {/* Keypad a la derecha (o debajo en móvil) */}
-          <div className={isMobile ? "mt-6" : ""}>
-            {hasPair && (
-              <div className="grid grid-cols-3 gap-2">
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-                  <Button
-                    key={n}
-                    onClick={() => press(String(n))}
-                    style={{
-                      height: isMobile ? 44 : 64,
-                      fontSize: isMobile ? 18 : 22,
-                    }}
-                  >
-                    {n}
-                  </Button>
-                ))}
-                <Button disabled style={{ height: isMobile ? 44 : 64 }} />
-                <Button
-                  onClick={() => press("0")}
-                  style={{
-                    height: isMobile ? 44 : 64,
-                    fontSize: isMobile ? 18 : 22,
-                  }}
-                >
-                  0
-                </Button>
-                <Button
-                  danger
-                  onClick={back}
-                  style={{
-                    height: isMobile ? 44 : 64,
-                    fontSize: isMobile ? 18 : 22,
-                  }}
-                >
-                  ←
-                </Button>
-              </div>
-            )}
+          {/* Keypad a la derecha */}
+          <div className="flex md:justify-end">
+            <div className="w-full md:w-[360px] lg:w-[420px]">
+              <Numpad
+                onDigit={onDigit}
+                onBack={onBack}
+                onClear={onClearPin}
+                onEnter={onEnter}
+                big
+              />
+            </div>
           </div>
         </div>
 
-        {/* Footer tipo tablero (solo visual, como la app de referencia) */}
-        <div className="grid grid-cols-6 gap-2 mt-6 text-center text-xs">
+        {/* Footer tipo tablero */}
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-6 text-center text-xs">
           {[
             "Clientes",
             "Meseros",

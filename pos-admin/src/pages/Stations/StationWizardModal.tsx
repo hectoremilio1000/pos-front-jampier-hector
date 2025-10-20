@@ -1,3 +1,4 @@
+// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos-admin/src/pages/Stations/StationWizardModal.tsx
 import { useEffect } from "react";
 import {
   Modal,

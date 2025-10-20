@@ -15,6 +15,8 @@ import {
 import { PlusOutlined, ReloadOutlined, UserOutlined } from "@ant-design/icons";
 import apiAuth from "@/components/apis/apiAuth";
 import apiCash from "@/components/apis/apiCash";
+import { useAuth } from "@/components/Auth/AuthContext"; // 👈 nuevo
+import { Drawer } from "antd";
 
 type Mode = "MASTER" | "DEPENDENT";
 type Station = {
@@ -41,6 +43,8 @@ const MODE_OPTS = [
 ];
 
 export default function Stations() {
+  const { user } = useAuth();
+  const restaurantId = user?.restaurant?.id || null;
   const [rows, setRows] = useState<Station[]>([]);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState("");
@@ -49,6 +53,25 @@ export default function Stations() {
   const [form] = Form.useForm<Partial<Station>>();
   const [cashiers, setCashiers] = useState<Cashier[]>([]);
   const [selectedCashierIds, setSelectedCashierIds] = useState<number[]>([]);
+
+  const [devOpen, setDevOpen] = useState(false);
+  const [devLoading, setDevLoading] = useState(false);
+  const [devRows, setDevRows] = useState<any[]>([]);
+  const [devStation, setDevStation] = useState<Station | null>(null);
+
+  async function openDevices(st: Station) {
+    setDevStation(st);
+    setDevOpen(true);
+    setDevLoading(true);
+    try {
+      const { data } = await apiCash.get(`/stations/${st.id}/devices`);
+      setDevRows(data || []);
+    } catch {
+      message.error("No se pudieron cargar los dispositivos");
+    } finally {
+      setDevLoading(false);
+    }
+  }
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -65,7 +88,16 @@ export default function Stations() {
     setLoading(true);
     try {
       // 1) estaciones en pos-cash-api
-      const { data: stations } = await apiCash.get("/stations");
+      if (!restaurantId) {
+        setRows([]);
+        setLoading(false);
+        return message.warning(
+          "Selecciona un restaurante para ver estaciones."
+        );
+      }
+      const { data: stations } = await apiCash.get("/stations", {
+        params: { restaurantId },
+      });
 
       // 2) cajeros en pos-auth (del restaurante actual)
       const { data: cashierList } = await apiAuth.get("/users/cashiers");
@@ -106,7 +138,7 @@ export default function Stations() {
   useEffect(() => {
     load();
     loadCashiers();
-  }, []);
+  }, [restaurantId]);
 
   function openCreate() {
     setEditing(null);
@@ -142,11 +174,18 @@ export default function Stations() {
     try {
       let stationId: number;
 
+      if (!restaurantId) {
+        return message.error("Falta restaurantId");
+      }
+
       if (editing) {
         await apiCash.put(`/stations/${editing.id}`, { ...values });
         stationId = editing.id;
       } else {
-        const { data } = await apiCash.post(`/stations`, { ...values });
+        const { data } = await apiCash.post(`/stations`, {
+          restaurantId,
+          ...values,
+        }); // 👈 envía restaurantId
         stationId = data.id;
       }
 
@@ -200,6 +239,15 @@ export default function Stations() {
       render: (v: boolean) => (v ? "Sí" : "No"),
     },
     {
+      title: "Dispositivos",
+      key: "devices",
+      render: (_: any, st: Station & { devices_count?: number }) => (
+        <Button size="small" onClick={() => openDevices(st)}>
+          Ver {st.devices_count != null ? `(${st.devices_count})` : ""}
+        </Button>
+      ),
+    },
+    {
       title: "Cajeros asignados",
       key: "user",
       render: (_: any, st: Station) => {
@@ -243,7 +291,11 @@ export default function Stations() {
           allowClear
         />
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={load}>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={load}
+            disabled={!restaurantId}
+          >
             Recargar
           </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
@@ -258,6 +310,87 @@ export default function Stations() {
         dataSource={filtered}
         loading={loading}
       />
+      <Drawer
+        title={`Dispositivos · ${devStation?.code || ""}`}
+        open={devOpen}
+        onClose={() => setDevOpen(false)}
+        width={720}
+      >
+        <Table
+          rowKey="id"
+          loading={devLoading}
+          dataSource={devRows}
+          pagination={false}
+          columns={[
+            { title: "Nombre", dataIndex: "device_name" },
+            { title: "Tipo", dataIndex: "device_type" },
+            { title: "Fingerprint", dataIndex: "fingerprint" },
+            {
+              title: "Última vez",
+              dataIndex: "last_seen_at",
+              render: (v: string | null) =>
+                v
+                  ? new Date(v).toLocaleString("es-MX", { hour12: false })
+                  : "—",
+            },
+            {
+              title: "Estado",
+              render: (_: any, r: any) =>
+                r.revoked_at ? (
+                  <Tag color="red">Revocado</Tag>
+                ) : r.in_use ? (
+                  <Tag color="green">Activo</Tag>
+                ) : (
+                  <Tag>Inactivo</Tag>
+                ),
+            },
+            {
+              title: "Acciones",
+              render: (_: any, r: any) => (
+                <Space>
+                  <Button
+                    size="small"
+                    onClick={async () => {
+                      const name =
+                        prompt("Nuevo nombre", r.device_name || "") || "";
+                      if (!name.trim()) return;
+                      await apiCash.post(`/kiosk/devices/${r.id}/rename`, {
+                        name,
+                      });
+                      openDevices(devStation!); // recarga
+                    }}
+                  >
+                    Renombrar
+                  </Button>
+                  {r.revoked_at ? (
+                    <Button
+                      size="small"
+                      type="primary"
+                      onClick={async () => {
+                        await apiCash.post(`/kiosk/devices/${r.id}/unrevoke`);
+                        openDevices(devStation!);
+                      }}
+                    >
+                      Restaurar
+                    </Button>
+                  ) : (
+                    <Button
+                      size="small"
+                      danger
+                      onClick={async () => {
+                        await apiCash.post(`/kiosk/devices/${r.id}/revoke`);
+                        openDevices(devStation!);
+                      }}
+                    >
+                      Revocar
+                    </Button>
+                  )}
+                </Space>
+              ),
+            },
+          ]}
+        />
+      </Drawer>
 
       <Modal
         title={editing ? "Editar estación" : "Nueva estación"}

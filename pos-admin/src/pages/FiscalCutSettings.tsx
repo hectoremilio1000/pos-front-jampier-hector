@@ -11,7 +11,8 @@ interface SettingDTO {
 
 export default function FiscalCutSettings() {
   const { user } = useAuth();
-  const restaurantId = user?.restaurant.id;
+  // TS: puede ser null/undefined → lo modelamos explícitamente
+  const restaurantId: number | null = user?.restaurant?.id ?? null;
 
   const [value, setValue] = useState<Dayjs | null>(null);
   const [loading, setLoading] = useState(false);
@@ -19,7 +20,7 @@ export default function FiscalCutSettings() {
 
   /* fetch current value */
   const load = async () => {
-    if (!restaurantId) return;
+    if (!restaurantId) return; // sin restaurante, no consultamos
     setLoading(true);
     try {
       const { data } = await apiCash.get<SettingDTO>(
@@ -27,7 +28,7 @@ export default function FiscalCutSettings() {
       );
       setValue(dayjs(data.fiscalCutHour, "HH:mm"));
     } catch {
-      // si no existe, permanece null
+      setValue(dayjs("05:00", "HH:mm")); // opcional: valor por defecto
     } finally {
       setLoading(false);
     }
@@ -35,7 +36,12 @@ export default function FiscalCutSettings() {
 
   /* save */
   const save = async () => {
-    if (!restaurantId || !value) return;
+    if (!restaurantId) {
+      message.error("Selecciona un restaurante antes de guardar");
+      return;
+    }
+    if (!value) return;
+
     setSaving(true);
     try {
       await apiCash.post("/settings", {

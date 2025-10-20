@@ -1,4 +1,5 @@
-// src/components/apis/apiOrder.ts
+// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos-cash/src/components/apis/apiOrder.tsx
+
 import axios from "axios";
 import { getFreshAccessJwt } from "@/components/Auth/token"; // asegúrate de esta ruta
 
