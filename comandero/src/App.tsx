@@ -1,34 +1,28 @@
-// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/comandero/src/App.tsx
-import {
-  BrowserRouter as Router,
-  Routes,
-  Route,
-  Navigate,
-} from "react-router-dom";
-import LoginScreen from "./pages/LoginScreen";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { KioskAuthProvider } from "@/context/KioskAuthProvider";
+import RequireKioskAuth from "@/components/route-guards/RequireKioskAuth";
+
+import LoginScreen from "@/pages/LoginScreen";
 import ControlComandero from "./pages/ControlComandero";
 
-import "@ant-design/v5-patch-for-react-19";
-import { AuthProvider } from "./components/Auth/AuthContext";
-// import { ProtectedRoute } from "./components/Auth/ProtectedRoute";
-// import PrivateLayout from "./components/PrivateLayout";
-
-function App() {
+export default function App() {
   return (
-    <Router>
-      <AuthProvider>
+    <BrowserRouter>
+      <KioskAuthProvider>
         <Routes>
-          {/* OPCIONAL: deja el login de panel para otras vistas del panel */}
           <Route path="/login" element={<LoginScreen />} />
-
-          {/* Comandero libre de ProtectedRoute — aquí correrá pairing + PIN */}
-          <Route path="/control" element={<ControlComandero />} />
-
-          {/* raíz: redirige a comandero */}
+          <Route
+            path="/control"
+            element={
+              <RequireKioskAuth>
+                <ControlComandero />
+              </RequireKioskAuth>
+            }
+          />
           <Route path="/" element={<Navigate to="/control" replace />} />
+          <Route path="*" element={<Navigate to="/control" replace />} />
         </Routes>
-      </AuthProvider>
-    </Router>
+      </KioskAuthProvider>
+    </BrowserRouter>
   );
 }
-export default App;

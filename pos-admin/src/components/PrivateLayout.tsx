@@ -30,6 +30,8 @@ const SECTIONS: Section[] = [
     kind: "header",
     label: "📘 ADMINISTRACIÓN",
     items: [
+      { to: "/mesas", label: "🍽️ Áreas de Venta" },
+      { to: "/services", label: "🍽️ Servicios" },
       { to: "/stations", label: "💵 Cajas" },
       { to: "/usuarios", label: "👥 Usuarios" },
       { to: "/facturas", label: "🧾 Facturas (CFDI)" },
@@ -47,7 +49,6 @@ const SECTIONS: Section[] = [
       { to: "/productos", label: "🍩 Productos" },
       { to: "/productos/subgrupos", label: "🧩 Subgrupos" },
       { to: "/productos/modificadores", label: "🎛️ Modificadores" },
-      { to: "/mesas", label: "🍽️ Área de mesas" },
     ],
   },
   {
@@ -162,7 +163,7 @@ export default function PrivateLayout() {
                   label={sec.label} // ← ya no quitamos el emoji
                   icon={sec.icon} // ← usa el icono que definiste
                   collapsed={collapsed}
-                  onClick={() => setDrawerOpen(false)}
+                  // onClick={() => setDrawerOpen(false)}
                 />
               </div>
             );
@@ -206,7 +207,7 @@ export default function PrivateLayout() {
                       label={it.label}
                       icon={it.icon}
                       collapsed={collapsed}
-                      onClick={() => setDrawerOpen(false)}
+                      // onClick={() => setDrawerOpen(false)}
                     />
                   ))}
                 </div>

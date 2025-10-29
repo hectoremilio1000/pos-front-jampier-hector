@@ -1,9 +1,9 @@
-import { FC } from "react";
+import type { FC } from "react";
 
 type Props = {
   now: string;
   pairState: "none" | "paired" | "revoked";
-  deviceLabel?: string;
+  deviceLabel: string | null;
 };
 
 const HeaderStatus: FC<Props> = ({ now, pairState, deviceLabel }) => {

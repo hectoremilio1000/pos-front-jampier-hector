@@ -11,6 +11,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\""
   },
   "dependencies": {
+    "@adonisjs/transmit-client": "^1.0.0",
     "@ant-design/v5-patch-for-react-19": "^1.0.3",
     "antd": "^5.26.2",
     "axios": "^1.10.0",

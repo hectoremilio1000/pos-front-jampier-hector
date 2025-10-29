@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import apiOrder from "@/components/apis/apiOrder";
 import apiCash from "@/components/apis/apiCash";
+import apiOrderAuth from "@/components/apis/apiOrderAuth";
 
 export type Kpi = {
   label: string;
@@ -93,9 +94,12 @@ export function useDashboardData(restaurantId?: number) {
             .get<AreaDTO[]>("/areas")
             .then((r) => r.data)
             .catch(() => []),
-          apiOrder
-            .get<OrderDTO[]>("/orders")
-            .then((r) => r.data)
+          apiOrderAuth
+            .get<OrderDTO[]>("/admin/orders")
+            .then((r) => {
+              console.log(r);
+              return r.data;
+            })
             .catch(() => []),
         ]);
 

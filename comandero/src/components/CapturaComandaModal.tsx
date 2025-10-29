@@ -59,6 +59,8 @@ type Producto = {
   categoria: "alimentos" | "bebidas" | "otros";
   unidad: string;
   basePrice: number;
+  taxRate: number;
+  priceGross: number;
   contieneIVA: boolean;
   printArea: number;
   areaImpresion: AreaImpresion;
@@ -74,6 +76,8 @@ type OrderItem = {
   productId: number;
   qty: number;
   unitPrice: number;
+  basePrice: number;
+  taxRate: number;
   total: number;
   notes: string | null;
   course: number;
@@ -116,6 +120,8 @@ const CapturaComandaModal: React.FC<Props> = ({
     product: Producto;
     qty: number;
     unitPrice: number;
+    basePrice: number;
+    taxRate: number;
     course: number;
     // flags nuevos:
     compositeProductId: number | null;
@@ -133,6 +139,8 @@ const CapturaComandaModal: React.FC<Props> = ({
       productId: opts.product.id,
       qty: opts.qty,
       unitPrice: opts.unitPrice,
+      basePrice: opts.basePrice,
+      taxRate: opts.taxRate,
       total,
       notes: opts.notes ?? null,
       course: opts.course,
@@ -348,7 +356,7 @@ const CapturaComandaModal: React.FC<Props> = ({
   }, [configOrdenada, selectedByGroup]);
 
   const totalUnitario =
-    (productoCompuestoActual?.basePrice ?? 0) + extrasSubtotalUnitario;
+    (productoCompuestoActual?.priceGross ?? 0) + extrasSubtotalUnitario;
 
   // ------------------------
   // TOGGLE DE SELECCIÓN
@@ -389,14 +397,16 @@ const CapturaComandaModal: React.FC<Props> = ({
       setProductoCompuestoActual(product);
       setSelectedByGroup({});
       setConfigModifiersCurrentProduct(config);
-      setProductIdCompuest(product.id);
+      // setProductIdCompuest(product.id);
       setIsModalCompuest(true);
     } else {
       const item = makeOrderItem({
         orderId: orderIdCurrent,
         product,
         qty: cantidadSeleccionada,
-        unitPrice: product.basePrice,
+        unitPrice: product.priceGross,
+        basePrice: product.basePrice,
+        taxRate: product.taxRate,
         course: tiempoSeleccionado,
 
         compositeProductId: null,
@@ -425,7 +435,9 @@ const CapturaComandaModal: React.FC<Props> = ({
         orderId: orderIdCurrent,
         product: base,
         qty: cantidadSeleccionada,
-        unitPrice: base.basePrice,
+        unitPrice: base.priceGross,
+        taxRate: base.taxRate,
+        basePrice: base.basePrice,
         course: tiempoSeleccionado,
         compositeProductId: base.id,
         isModifier: false,
@@ -454,6 +466,8 @@ const CapturaComandaModal: React.FC<Props> = ({
             product: mod.modifier,
             qty, // 1 o 0.5 de la cantidad seleccionada
             unitPrice, // 0 si cabe en included, precio si no
+            basePrice: mod.modifier.basePrice,
+            taxRate: mod.modifier.taxRate,
             course: tiempoSeleccionado,
             compositeProductId: base.id,
             isModifier: true,
@@ -553,7 +567,7 @@ const CapturaComandaModal: React.FC<Props> = ({
       },
     },
     { title: "Cant", dataIndex: "qty" },
-    { title: "P. Unitario", dataIndex: "unitPrice" },
+    { title: "Importe", dataIndex: "unitPrice" },
     { title: "Total", dataIndex: "total" },
     {
       title: "Tiempo",
@@ -737,7 +751,7 @@ const CapturaComandaModal: React.FC<Props> = ({
                 onClick={() => agregarProducto(p)}
                 className="bg-orange-400 hover:bg-orange-500 text-white py-3 px-2 rounded text-sm text-center"
               >
-                {p.name} <br /> ${p.basePrice}
+                {p.name} <br /> ${p.priceGross}
               </button>
             ))}
           </div>
@@ -921,9 +935,10 @@ const CapturaComandaModal: React.FC<Props> = ({
 
         <div className="border-t pt-3 mt-4 space-y-1">
           <div className="flex justify-between text-sm">
-            <span>Precio base</span>
+            <span>Precio</span>
             <span>
-              ${Number(productoCompuestoActual?.basePrice).toFixed(2) ?? "0.00"}
+              $
+              {Number(productoCompuestoActual?.priceGross).toFixed(2) ?? "0.00"}
             </span>
           </div>
           <div className="flex justify-between text-sm">

@@ -107,7 +107,6 @@ export default function ProductModal({
     }
   };
 
-  // al abrir, set defaults (manteniendo todo lo que ya tenías)
   useEffect(() => {
     const initVat = initial?.taxRate ?? 16;
     const initNet = initial?.price ?? 0;
@@ -129,7 +128,6 @@ export default function ProductModal({
       modifierGroups: initial?.modifierGroups ?? [],
     } as any);
 
-    // ← NUEVO: si abrimos en editar y ya hay grupo, cargar subgrupos de ese grupo
     if (initial?.groupId) {
       loadSubgroups(initial.groupId);
     } else {
@@ -137,6 +135,15 @@ export default function ProductModal({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  // 👇 NUEVO: cuando el padre cambie los grupos (vía selector) y el modal siga abierto,
+  // actualiza el campo del Form para que se pinten las tarjetas.
+  useEffect(() => {
+    if (!open) return;
+    form.setFieldsValue({
+      modifierGroups: initial?.modifierGroups ?? [],
+    } as any);
+  }, [open, initial?.modifierGroups, form]);
 
   // autogenerar code cuando seleccionas grupo en modo "crear"
   const handleGroupChange = async (gid: number) => {
@@ -184,8 +191,28 @@ export default function ProductModal({
     form.resetFields();
   };
 
-  const values = Form.useWatch([], form) as ProductValues | undefined;
+  const mg = Form.useWatch("modifierGroups", form) as
+    | ModifierGroupConfig[]
+    | undefined;
+  const currentGroupId = Form.useWatch("groupId", form) as number | undefined;
 
+  const updateGroupLocal = (index: number, updated: ModifierGroupConfig) => {
+    const arr =
+      (form.getFieldValue("modifierGroups") as ModifierGroupConfig[]) ?? [];
+    const next = [...arr];
+    next[index] = updated;
+    form.setFieldsValue({ modifierGroups: next });
+    onUpdateModifier(index, updated); // notifica al padre (mantiene sincronía)
+  };
+
+  const removeGroupLocal = (index: number) => {
+    const arr =
+      (form.getFieldValue("modifierGroups") as ModifierGroupConfig[]) ?? [];
+    const next = [...arr];
+    next.splice(index, 1);
+    form.setFieldsValue({ modifierGroups: next });
+    onRemoveModifier(index); // notifica al padre
+  };
   return (
     <Modal
       open={open}
@@ -331,15 +358,20 @@ export default function ProductModal({
           </Text>
         </div>
 
-        {/* Renderizar tarjetas de cada grupo */}
-        {(values?.modifierGroups ?? []).map((g, i) => (
+        {/* 👇 Registrar el campo en el Form (aunque sea oculto) */}
+        <Form.Item name="modifierGroups" hidden>
+          <Input type="hidden" />
+        </Form.Item>
+
+        {/* Renderizar tarjetas de cada grupo (reacciona a mg y groupId) */}
+        {(mg ?? []).map((g, i) => (
           <ModifierGroupCard
-            key={g.id}
+            key={`${g.id}-${i}`} // en edición puede repetirse id temporalmente
             group={g}
-            parentProductGroupId={values?.groupId ?? 0}
-            modifiersGroups={values?.modifierGroups ?? []}
-            onUpdate={(upd) => onUpdateModifier(i, upd)}
-            onRemove={() => onRemoveModifier(i)}
+            parentProductGroupId={currentGroupId ?? 0}
+            modifiersGroups={mg ?? []}
+            onUpdate={(upd) => updateGroupLocal(i, upd)}
+            onRemove={() => removeGroupLocal(i)}
           />
         ))}
       </Form>

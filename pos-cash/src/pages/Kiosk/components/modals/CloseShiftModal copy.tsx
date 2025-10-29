@@ -14,10 +14,11 @@ import type { ColumnsType } from "antd/es/table";
 import apiCashKiosk from "@/components/apis/apiCashKiosk";
 import { useCash } from "../../context/CashKioskContext";
 
-type Row = {
+type PreviewRow = {
   paymentMethodId: number;
   paymentMethodName: string;
   isCash: boolean;
+  expected: number;
 };
 
 export default function CloseShiftModal({
@@ -31,49 +32,50 @@ export default function CloseShiftModal({
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [openingCash, setOpeningCash] = useState<number>(0);
-  const [rows, setRows] = useState<Row[]>([]);
+  const [cashMovNet, setCashMovNet] = useState<number>(0);
+  const [expectedCash, setExpectedCash] = useState<number>(0);
+  const [rows, setRows] = useState<PreviewRow[]>([]);
   const sid = useMemo(
     () => Number(sessionStorage.getItem("cash_shift_id") || shiftId || 0),
     [shiftId]
   );
 
-  // Carga apertura y métodos (sin mostrar “esperado”)
+  // preview
   useEffect(() => {
     if (!open || !sid) return;
     (async () => {
       try {
         setLoading(true);
-        // Fondo inicial
-        const s = await apiCashKiosk.get(`/shifts/${sid}`, {
+        const p = await apiCashKiosk.get(`/shifts/${sid}/close/preview`, {
           validateStatus: () => true,
         });
-        const oc = Number(s?.data?.openingCash ?? s?.data?.opening_cash ?? 0);
-        setOpeningCash(oc);
-
-        // Métodos de pago (para declarar por cada uno)
-        const pm = await apiCashKiosk.get("/payment-methods", {
-          validateStatus: () => true,
-        });
-        const list: Row[] = (pm?.data || []).map((m: any) => ({
-          paymentMethodId: Number(m.id),
-          paymentMethodName: String(m.name),
+        const data = p?.data || {};
+        setOpeningCash(Number(data.openingCash || 0));
+        setCashMovNet(Number(data.cashMovNet || 0));
+        setExpectedCash(Number(data.expectedCash || 0));
+        const arr: PreviewRow[] = (data.methods || []).map((m: any) => ({
+          paymentMethodId: Number(m.paymentMethodId),
+          paymentMethodName: String(m.paymentMethodName),
           isCash: !!m.isCash,
+          expected: Number(m.expected || 0),
         }));
-        setRows(list);
+        setRows(arr);
 
-        // Inicializa “declarado” en 0 para cada método
-        const init: Record<string, number> = {};
-        list.forEach((r) => (init[`decl_${r.paymentMethodId}`] = 0));
-        form.setFieldsValue(init);
+        // initial declared = expected
+        const declaredInit: Record<string, number> = {};
+        arr.forEach(
+          (r) => (declaredInit[`decl_${r.paymentMethodId}`] = r.expected)
+        );
+        form.setFieldsValue(declaredInit);
       } catch (e) {
-        message.error("No se pudo preparar el cierre");
+        message.error("No se pudo cargar el pre-cierre");
       } finally {
         setLoading(false);
       }
     })();
   }, [open, sid, form]);
 
-  const columns: ColumnsType<Row> = [
+  const columns: ColumnsType<PreviewRow> = [
     {
       title: "Método",
       dataIndex: "paymentMethodName",
@@ -83,6 +85,14 @@ export default function CloseShiftModal({
           {v} {r.isCash ? <Tag color="gold">EFECTIVO</Tag> : null}
         </Space>
       ),
+    },
+    {
+      title: "Esperado",
+      dataIndex: "expected",
+      key: "expected",
+      align: "right",
+      render: (v) => `$${Number(v || 0).toFixed(2)}`,
+      width: 140,
     },
     {
       title: "Declarado",
@@ -104,7 +114,41 @@ export default function CloseShiftModal({
         </Form.Item>
       ),
     },
+    {
+      title: "Diferencia",
+      key: "diff",
+      align: "right",
+      width: 160,
+      render: (_, r) => {
+        const val =
+          Number(form.getFieldValue(`decl_${r.paymentMethodId}`) || 0) -
+          Number(r.expected || 0);
+        const color =
+          Math.abs(val) < 0.01 ? "green" : val >= 0 ? "blue" : "red";
+        return (
+          <Tag color={color}>
+            {val >= 0 ? "+" : ""}
+            {val.toFixed(2)}
+          </Tag>
+        );
+      },
+    },
   ];
+
+  const declaredCash = useMemo(() => {
+    return rows
+      .filter((r) => r.isCash)
+      .reduce(
+        (a, r) =>
+          a + Number(form.getFieldValue(`decl_${r.paymentMethodId}`) || 0),
+        0
+      );
+  }, [rows, form]);
+
+  const differenceCash = useMemo(
+    () => Number(declaredCash || 0) - Number(expectedCash || 0),
+    [declaredCash, expectedCash]
+  );
 
   const handleClose = async () => {
     if (!sid) return message.error("No hay turno activo");
@@ -143,16 +187,40 @@ export default function CloseShiftModal({
       footer={null}
       confirmLoading={loading}
       destroyOnClose
-      width={700}
+      width={800}
     >
       <Descriptions size="small" column={1} bordered className="mb-2">
-        <Descriptions.Item label="Fondo inicial (se declara como efectivo tambien)">
+        <Descriptions.Item label="Fondo inicial">
           ${Number(openingCash || 0).toFixed(2)}
+        </Descriptions.Item>
+        <Descriptions.Item label="Mov. efectivo (neto)">
+          ${Number(cashMovNet || 0).toFixed(2)}
+        </Descriptions.Item>
+        <Descriptions.Item label="Esperado efectivo">
+          <b>${Number(expectedCash || 0).toFixed(2)}</b>
+        </Descriptions.Item>
+        <Descriptions.Item label="Declarado efectivo">
+          <b>${Number(declaredCash || 0).toFixed(2)}</b>
+        </Descriptions.Item>
+        <Descriptions.Item label="Diferencia efectivo">
+          <b
+            style={{
+              color:
+                Math.abs(differenceCash) < 0.01
+                  ? "green"
+                  : differenceCash >= 0
+                    ? "#1677ff"
+                    : "red",
+            }}
+          >
+            {differenceCash >= 0 ? "+" : ""}
+            {differenceCash.toFixed(2)}
+          </b>
         </Descriptions.Item>
       </Descriptions>
 
       <Form form={form} layout="vertical">
-        <Table<Row>
+        <Table<PreviewRow>
           rowKey={(r) => r.paymentMethodId}
           columns={columns}
           dataSource={rows}

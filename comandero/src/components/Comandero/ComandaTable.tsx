@@ -502,6 +502,14 @@ const ComandaTable: React.FC<Props> = ({
       },
     },
     {
+      title: "Cant",
+      dataIndex: "qty",
+      align: "right",
+      render: (_, record) =>
+        record.rowType === "item" ? record.original.qty : null,
+      width: 80,
+    },
+    {
       title: "Producto",
       key: "producto",
       render: (_, record) => {
@@ -518,16 +526,9 @@ const ComandaTable: React.FC<Props> = ({
         );
       },
     },
+
     {
-      title: "Cant",
-      dataIndex: "qty",
-      align: "right",
-      render: (_, record) =>
-        record.rowType === "item" ? record.original.qty : null,
-      width: 80,
-    },
-    {
-      title: "P. Unitario",
+      title: "Importe",
       align: "right",
       render: (_, record) =>
         record.rowType === "item"

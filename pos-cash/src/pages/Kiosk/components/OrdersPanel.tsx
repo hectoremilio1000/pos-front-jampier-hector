@@ -12,7 +12,7 @@ export default function OrdersPanel() {
   const areas = useMemo(() => {
     const m = new Map<string, string>();
     for (const o of orders) {
-      const key = o.areaName || "–";
+      const key = o.area.name || "–";
       m.set(key, key);
     }
     return Array.from(m.keys()).sort();
@@ -21,7 +21,7 @@ export default function OrdersPanel() {
   const filtered = useMemo(() => {
     return orders
       .filter((o) =>
-        areaFilter === "all" ? true : (o.areaName || "–") === areaFilter
+        areaFilter === "all" ? true : (o.area.name || "–") === areaFilter
       )
       .filter((o) => {
         if (!q.trim()) return true;
@@ -91,7 +91,7 @@ export default function OrdersPanel() {
             >
               <div className="flex justify-between">
                 <div className="text-xs text-gray-600">
-                  Área: {o.areaName ?? "-"}
+                  Área: {o.area.name ?? "-"}
                 </div>
                 <Badge count={o.persons ?? 0} title="Personas" />
               </div>

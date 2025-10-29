@@ -2,7 +2,7 @@
 
 import apiKiosk from "@/components/apis/apiKiosk";
 
-type DeviceType = "cash" | "commander" | "monitor";
+type DeviceType = "cashier" | "commander" | "monitor";
 
 export function getKioskJwtSync(): string | null {
   return sessionStorage.getItem("kiosk_jwt");
@@ -14,7 +14,21 @@ export function isKioskJwtValid(): boolean {
 }
 
 /** Login de operador con PIN usando el kiosk_token actual */
-export async function kioskLoginWithPin(pin: string): Promise<string> {
+type KioskLoginResponse = {
+  jwt: string;
+  user: { id: number; fullName: string; role: string };
+  device: {
+    restaurantId: number;
+    stationId: number | null;
+    deviceType: "cashier" | "commander" | "monitor";
+  };
+  shift: { id: number; business_date?: string; opened_at?: string } | null;
+  expiresIn?: string; // "20m" (opcional)
+};
+
+export async function kioskLoginWithPin(
+  pin: string
+): Promise<KioskLoginResponse> {
   const kt = sessionStorage.getItem("kiosk_token");
   if (!kt) throw new Error("Dispositivo no emparejado");
 
@@ -22,24 +36,30 @@ export async function kioskLoginWithPin(pin: string): Promise<string> {
     "/kiosk/login",
     { password: pin },
     {
-      headers: { "X-Kiosk-Token": kt }, // 👈 header consistente
-      validateStatus: () => true, // no lances aquí, manejamos abajo
+      headers: { "X-Kiosk-Token": kt },
+      validateStatus: () => true,
     }
   );
 
-  const data = res.data || {};
-  if (res.status !== 200 || !data.jwt) {
-    throw new Error(data.error || "PIN incorrecto o servidor no disponible");
+  const data = (res.data || {}) as Partial<KioskLoginResponse>;
+  if (res.status !== 200 || !data.jwt || !data.user || !data.device) {
+    throw new Error(
+      (res.data && res.data.error) || "PIN incorrecto o servidor no disponible"
+    );
   }
 
-  const jwt = data.jwt as string;
-  const ttl = 20 * 60 * 1000; // 20m (si luego mandas expiresInMs, úsalo aquí)
+  // Guarda JWT y expiración como antes
+  const jwt = data.jwt;
+  const ttl = 20 * 60 * 1000; // 20 min (si luego envías expiresInMs, usa eso)
   sessionStorage.setItem("kiosk_jwt", jwt);
   sessionStorage.setItem("kiosk_jwt_exp", String(Date.now() + ttl));
-  return jwt;
+
+  // Devuelve TODO para que el provider guarde metadatos
+  return data as KioskLoginResponse;
 }
 
 /** Devuelve jwt válido o pide pinProvider() para relogin rápido */
+
 export async function getFreshKioskJwt(
   pinProvider?: () => Promise<string>
 ): Promise<string> {
@@ -49,7 +69,8 @@ export async function getFreshKioskJwt(
 
   if (!pinProvider) throw new Error("kiosk_jwt_needed");
   const pin = await pinProvider();
-  return kioskLoginWithPin(pin);
+  const resp = await kioskLoginWithPin(pin); // <- ahora devuelve objeto
+  return resp.jwt; // <- entregamos solo el string
 }
 
 /** Primer paso de pairing (commander/monitor/cash) */

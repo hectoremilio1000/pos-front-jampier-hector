@@ -1,4 +1,5 @@
-import { createContext, useContext, PropsWithChildren } from "react";
+import { createContext, useContext } from "react";
+import type { PropsWithChildren } from "react";
 import { useCashKiosk } from "../hooks/useCashKiosk";
 
 type CashCtx = ReturnType<typeof useCashKiosk> | null;

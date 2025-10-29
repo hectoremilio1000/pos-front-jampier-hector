@@ -1,35 +1,33 @@
-// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos-admin/src/pages/Modificadores/index.tsx
+// pos-admin/src/pages/Modificadores/index.tsx
 import { useEffect, useMemo, useState } from "react";
 import {
-  Table,
-  Input,
   Button,
-  message,
-  Space,
-  Tag,
-  Popconfirm,
-  Empty,
   Card,
-  Typography,
-  Divider,
+  Empty,
+  Input,
+  message,
+  Popconfirm,
+  Space,
+  Table,
+  Tag,
   Tooltip,
+  Typography,
 } from "antd";
-import { PlusOutlined, InfoCircleOutlined } from "@ant-design/icons";
-
+import { InfoCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import apiOrder from "@/components/apis/apiOrder";
-import type { ModifierValues } from "./ModifierWizardModal";
-import ModifierWizardModal from "./ModifierWizardModal";
+import GroupModal from "./partials/GroupModal";
+import ModifierModal from "./partials/ModifierModal";
 
 type Producto = { id: number; code: string; name: string };
-type ModifierItem = {
+export type ModifierItem = {
   id: number;
   modifierGroupId: number;
   modifierId: number;
   priceDelta: number;
   isEnabled: boolean;
-  modifier: Producto;
+  modifier?: Producto;
 };
-type ModifierGroup = {
+export type ModifierGroup = {
   id: number;
   name: string;
   code: string;
@@ -37,19 +35,26 @@ type ModifierGroup = {
 };
 
 export default function ModificadoresPage() {
+  // datos
   const [groups, setGroups] = useState<ModifierGroup[]>([]);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [search, setSearch] = useState("");
 
-  // modal state
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState<"create" | "edit">("create");
-  const [modalInitial, setModalInitial] = useState<ModifierValues | undefined>(
-    undefined
+  // selección
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+
+  // filtros
+  const [searchGroup, setSearchGroup] = useState("");
+  const [searchMod, setSearchMod] = useState("");
+
+  // modales
+  const [groupModalOpen, setGroupModalOpen] = useState(false);
+  const [groupModalEditing, setGroupModalEditing] =
+    useState<ModifierGroup | null>(null);
+
+  const [modModalOpen, setModModalOpen] = useState(false);
+  const [modModalEditing, setModModalEditing] = useState<ModifierItem | null>(
+    null
   );
-  const [editId, setEditId] = useState<number | null>(null);
-  const [excludeIds, setExcludeIds] = useState<number[]>([]); // productos ya usados en el conjunto seleccionado
 
   const fetchGroups = async () => {
     setLoading(true);
@@ -57,8 +62,11 @@ export default function ModificadoresPage() {
       const res = await apiOrder.get("/modifier-groups");
       const data = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
       setGroups(data);
-    } catch {
-      message.error("Error al cargar conjuntos de modificadores");
+      if (!selectedGroupId && data.length > 0) {
+        setSelectedGroupId(data[0].id);
+      }
+    } catch (e) {
+      message.error("No se pudieron cargar los grupos de modificadores");
     } finally {
       setLoading(false);
     }
@@ -66,152 +74,102 @@ export default function ModificadoresPage() {
 
   useEffect(() => {
     fetchGroups();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filtered = useMemo(
-    () =>
-      groups.filter((g) =>
-        `${g.name} ${g.code}`.toLowerCase().includes(search.toLowerCase())
-      ),
-    [groups, search]
+  const selectedGroup = useMemo(
+    () => groups.find((g) => g.id === selectedGroupId) || null,
+    [groups, selectedGroupId]
   );
 
-  // abrir crear
-  const openCreate = (groupId?: number) => {
-    const gid = groupId ?? groups[0]?.id ?? 0;
-    const used =
-      groups.find((g) => g.id === gid)?.modifiers?.map((m) => m.modifierId) ??
-      [];
-    setExcludeIds(used);
+  const filteredGroups = useMemo(() => {
+    const q = searchGroup.trim().toLowerCase();
+    if (!q) return groups;
+    return groups.filter((g) =>
+      `${g.name} ${g.code}`.toLowerCase().includes(q)
+    );
+  }, [groups, searchGroup]);
 
-    setEditId(null);
-    setModalMode("create");
-    setModalInitial({
-      modifierGroupId: gid,
-      modifierId: null,
-      priceDelta: 0,
-      isEnabled: true,
-    });
-    setModalOpen(true);
+  const allModsOfSelected = useMemo(() => {
+    const mods = selectedGroup?.modifiers ?? [];
+    const q = searchMod.trim().toLowerCase();
+    if (!q) return mods;
+    return mods.filter((m) =>
+      `${m.modifier?.code ?? ""} ${m.modifier?.name ?? ""}`
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [selectedGroup, searchMod]);
+
+  /* ─────────── acciones grupos ─────────── */
+
+  const openCreateGroup = () => {
+    setGroupModalEditing(null);
+    setGroupModalOpen(true);
   };
 
-  // abrir editar
-  const openEdit = (row: ModifierItem) => {
-    const used =
-      groups
-        .find((g) => g.id === row.modifierGroupId)
-        ?.modifiers?.map((m) => m.modifierId) ?? [];
-    // permite elegir el mismo producto que ya tiene esta línea
-    setExcludeIds(used.filter((id) => id !== row.modifierId));
-
-    setEditId(row.id);
-    setModalMode("edit");
-    setModalInitial({
-      modifierGroupId: row.modifierGroupId,
-      modifierId: row.modifierId,
-      priceDelta: row.priceDelta,
-      isEnabled: row.isEnabled,
-    });
-    setModalOpen(true);
+  const openEditGroup = (g: ModifierGroup) => {
+    setGroupModalEditing(g);
+    setGroupModalOpen(true);
   };
 
-  // guardar
-  const handleSave = async (vals: ModifierValues) => {
-    // Guardas defensivas para no mandar undefined
-    if (!vals?.modifierGroupId) {
-      message.warning("Elige un conjunto.");
-      return;
-    }
-    if (vals?.modifierId == null) {
-      message.warning("Elige o crea el producto del modificador.");
-      return;
-    }
-
-    setSaving(true);
+  const deleteGroup = async (id: number) => {
     try {
-      if (editId) {
-        await apiOrder.put(`/modifiers/${editId}`, vals);
-        message.success("Modificador actualizado");
-      } else {
-        await apiOrder.post(`/modifiers`, vals);
-        message.success("Modificador creado");
-      }
-      setModalOpen(false);
-      setEditId(null);
+      await apiOrder.delete(`/modifier-groups/${id}`);
+      message.success("Grupo eliminado");
       await fetchGroups();
+      if (selectedGroupId === id) setSelectedGroupId(null);
     } catch (e: any) {
-      const msg = e?.response?.data?.message || "";
-      if (msg.toLowerCase().includes("duplicate")) {
-        message.error("Ese producto ya es modificador en este conjunto.");
-      } else {
-        message.error("Error al guardar modificador");
-      }
-    } finally {
-      setSaving(false);
+      message.error(e?.response?.data?.message ?? "Error al eliminar el grupo");
     }
   };
 
-  const handleDelete = async (id: number) => {
+  /* ─────────── acciones modifiers ───────── */
+
+  const openCreateModifier = () => {
+    if (!selectedGroup) {
+      message.warning("Primero elige un grupo");
+      return;
+    }
+    setModModalEditing(null);
+    setModModalOpen(true);
+  };
+
+  const openEditModifier = (m: ModifierItem) => {
+    setModModalEditing(m);
+    setModModalOpen(true);
+  };
+
+  const deleteModifier = async (id: number) => {
     try {
       await apiOrder.delete(`/modifiers/${id}`);
       message.success("Modificador eliminado");
       await fetchGroups();
-    } catch {
-      message.error("Error al eliminar modificador");
+    } catch (e: any) {
+      message.error(
+        e?.response?.data?.message ?? "Error al eliminar el modificador"
+      );
     }
   };
 
+  /* ─────────── tablas ─────────── */
+
   const colsGroups = [
     { title: "Nombre", dataIndex: "name" },
-    { title: "Código", dataIndex: "code" },
+    { title: "Código", dataIndex: "code", width: 120 },
     {
       title: "Acciones",
-      render: (_: any, record: ModifierGroup) => (
+      width: 170,
+      render: (_: any, r: ModifierGroup) => (
         <Space>
-          <Button size="small" onClick={() => openCreate(record.id)}>
-            + Modificador
-          </Button>
-        </Space>
-      ),
-    },
-  ];
-
-  const colsModifiers = [
-    {
-      title: "Conjunto",
-      dataIndex: "modifierGroupId",
-      render: (_: any, row: ModifierItem) =>
-        groups.find((gg) => gg.id === row.modifierGroupId)?.name ??
-        row.modifierGroupId,
-    },
-    {
-      title: "Producto",
-      render: (_: any, row: ModifierItem) =>
-        `${row.modifier?.code ?? ""} ${row.modifier?.name ?? ""}`,
-    },
-    {
-      title: "Extra",
-      dataIndex: "priceDelta",
-      render: (v: number) => `$${Number(v).toFixed(2)}`,
-    },
-    {
-      title: "Estado",
-      dataIndex: "isEnabled",
-      render: (v: boolean) =>
-        v ? <Tag color="green">Activo</Tag> : <Tag color="red">Off</Tag>,
-    },
-    {
-      title: "Acciones",
-      render: (_: any, row: ModifierItem) => (
-        <Space>
-          <Button size="small" onClick={() => openEdit(row)}>
+          <Button size="small" onClick={() => openEditGroup(r)}>
             Editar
           </Button>
           <Popconfirm
-            title="¿Eliminar modificador?"
+            title="¿Eliminar grupo?"
             okText="Sí"
             cancelText="No"
-            onConfirm={() => handleDelete(row.id)}
+            onConfirm={() => deleteGroup(r.id)}
           >
             <Button size="small" danger>
               Eliminar
@@ -222,122 +180,167 @@ export default function ModificadoresPage() {
     },
   ];
 
-  const allModifiers: ModifierItem[] = groups.flatMap((g) => g.modifiers ?? []);
+  const colsMods = [
+    {
+      title: "Producto",
+      render: (_: any, r: ModifierItem) =>
+        `${r.modifier?.code ?? ""} ${r.modifier?.name ?? ""}`,
+    },
+    {
+      title: "Extra",
+      dataIndex: "priceDelta",
+      width: 120,
+      render: (v: number) => `$${Number(v ?? 0).toFixed(2)}`,
+    },
+    {
+      title: "Estado",
+      dataIndex: "isEnabled",
+      width: 110,
+      render: (v: boolean) =>
+        v ? <Tag color="green">Activo</Tag> : <Tag color="red">Off</Tag>,
+    },
+    {
+      title: "Acciones",
+      width: 180,
+      render: (_: any, r: ModifierItem) => (
+        <Space>
+          <Button size="small" onClick={() => openEditModifier(r)}>
+            Editar
+          </Button>
+          <Popconfirm
+            title="¿Eliminar modificador?"
+            okText="Sí"
+            cancelText="No"
+            onConfirm={() => deleteModifier(r.id)}
+          >
+            <Button size="small" danger>
+              Eliminar
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
 
   return (
-    <div className="space-y-4 max-w-6xl mx-auto">
-      {/* Encabezado de página */}
-      <div className="flex justify-between items-center">
-        <Input
-          placeholder="Buscar conjunto o código"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-sm"
-        />
-        <div className="flex gap-2">
+    <div className="space-y-4 max-w-7xl mx-auto">
+      <div className="flex items-center justify-between">
+        <Typography.Title level={4} style={{ margin: 0 }}>
+          Grupos de modificadores y líneas
+        </Typography.Title>
+        <Space>
           <Button
             type="primary"
             icon={<PlusOutlined />}
-            onClick={() => openCreate()}
+            onClick={openCreateGroup}
           >
-            Crear modificador
+            Nuevo grupo
           </Button>
-        </div>
+          <Tooltip title="Crea una línea (producto como extra) dentro del grupo seleccionado">
+            <Button onClick={openCreateModifier}>Nuevo modificador</Button>
+          </Tooltip>
+        </Space>
       </div>
 
-      {/* SECCIÓN 1: Conjuntos (familias) */}
-      <Card
-        size="default"
-        title={
-          <Space>
-            <Typography.Text strong>Conjuntos de modificadores</Typography.Text>
-            <Tooltip title="Conjunto de modificadores donde agruparás los extras. Ej.: Toppings, Salsas, Aderezos.">
-              <InfoCircleOutlined />
-            </Tooltip>
-          </Space>
-        }
-        extra={
-          <Button
-            type="primary"
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+        {/* Columna izquierda: grupos */}
+        <Card
+          title={
+            <Space>
+              <Typography.Text strong>Grupos</Typography.Text>
+              <Tooltip title="Grupos/familias de extras. Luego enlazas estos grupos a productos en el módulo de Productos.">
+                <InfoCircleOutlined />
+              </Tooltip>
+            </Space>
+          }
+          extra={
+            <Input
+              placeholder="Buscar nombre o código"
+              value={searchGroup}
+              onChange={(e) => setSearchGroup(e.target.value)}
+              style={{ width: 240 }}
+            />
+          }
+        >
+          <Table
             size="small"
-            icon={<PlusOutlined />}
-            onClick={() => openCreate()}
-          >
-            Crear modificador
-          </Button>
-        }
-      >
-        <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          <span style={{ fontWeight: 500 }}>Arriba:</span> gestiona los{" "}
-          <em>conjuntos</em> de extras (modificadores). Desde cada fila puedes
-          agregar un modificador con{" "}
-          <span style={{ fontWeight: 500 }}>+ Modificador</span>.
-        </Typography.Paragraph>
+            rowKey={(r: ModifierGroup) => `g-${r.id}`}
+            columns={colsGroups as any}
+            dataSource={filteredGroups}
+            loading={loading}
+            pagination={{ pageSize: 8 }}
+            onRow={(row) => ({
+              onClick: () => setSelectedGroupId(row.id),
+              className: selectedGroupId === row.id ? "bg-gray-50" : "",
+            })}
+          />
+        </Card>
 
-        <Table
-          locale={{ emptyText: <Empty description="Sin conjuntos todavía" /> }}
-          rowKey={(r: ModifierGroup) => `g-${r.id}`}
-          columns={colsGroups as any}
-          dataSource={filtered}
-          loading={loading}
-          pagination={false}
-        />
-      </Card>
+        {/* Columna derecha: modifiers del grupo seleccionado */}
+        <Card
+          title={
+            <Space>
+              <Typography.Text strong>Modificadores del grupo</Typography.Text>
+              {selectedGroup ? (
+                <Tag>{selectedGroup.name}</Tag>
+              ) : (
+                <Tag color="default">Sin grupo</Tag>
+              )}
+            </Space>
+          }
+          extra={
+            <Input
+              placeholder="Buscar producto..."
+              value={searchMod}
+              onChange={(e) => setSearchMod(e.target.value)}
+              style={{ width: 240 }}
+            />
+          }
+        >
+          <Table
+            size="small"
+            locale={{
+              emptyText: <Empty description="Elige un grupo de la izquierda" />,
+            }}
+            rowKey={(r: ModifierItem) => `m-${r.id}`}
+            columns={colsMods as any}
+            dataSource={allModsOfSelected}
+            loading={loading}
+            pagination={{ pageSize: 10 }}
+          />
+        </Card>
+      </div>
 
-      {/* Separador visual claro entre secciones */}
-      <Divider orientation="left" plain></Divider>
-
-      {/* SECCIÓN 2: Modificadores (líneas) */}
-      <Card
-        size="default"
-        title={
-          <Space>
-            <Typography.Text strong>Modificadores</Typography.Text>
-            <Tooltip title="Cada línea conecta un producto (ingrediente) con un conjunto, con su precio extra.">
-              <InfoCircleOutlined />
-            </Tooltip>
-          </Space>
-        }
-      >
-        <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          <span style={{ fontWeight: 500 }}>Abajo:</span> ves las{" "}
-          <em>líneas</em> ya creadas: Conjunto → Producto (modificador) → Extra
-          → Estado.
-        </Typography.Paragraph>
-
-        <Table
-          locale={{
-            emptyText: <Empty description="Sin modificadores todavía" />,
-          }}
-          rowKey={(r: ModifierItem) => `m-${r.id}`}
-          columns={colsModifiers as any}
-          dataSource={allModifiers}
-          loading={loading}
-          pagination={{ pageSize: 10 }}
-        />
-      </Card>
-
-      {/* Wizard */}
-      <ModifierWizardModal
-        open={modalOpen}
-        mode={modalMode}
-        initial={modalInitial}
-        confirmLoading={saving}
-        excludeProductIds={excludeIds}
+      {/* Modales */}
+      <GroupModal
+        open={groupModalOpen}
+        editing={groupModalEditing}
         onCancel={() => {
-          setModalOpen(false);
-          setEditId(null);
-          setExcludeIds([]);
+          setGroupModalOpen(false);
+          setGroupModalEditing(null);
         }}
-        onOk={handleSave}
-        onDuplicateCheck={(v) => {
-          const g = groups.find((gg) => gg.id === v.modifierGroupId);
-          const exists = g?.modifiers?.some(
-            (m) => m.modifierId === v.modifierId && (!editId || m.id !== editId)
-          );
-          return exists
-            ? "Ese producto ya es modificador en esta familia."
-            : null;
+        onSaved={async () => {
+          setGroupModalOpen(false);
+          setGroupModalEditing(null);
+          await fetchGroups();
+        }}
+      />
+
+      <ModifierModal
+        open={modModalOpen}
+        editing={modModalEditing}
+        groupId={selectedGroupId ?? undefined}
+        existingModifierIds={
+          selectedGroup?.modifiers?.map((m) => m.modifierId) ?? []
+        }
+        onCancel={() => {
+          setModModalOpen(false);
+          setModModalEditing(null);
+        }}
+        onSaved={async () => {
+          setModModalOpen(false);
+          setModModalEditing(null);
+          await fetchGroups();
         }}
       />
     </div>

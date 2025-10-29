@@ -1,135 +1,215 @@
-// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos-admin/src/pages/Productos/ModifierGroupSelectorModal.tsx
-import { useEffect, useState } from "react";
-import { Modal, Collapse, Checkbox, Spin, message, Input, Button } from "antd";
-import type { ModifierGroupConfig } from "./ModifierGroupCard";
-import apiOrder from "../../components/apis/apiOrder";
+// pos-admin/src/pages/Productos/ModifierGroupSelectorModal.tsx
+import { useEffect, useMemo, useState } from "react";
+import {
+  Modal,
+  Input,
+  List,
+  Checkbox,
+  Space,
+  Tag,
+  Button,
+  message,
+  Typography,
+} from "antd";
+import apiOrder from "@/components/apis/apiOrder";
+import type { ModifierGroupConfig, ModifierLine } from "./ModifierGroupCard";
 
-const { Panel } = Collapse;
+const { Text } = Typography;
 
-interface Props {
-  open: boolean;
-  onClose: () => void;
-  selectedIds: number[];
-  onSave: (groups: ModifierGroupConfig[]) => void;
-}
+type Producto = {
+  id: number;
+  code: string;
+  name: string;
+  groupId: number;
+  subgroupId: number | null;
+  basePrice?: number;
+  taxRate?: number;
+  isEnabled?: boolean;
+};
 
-export default function SelectorModal({
+type ModItem = {
+  id: number;
+  modifierGroupId: number;
+  modifierId: number;
+  priceDelta: number;
+  isEnabled: boolean;
+  modifier?: Producto; // preload del backend
+};
+
+type RawGroup = {
+  id: number;
+  code: string;
+  name: string;
+  modifiers: ModItem[];
+};
+
+export default function ModifierGroupSelectorModal({
   open,
   onClose,
   selectedIds,
   onSave,
-}: Props) {
-  /* estado */
-  const [groups, setGroups] = useState<any[]>([]);
+}: {
+  open: boolean;
+  onClose: () => void;
+  selectedIds: number[]; // grupos ya agregados en el producto
+  onSave: (newGroups: ModifierGroupConfig[]) => void;
+}) {
   const [loading, setLoading] = useState(false);
-  const [picked, setPicked] = useState<number[]>([]);
-  const [newCode, setNewCode] = useState("");
-  const [newName, setNewName] = useState("");
+  const [groups, setGroups] = useState<RawGroup[]>([]);
+  const [q, setQ] = useState("");
+  const [chosen, setChosen] = useState<number[]>([]);
 
-  /*  ► Carga SOLO los grupos */
   useEffect(() => {
     if (!open) return;
-    setLoading(true);
     (async () => {
+      setLoading(true);
       try {
-        const res = await apiOrder.get("/modifier-groups");
-        const all = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
-        const selected = Array.isArray(selectedIds) ? selectedIds : [];
-        setGroups(all.filter((g: any) => !selected.includes(g.id)));
+        const res = await apiOrder.get("/modifier-groups"); // preload('modifiers.modifier')
+        const data: RawGroup[] = Array.isArray(res.data)
+          ? res.data
+          : (res.data?.data ?? []);
+        setGroups(data);
+        setChosen([]);
       } catch {
-        message.error("Error cargando grupos");
+        message.error("No se pudieron cargar los grupos de modificadores");
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-      setPicked([]);
-      setNewCode("");
-      setNewName("");
     })();
-  }, [open, selectedIds]);
+  }, [open]);
 
-  /* helper default */
-  const toCfg = (g: any): ModifierGroupConfig => ({
-    ...g,
-    includedQty: 0,
-    maxQty: 1,
-    isForced: false,
-    captureIncluded: false,
-    priority: 0,
-  });
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return groups;
+    return groups.filter((g) =>
+      `${g.name} ${g.code}`.toLowerCase().includes(s)
+    );
+  }, [q, groups]);
 
-  /* crear grupo temporal */
-  const addTemp = () => {
-    if (!newCode.trim() || !newName.trim()) {
-      return message.warning("Código y nombre requeridos");
+  const toggle = (id: number) =>
+    setChosen((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+
+  const handleOk = () => {
+    // Mapear a tu estructura ModifierGroupConfig
+    const picked = groups.filter(
+      (g) => chosen.includes(g.id) && !selectedIds.includes(g.id)
+    );
+
+    const result: ModifierGroupConfig[] = picked.map((g) => {
+      const modifiers: ModifierLine[] = (g.modifiers ?? []).map((m) => ({
+        modifierGroupId: g.id,
+        modifierId: m.modifierId ?? null,
+        priceDelta: Number(m.priceDelta ?? 0),
+        isEnabled: !!m.isEnabled,
+        // ProductMod mínimo para tu UI (si falta basePrice/taxRate, valores por defecto)
+        modifier: {
+          id: m.modifier?.id ?? null,
+          groupId: m.modifier?.groupId ?? 0,
+          subgroupId: m.modifier?.subgroupId ?? null,
+          code: m.modifier?.code ?? "",
+          name: m.modifier?.name ?? "",
+          basePrice: m.modifier?.basePrice ?? 0,
+          taxRate: m.modifier?.taxRate ?? 16,
+          isEnabled: m.modifier?.isEnabled ?? true,
+          isNew: false,
+        } as any,
+      }));
+
+      // Defaults sensatos para la config del pivote
+      return {
+        id: g.id,
+        name: g.name,
+        code: g.code,
+        includedQty: 0,
+        maxQty: 0,
+        isForced: false,
+        captureIncluded: false,
+        priority: 0,
+        modifiers,
+        isNew: false,
+      };
+    });
+
+    if (result.length === 0) {
+      message.info("No hay grupos nuevos seleccionados");
+      return;
     }
-    const tempId = Date.now() * -1; // id negativo temporal
-    const temp = {
-      id: tempId,
-      code: newCode,
-      name: newName,
-      isNew: true,
-    };
-    console.log(groups);
-    setGroups([...groups, temp]);
-    setPicked([...picked, tempId]);
-    setNewCode("");
-    setNewName("");
-  };
-
-  /* confirmar */
-  const confirm = () => {
-    console.log(groups);
-    const base = Array.isArray(groups) ? groups : [];
-    const picks = Array.isArray(picked) ? picked : [];
-    const sel = base.filter((g) => picks.includes(g.id)).map(toCfg);
-    onSave(sel);
+    onSave(result);
     onClose();
   };
 
   return (
     <Modal
       open={open}
-      title="Elegir / crear grupos"
       onCancel={onClose}
-      onOk={confirm}
+      onOk={handleOk}
       okText="Agregar"
-      width={500}
+      cancelText="Cancelar"
+      title="Seleccionar grupos de modificadores"
+      width={700}
+      confirmLoading={loading}
+      destroyOnClose
     >
-      {/* crear rápido */}
-      <div className="flex gap-2 mb-3">
+      <Space direction="vertical" className="w-full" size="small">
         <Input
-          placeholder="Código"
-          value={newCode}
-          onChange={(e) => setNewCode(e.target.value)}
+          placeholder="Buscar por nombre o código…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          allowClear
         />
-        <Input
-          placeholder="Nombre del grupo"
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
+        <List
+          loading={loading}
+          className="mt-2"
+          dataSource={filtered}
+          locale={{ emptyText: "No hay grupos" }}
+          renderItem={(g) => {
+            const already = selectedIds.includes(g.id);
+            const disabled = already;
+            const checked = chosen.includes(g.id);
+            return (
+              <List.Item
+                actions={[
+                  already ? (
+                    <Tag color="blue" key="ya">
+                      Ya agregado
+                    </Tag>
+                  ) : (
+                    <Button
+                      size="small"
+                      type="link"
+                      onClick={() => toggle(g.id)}
+                      key="sel"
+                    >
+                      {checked ? "Quitar" : "Elegir"}
+                    </Button>
+                  ),
+                ]}
+              >
+                <Space direction="vertical" size={0} className="w-full">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      checked={checked || already}
+                      disabled={disabled}
+                      onChange={() => toggle(g.id)}
+                    />
+                    <Text strong>
+                      {g.name} <Text type="secondary">({g.code})</Text>
+                    </Text>
+                    <Tag>{(g.modifiers ?? []).length} mods</Tag>
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    Incluye los modificadores ya definidos en este grupo. Podrás
+                    configurar cantidades incluidas, máximo, si es obligatorio,
+                    etc., en el producto.
+                  </div>
+                </Space>
+              </List.Item>
+            );
+          }}
         />
-        <Button type="dashed" onClick={addTemp}>
-          Crear
-        </Button>
-      </div>
-
-      <Spin spinning={loading}>
-        {groups.length === 0 ? (
-          <p className="text-center text-gray-500">Sin grupos disponibles</p>
-        ) : (
-          <Checkbox.Group
-            value={picked}
-            onChange={(v) => setPicked(v as number[])}
-            className="w-full"
-          >
-            <Collapse accordion>
-              {groups.map((g) => (
-                <Panel header={g.name} key={g.id}>
-                  <Checkbox value={g.id}>Seleccionar</Checkbox>
-                </Panel>
-              ))}
-            </Collapse>
-          </Checkbox.Group>
-        )}
-      </Spin>
+      </Space>
     </Modal>
   );
 }

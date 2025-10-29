@@ -9,6 +9,12 @@ interface Area {
   name: string;
   sortOrder: number;
 }
+interface Service {
+  id: number | null;
+  restaurantId: number;
+  name: string;
+  sortOrder: number;
+}
 type Grupo = {
   id: number;
   name: string;
@@ -52,6 +58,8 @@ type Producto = {
   categoria: "alimentos" | "bebidas" | "otros";
   unidad: string;
   basePrice: number;
+  taxRate: number;
+  priceGross: number;
   contieneIVA: boolean;
   printArea: number;
   areaImpresion: AreaImpresion;
@@ -67,6 +75,8 @@ interface OrderItem {
   productId: number;
   qty: number;
   unitPrice: number;
+  taxRate: number;
+  basePrice: number;
   total: number;
   notes: string | null;
   course: number;
@@ -93,11 +103,14 @@ type Props = {
     tableName: string;
     persons: number;
     area_id: number | null;
+    service_id: number | null;
     area: Area;
+    service: Service;
     items: OrderItem[];
   }) => void;
 
   areas: Area[];
+  services: Service[];
 };
 
 const { Step } = Steps;
@@ -108,12 +121,17 @@ const RegistroChequeModal: React.FC<Props> = ({
   onClose,
   onRegistrar,
   areas,
+  services,
 }) => {
-  console.log(areas);
   const [step, setStep] = useState(0);
   const [cuenta, setCuenta] = useState("");
   const [personas, setPersonas] = useState("");
-  const [area, setArea] = useState(null);
+  const [area, setArea] = useState<number | null>(
+    areas[0] ? Number(areas[0].id) : null
+  );
+  const [service, setService] = useState<number | null>(
+    services[0] ? Number(services[0].id) : null
+  );
 
   const avanzar = () => setStep((s) => s + 1);
   const retroceder = () => setStep((s) => s - 1);
@@ -122,6 +140,7 @@ const RegistroChequeModal: React.FC<Props> = ({
     setCuenta("");
     setPersonas("");
     setArea(null);
+    setService(null);
   };
 
   // onRegistrar ahora es async
@@ -135,8 +154,34 @@ const RegistroChequeModal: React.FC<Props> = ({
       message.warning("Selecciona un área");
       return;
     }
+    if (!service) {
+      message.warning("Selecciona un servicio");
+      return;
+    }
     if (!/^\d+$/.test(personas)) {
       message.warning("Número de personas inválido");
+      return;
+    }
+    type KioskUser = { id?: number | string; fullName?: string; role?: string };
+
+    function getWaiterIdFromSession(): number {
+      const raw = sessionStorage.getItem("kiosk_user_json");
+      if (!raw) return 0;
+
+      try {
+        const user: KioskUser = JSON.parse(raw);
+        const id =
+          typeof user?.id === "number" ? user.id : Number(user?.id ?? NaN);
+        return Number.isFinite(id) ? id : 0;
+      } catch {
+        return 0; // si el JSON está mal formado
+      }
+    }
+
+    const waiterId = getWaiterIdFromSession();
+    const shiftId = Number(sessionStorage.getItem("kiosk_shift_id") || "0");
+    if (!shiftId) {
+      message.error("No hay turno abierto; no se puede crear la orden.");
       return;
     }
 
@@ -145,17 +190,21 @@ const RegistroChequeModal: React.FC<Props> = ({
         tableName: cuenta.trim(), // alias
         persons: Number(personas),
         areaId: area, // requerido por alias
-        service: "DINING",
+        serviceId: service, // requerido por alias
+        waiterId, // mesero logueado (PIN)
+        shiftId, // turno activo
       });
 
       if (data?.id) {
         onRegistrar({
-          shiftId: null,
+          shiftId: data.shiftId,
           id: data.id,
           tableName: data.tableName,
           persons: data.persons,
           area_id: data.areaId ?? null,
+          service_id: data.serviceId ?? null,
           area: data.area, // ya lo devuelve con { id, name }
+          service: data.service, // ya lo devuelve con { id, name }
           items: [],
         });
         onClose();
@@ -168,6 +217,30 @@ const RegistroChequeModal: React.FC<Props> = ({
     } catch (e) {
       console.error(e);
       message.error("No se pudo crear la orden");
+    }
+  };
+  const pintarArea = (a: number | null) => {
+    if (a === null) {
+      return "";
+    } else {
+      const areaSearch = areas.find((ar) => ar.id === a);
+      if (areaSearch) {
+        return areaSearch.name;
+      } else {
+        return "";
+      }
+    }
+  };
+  const pintarService = (s: number | null) => {
+    if (s === null) {
+      return "";
+    } else {
+      const serviceSearch = services.find((sr) => sr.id === s);
+      if (serviceSearch) {
+        return serviceSearch.name;
+      } else {
+        return "";
+      }
     }
   };
 
@@ -227,7 +300,40 @@ const RegistroChequeModal: React.FC<Props> = ({
                 <strong>Personas:</strong> {personas}
               </p>
               <p>
-                <strong>Área:</strong> {area}
+                <strong>Área:</strong> {pintarArea(area)}
+              </p>
+              <p>
+                <strong>Service:</strong> {pintarService(service)}
+              </p>
+            </div>
+          </div>
+        );
+      case 3:
+        return (
+          <div className="flex flex-col gap-4">
+            <p className="font-semibold">Servicio:</p>
+            <Select value={service} onChange={setService}>
+              {services.map((s, index) => {
+                return (
+                  <Option key={index} value={s.id}>
+                    {s.name}
+                  </Option>
+                );
+              })}
+            </Select>
+            <div className="mt-4 p-4 border rounded bg-white shadow">
+              <p className="font-semibold">Resumen:</p>
+              <p>
+                <strong>Cuenta:</strong> {cuenta}
+              </p>
+              <p>
+                <strong>Personas:</strong> {personas}
+              </p>
+              <p>
+                <strong>Área:</strong> {pintarArea(area)}
+              </p>
+              <p>
+                <strong>Service:</strong> {pintarService(service)}
               </p>
             </div>
           </div>
@@ -251,12 +357,12 @@ const RegistroChequeModal: React.FC<Props> = ({
             Atrás
           </Button>
         ),
-        step < 2 && (
+        step < 3 && (
           <Button key="next" type="primary" onClick={avanzar}>
             Siguiente
           </Button>
         ),
-        step === 2 && (
+        step === 3 && (
           <Button key="submit" type="primary" onClick={registrar}>
             Registrar
           </Button>
@@ -269,6 +375,7 @@ const RegistroChequeModal: React.FC<Props> = ({
         <Step title="Nombre" />
         <Step title="Personas" />
         <Step title="Área" />
+        <Step title="Service" />
       </Steps>
       {renderPaso()}
     </Modal>

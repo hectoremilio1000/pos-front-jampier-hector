@@ -5,6 +5,12 @@ import { useNavigate } from "react-router-dom";
 import apiAuth from "../apis/apiAuth";
 import apiCash from "../apis/apiCash";
 import { message } from "antd";
+import { kioskCheckPairedStatus } from "../Kiosk/session";
+import {
+  kioskLoginWithPin,
+  kioskPairConfirm,
+  kioskPairStart,
+} from "../Kiosk/token";
 
 interface Restaurant {
   id: number;
@@ -35,7 +41,12 @@ interface Shift {
 interface AuthContextType {
   user: User | null;
   token: string | null; // opaco
-  login: (email: string, password: string) => Promise<void>;
+  doLogin: (pin: string) => Promise<void>;
+  doPair: (
+    code: string,
+    deviceName: string,
+    selectedDeviceId: number
+  ) => Promise<void>;
   logout: () => void;
   loading: boolean;
   shift: Shift | null;
@@ -47,86 +58,126 @@ export const useAuth = () => useContext(AuthContext);
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [shift, setShift] = useState<Shift | null>(null);
-  const [token, setToken] = useState<string | null>(null); // opaco
+
+  const [kioskToken, setKioskToken] = useState<string | null>(null); // opaco
+  const [kioskJwt, setKioskJwt] = useState<string | null>(null); // opaco
+  const [kioskJwtExp, setKioskJwtExp] = useState<string | null>(null); // opaco
+  const [kioskDeviceName, setKioskDeviceName] = useState<string | null>(null); // opaco
+
+  const [hasPair, setHasPair] = useState<boolean>(
+    !!sessionStorage.getItem("kiosk_token")
+  );
+  type PairState = "none" | "paired" | "revoked";
+  const [pairState, setPairState] = useState<PairState>(
+    sessionStorage.getItem("kiosk_token") ? "paired" : "none"
+  );
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  const apiUrlAuth = import.meta.env.VITE_API_URL_AUTH;
-
-  // sesión vieja: opaco sin refresh → forzar login
   useEffect(() => {
-    const opaque = sessionStorage.getItem("token");
-    const hasRefresh = !!sessionStorage.getItem("refresh_token");
-
-    if (opaque && !hasRefresh) {
-      sessionStorage.clear();
-      navigate("/login");
-      setLoading(false);
-      return;
-    }
-
-    if (opaque) {
-      setToken(opaque);
-      apiAuth
-        .get("/me")
-        .then((res) => setUser(res.data))
-        .catch(() => logout());
-
-      // Si tu API de cash permite /shifts/current sin params, lo dejamos.
-      // Si requiere stationCode, deberás pasarlo desde UI.
-      apiCash
-        .get("/shifts/current")
-        .then((res) => setShift(res.data || null))
-        .catch(() => setShift(null));
-    }
-    setLoading(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    (async () => {
+      const status = await kioskCheckPairedStatus();
+      if (status === "paired") {
+        setHasPair(true);
+        setPairState("paired");
+      } else if (status === "revoked") {
+        sessionStorage.removeItem("kiosk_token");
+        sessionStorage.removeItem("kiosk_device_name");
+        setHasPair(false);
+        setPairState("revoked");
+        message.warning(
+          "Este dispositivo fue revocado desde Admin. Vuelve a emparejarlo."
+        );
+        navigate("/login");
+      } else if (status === "invalid") {
+        setHasPair(false);
+        setPairState("none");
+      }
+    })();
   }, []);
-
-  const login = async (email: string, password: string) => {
-    const res = await axios.post(`${apiUrlAuth}/login`, { email, password });
-
-    const role = res.data.user?.role?.code;
-    // permite waiter/captain/owner/admin/superadmin según necesites
-    if (!["waiter", "captain", "owner", "admin", "superadmin"].includes(role)) {
-      message.error("No tienes permisos para entrar al Comandero");
-      return;
-    }
-
-    // 1) OPACO
-    const opaque = res.data.admin_session_token as string;
-    setToken(opaque);
-    sessionStorage.setItem("token", opaque);
-
-    // 2) JWT corto + refresh
-    const access = res.data.access_jwt as string | undefined;
-    const refresh = res.data.refresh_token as string | undefined;
-    if (access) {
-      const ttl = Number(res.data.expires_in ?? 600);
-      sessionStorage.setItem("access_jwt", access);
-      sessionStorage.setItem("access_jwt_exp", String(Date.now() + ttl * 1000));
-    }
-    if (refresh) {
-      sessionStorage.setItem("refresh_token", refresh);
-    }
-
-    // 3) /me con opaco
-    const meRes = await apiAuth.get("/me");
-    setUser(meRes.data);
-
-    // 4) Shift actual (si tu endpoint lo permite sin params)
+  function getFingerprint(): string {
+    const KEY = "kiosk_fp";
+    const saved = localStorage.getItem(KEY);
+    if (saved) return saved;
+    const fp = `web-${crypto.randomUUID()}`;
+    localStorage.setItem(KEY, fp);
+    return fp;
+  }
+  async function doPair(
+    code: string,
+    deviceName: string,
+    selectedDeviceId: number
+  ) {
     try {
-      const { data } = await apiCash.get("/shifts/current");
-      setShift(data || null);
-    } catch {
-      setShift(null);
-    }
+      if (sessionStorage.getItem("kiosk_token")) {
+        setHasPair(true);
+        setPairState("paired");
+        return message.info("Este dispositivo ya está emparejado");
+      }
+      if (!code.trim()) return message.warning("Ingresa el pairing code");
+      setLoading(true);
+      const start = await kioskPairStart(code.trim(), "commander");
+      if (start.requireStation) {
+        message.error("Commander no requiere estación; revisa deviceType");
+        return;
+      }
+      await kioskPairConfirm({
+        code: code.trim(),
+        deviceType: "commander",
+        deviceName: deviceName.trim() || "Comandero",
+        fingerprint: getFingerprint(),
+        deviceId: selectedDeviceId ?? undefined,
+      });
+      const label = deviceName.trim() || "Comandero";
+      sessionStorage.setItem("kiosk_device_name", label);
 
-    navigate("/control");
-  };
+      setHasPair(true);
+      setPairState("paired");
+      message.success("Dispositivo emparejado");
+    } catch (e: any) {
+      const txt = String(e?.message || "");
+      if (txt.includes("DEVICE_IN_USE")) {
+        message.error(
+          "Ese dispositivo ya está emparejado en otro equipo. Elige otro o desemparéjalo desde Admin."
+        );
+      } else {
+        message.error(txt || "No se pudo emparejar");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function doLogin(pin: string) {
+    try {
+      if (!/^\d{6}$/.test(pin))
+        return message.warning("PIN inválido (6 dígitos)");
+      setLoading(true);
+      await kioskLoginWithPin(pin);
+      navigate("/control", { replace: true });
+    } catch (e: any) {
+      const msg =
+        e?.message || e?.response?.data?.error || "No se pudo iniciar sesión";
+      if (/revocado/i.test(msg)) {
+        sessionStorage.removeItem("kiosk_token");
+        sessionStorage.removeItem("kiosk_device_name");
+        setHasPair(false);
+        setPairState("revoked");
+        message.error("Dispositivo revocado. Vuelve a emparejar.");
+      } else {
+        message.error(msg);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const logout = () => {
-    setToken(null);
+    setKioskToken(null);
+    setKioskDeviceName(null);
+    setKioskJwt(null);
+    setKioskJwtExp(null);
+    setKioskDeviceName(null);
     setUser(null);
     setShift(null);
     sessionStorage.clear();
@@ -135,7 +186,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <AuthContext.Provider
-      value={{ user, token, login, logout, loading, shift }}
+      value={{
+        user,
+        kioskToken,
+        kioskJwt,
+        kioskJwtExp,
+        kioskDeviceName,
+        doLogin,
+        doPair,
+        logout,
+        loading,
+        shift,
+      }}
     >
       {children}
     </AuthContext.Provider>

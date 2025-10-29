@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Card, Select, Pagination, Modal, message } from "antd";
 import { FaCashRegister, FaTable, FaUserEdit } from "react-icons/fa";
 import CapturaComandaModal from "@/components/CapturaComandaModal";
@@ -16,15 +16,20 @@ import { RiPrinterLine } from "react-icons/ri";
 import apiOrder from "@/components/apis/apiOrder";
 import ConsultarItemModal from "@/components/ConsultarItemModal";
 
-import { useNavigate } from "react-router-dom";
-import {
-  kioskLogoutOperator,
-  kioskUnpairDevice,
-} from "@/components/Kiosk/session";
+import { Transmit } from "@adonisjs/transmit-client";
 
+import { useNavigate } from "react-router-dom";
+import { kioskLogoutOperator } from "@/components/Kiosk/session";
+import { useKioskAuth } from "@/context/KioskAuthProvider"; // 👈 usar provider
 const { Option } = Select;
 
 interface Area {
+  id: number | null;
+  restaurantId: number;
+  name: string;
+  sortOrder: number;
+}
+interface Service {
   id: number | null;
   restaurantId: number;
   name: string;
@@ -73,6 +78,8 @@ type Producto = {
   categoria: "alimentos" | "bebidas" | "otros";
   unidad: string;
   basePrice: number;
+  taxRate: number;
+  priceGross: number;
   contieneIVA: boolean;
   printArea: number;
   areaImpresion: AreaImpresion;
@@ -88,6 +95,8 @@ interface OrderItem {
   productId: number;
   qty: number;
   unitPrice: number;
+  basePrice: number;
+  taxRate: number;
   total: number;
   notes: string | null;
   course: number;
@@ -104,10 +113,22 @@ interface OrderItem {
   half: Mitad;
   route_area_id: number;
 }
+/** Lee restaurantId del kiosk_jwt */
+function getRestaurantIdFromJwt(): number {
+  try {
+    const t = sessionStorage.getItem("kiosk_restaurant_id") || "";
+    console.log(t);
+    return Number(t);
+  } catch {
+    return 0;
+  }
+}
 
 const ControlComandero: React.FC = () => {
+  const { isJwtValid, shiftId, refreshShift } = useKioskAuth(); // 👈 del provider
   const [ready, setReady] = useState(false);
-  const initRef = useRef(false); // 👈 nuevo
+  const initRef = useRef(false);
+
   const [modalVisible, setModalVisible] = useState(false);
   const [orderIdCurrent, setOrderIdCurrent] = useState<number | null>(null);
   const [detalle_cheque, setDetalle_cheque] = useState<OrderItem[]>([]);
@@ -121,12 +142,26 @@ const ControlComandero: React.FC = () => {
       tableName: string;
       persons: number;
       area_id: number | null;
+      service_id: number | null;
       area: Area | null;
+      service: Service | null;
       items: OrderItem[];
     }[]
   >([]);
+
   const [areas, setAreas] = useState<Area[]>([]);
   const [areasFilter, setAreasFilter] = useState<Area[]>([]);
+  const [services, setServices] = useState<Area[]>([]);
+  const [servicesFilter, setServicesFilter] = useState<Area[]>([]);
+
+  const [areaSeleccionada, setAreaSeleccionada] = useState("Todas");
+  const [paginaActual, setPaginaActual] = useState(1);
+  const viewPaginate = 10;
+
+  const [accionesChequeVisible, setAccionesChequeVisible] = useState(false);
+  const [modalComandaVisible, setModalComandaVisible] = useState(false);
+  const [modalConsultaVisible, setModalConsultaVisible] = useState(false);
+  const [mesaReciente, setMesaReciente] = useState(-1);
 
   const fetchAreas = async () => {
     try {
@@ -145,16 +180,122 @@ const ControlComandero: React.FC = () => {
       message.error("Error al cargar las áreas");
     }
   };
+  const fetchServices = async () => {
+    try {
+      const res = await apiOrder.get("/kiosk/services");
+      const newService: Service = {
+        id: null,
+        name: "Todas",
+        sortOrder: 0,
+        restaurantId: 0,
+      };
+      const servicesFromAPI: Service[] = res.data;
+      setServices(servicesFromAPI);
+      setServicesFilter([newService, ...servicesFromAPI]);
+    } catch (e) {
+      console.error(e);
+      message.error("Error al cargar las áreas");
+    }
+  };
 
   const fetchCheques = async () => {
     try {
-      const res = await apiOrder.get("/orders", { params: { shift: "null" } });
+      const res = await apiOrder.get("/orders", {
+        params: { shift: shiftId },
+      });
       setCheques(res.data);
     } catch (e) {
       console.error(e);
       message.error("Error al cargar las órdenes");
     }
   };
+
+  const transmitRef = useRef<Transmit | null>(null);
+  const subCleanupRef = useRef<() => void>(() => {});
+
+  /** handler central de eventos del canal */
+  const onOrdersEvent = useCallback(
+    async (msg: any) => {
+      if (!msg || typeof msg !== "object") return;
+      if (msg.type === "order_closed") {
+        const id = Number(msg.orderId);
+        if (!Number.isFinite(id)) return;
+
+        // 1) quita de la UI inmediatamente
+        setCheques((prev) => prev.filter((c) => c.id !== id));
+        if (orderIdCurrent === id) {
+          setAccionesChequeVisible(false);
+        }
+
+        // 2) (opcional) re-sincroniza desde API para quedar 100% consistente
+        try {
+          await fetchCheques();
+        } catch {}
+      }
+
+      // (futuro) puedes manejar order_created / order_changed aquí
+    },
+    [fetchCheques, orderIdCurrent]
+  );
+  useEffect(() => {
+    if (!isJwtValid()) return;
+
+    // instancia única
+    if (!transmitRef.current) {
+      transmitRef.current = new Transmit({
+        baseUrl: apiOrder.defaults.baseURL || "/api",
+        beforeSubscribe: (request) => {
+          const anyReq = request as any;
+          // Si es Request (tiene headers.set), muta en sitio
+          if (anyReq.headers && typeof anyReq.headers.set === "function") {
+            const token = sessionStorage.getItem("kiosk_jwt") || "";
+            if (token) anyReq.headers.set("Authorization", `Bearer ${token}`);
+            const shift = String(shiftId || "");
+            if (shift) anyReq.headers.set("X-Shift-Id", shift);
+          } else {
+            // Si es RequestInit, re-asigna headers
+            const headers = new Headers((request as RequestInit).headers || {});
+            const token = sessionStorage.getItem("kiosk_jwt") || "";
+            if (token) headers.set("Authorization", `Bearer ${token}`);
+            const shift = String(shiftId || "");
+            if (shift) headers.set("X-Shift-Id", shift);
+            (request as RequestInit).headers = headers;
+          }
+        },
+
+        maxReconnectAttempts: 10,
+        onSubscribeFailed: (res) => {
+          console.error("Transmit subscribe failed", res?.status);
+        },
+      });
+    }
+
+    const rid = getRestaurantIdFromJwt();
+    if (!rid) return;
+
+    // crea suscripción al canal del restaurante
+    const sub = transmitRef.current.subscription(`restaurants/${rid}/orders`);
+    const off = sub.onMessage(onOrdersEvent);
+
+    sub.create().catch((e) => console.error("Transmit create error", e));
+
+    // cleanup en unmount
+    subCleanupRef.current = () => {
+      try {
+        off && off();
+      } catch {}
+      try {
+        sub.delete();
+      } catch {}
+    };
+
+    return () => {
+      try {
+        subCleanupRef.current();
+      } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isJwtValid]);
 
   const navigate = useNavigate();
   function cerrarSesion() {
@@ -163,36 +304,111 @@ const ControlComandero: React.FC = () => {
     navigate("/login", { replace: true }); // ← regresa al login correcto
   }
 
-  /** Inicialización: Pairing (si falta) + PIN → luego cargar datos */
+  // ---------- NUEVO: helper para consultar turno actual ----------
+
+  // ---------- Inicialización ----------
   useEffect(() => {
-    // si no hay kiosk_jwt válido -> a login
-    const expStr = sessionStorage.getItem("kiosk_jwt_exp");
-    const jwt = sessionStorage.getItem("kiosk_jwt");
-    const valid = expStr ? Number(expStr) - Date.now() > 15_000 : false;
-    if (!jwt || !valid) {
-      navigate("/login", { replace: true });
-      return;
-    }
+    // Si no hay JWT válido, NO navegues: el guard se encarga.
+    if (!isJwtValid()) return;
 
     if (initRef.current) return;
     initRef.current = true;
 
     (async () => {
+      if (!shiftId) {
+        // intenta traer turno
+        const ok = await refreshShift();
+        if (!ok) {
+          setReady(false); // mostrará la vista "No hay turno"
+          return;
+        }
+      }
       try {
         setReady(true);
         await fetchAreas();
+        await fetchServices();
         await fetchCheques();
-      } catch (e: any) {
+      } catch (e) {
         console.error(e);
         message.error("No se pudo cargar datos");
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isJwtValid, shiftId]);
 
-  const [areaSeleccionada, setAreaSeleccionada] = useState("Todas");
-  const [paginaActual, setPaginaActual] = useState(1);
-  const viewPaginate = 10;
+  // ---------- NUEVO: polling suave cada 15s mientras no haya turno ----------
+  useEffect(() => {
+    if (!isJwtValid()) return;
+    if (ready) return;
+    const id = setInterval(async () => {
+      const ok = await refreshShift(); // 👈 del provider
+      if (ok) {
+        try {
+          setReady(true);
+          await fetchAreas();
+          await fetchCheques();
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }, 15000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, isJwtValid]);
+
+  useEffect(() => {
+    if (!isJwtValid()) return;
+    if (!shiftId) return; // aún no hay turno
+    (async () => {
+      try {
+        setReady(true);
+        await fetchAreas();
+        await fetchCheques();
+      } catch (e) {
+        console.error(e);
+        message.error("No se pudo cargar datos");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shiftId, isJwtValid]);
+
+  // ---------- NUEVO: UI para "No hay turno" ----------
+  if (!ready) {
+    return (
+      <div className="p-6 min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="max-w-md w-full text-center space-y-3">
+          <h2 className="text-xl font-semibold">No hay turno abierto</h2>
+          <p className="text-gray-600">
+            Pida a la caja master abrir el turno. Luego pulse “Reintentar”.
+          </p>
+          <div className="flex gap-2 justify-center">
+            <Button
+              type="primary"
+              onClick={async () => {
+                const ok = await refreshShift(); // 👈 del provider
+                if (ok) {
+                  try {
+                    setReady(true);
+                    await fetchAreas();
+                    await fetchCheques();
+                    message.success("Turno detectado. ¡Listo!");
+                  } catch (e) {
+                    console.error(e);
+                  }
+                } else {
+                  message.info(
+                    "Aún no hay turno. Intenta de nuevo en unos segundos."
+                  );
+                }
+              }}
+            >
+              Reintentar
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const chequesFiltrados =
     areaSeleccionada === "Todas"
@@ -205,11 +421,6 @@ const ControlComandero: React.FC = () => {
     (paginaActual - 1) * viewPaginate,
     paginaActual * viewPaginate
   );
-
-  const [accionesChequeVisible, setAccionesChequeVisible] = useState(false);
-  const [modalComandaVisible, setModalComandaVisible] = useState(false);
-  const [modalConsultaVisible, setModalConsultaVisible] = useState(false);
-  const [mesaReciente, setMesaReciente] = useState(-1);
 
   const handleCapturaModal = () => setModalComandaVisible(true);
 
@@ -241,10 +452,6 @@ const ControlComandero: React.FC = () => {
       message.error("Ocurrió un error al enviar ítems");
     }
   };
-
-  if (!ready) {
-    return <div className="p-6">Inicializando Comandero…</div>;
-  }
 
   return (
     <>
@@ -381,6 +588,7 @@ const ControlComandero: React.FC = () => {
         <RegistroChequeModal
           visible={modalVisible}
           areas={areas}
+          services={services}
           onClose={() => setModalVisible(false)}
           onRegistrar={async (cheque) => {
             setCheques([...cheques, cheque]);

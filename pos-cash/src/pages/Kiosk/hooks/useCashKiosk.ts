@@ -1,9 +1,11 @@
 // /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos-cash/src/pages/Kiosk/hooks/useCashKiosk.ts
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { message } from "antd";
 import apiCashKiosk from "@/components/apis/apiCashKiosk";
 import apiOrderKiosk from "@/components/apis/apiOrderKiosk";
+
+import { Transmit } from "@adonisjs/transmit-client";
 
 function parseJwt<T = any>(token: string | null): T | null {
   if (!token) return null;
@@ -21,12 +23,20 @@ export type CashOrderItem = {
   name?: string;
   qty: number;
   unitPrice: number;
+  taxRate: number;
+  basePrice: number;
   total?: number;
+};
+export type Area = {
+  id: number;
+  name?: string;
 };
 
 export type CashOrder = {
   id: number;
   tableName?: string | null;
+  area_id: number;
+  area: Area;
   areaName?: string | null;
   persons?: number;
   total?: number;
@@ -53,6 +63,15 @@ export function useCashKiosk() {
     salesCard: 0,
     salesTotal: 0,
   });
+
+  const transmitRef = useRef<Transmit | null>(null);
+  const subCleanupRef = useRef<() => void>(() => {});
+
+  function getRestaurantIdFromSession(): number {
+    const jwt = sessionStorage.getItem("kiosk_jwt");
+    const payload = parseJwt<{ restaurantId?: number }>(jwt);
+    return Number(payload?.restaurantId ?? 0);
+  }
 
   const selectedOrder = useMemo(
     () => orders.find((o) => o.id === selectedOrderId) || null,
@@ -183,6 +202,8 @@ export function useCashKiosk() {
                     name,
                     qty: Number(it.qty ?? it.quantity ?? 0),
                     unitPrice: Number(it.unitPrice ?? it.unit_price ?? 0),
+                    basePrice: Number(it.basePrice ?? it.basePrice ?? 0),
+                    taxRate: Number(it.taxRate ?? it.taxRate ?? 0),
                     total: it.total != null ? Number(it.total) : undefined,
                   };
                 }),
@@ -195,6 +216,115 @@ export function useCashKiosk() {
       setLoadingDetail(false);
     }
   }, []);
+
+  const onOrdersEvent = useCallback(
+    async (msg: any) => {
+      if (!msg || typeof msg !== "object") return;
+
+      if (msg.type === "order_created" && msg.order) {
+        const o = msg.order;
+        // mapea al tipo CashOrder
+        const newOrder: CashOrder = {
+          id: Number(o.id),
+          tableName: o.tableName ?? null,
+          area_id: Number(o.area_id ?? 0),
+          area: o.area || {
+            id: Number(o.area_id ?? 0),
+            name: o.areaName ?? "–",
+          },
+          persons: Number(o.persons ?? 0),
+          items: [], // al abrir, usualmente vacío
+          total: Number(o.total ?? 0),
+        };
+
+        // 1) evita duplicados
+        setOrders((prev) => {
+          if (prev.some((x) => x.id === newOrder.id)) return prev;
+          return [newOrder, ...prev];
+        });
+
+        // 2) (opcional) sincronizar detalle por id para tener items y totales exactos
+        try {
+          await fetchOrderById(newOrder.id);
+        } catch {}
+      }
+
+      // En el futuro puedes manejar: 'order_changed', 'order_closed', etc.
+    },
+    [fetchOrderById, setOrders]
+  );
+
+  useEffect(() => {
+    // si no hay shift aún, igual podemos ir montando el stream
+    const rid = getRestaurantIdFromSession();
+    if (!rid) return;
+
+    // instancia única de Transmit
+    if (!transmitRef.current) {
+      transmitRef.current = new Transmit({
+        baseUrl: (apiOrderKiosk.defaults.baseURL as string) || "/api",
+        // el POST /__transmit/subscribe sí lleva Bearer
+        beforeSubscribe: (request) => {
+          // En Transmit, 'request' puede ser Request o RequestInit según versión
+          const anyReq = request as any;
+
+          // Caso 1: Request (propiedad headers solo getter) → usa .set(...)
+          if (anyReq.headers && typeof anyReq.headers.set === "function") {
+            const token = sessionStorage.getItem("kiosk_jwt") || "";
+            if (token) anyReq.headers.set("Authorization", `Bearer ${token}`);
+            const sid = sessionStorage.getItem("cash_shift_id") || "";
+            if (sid) anyReq.headers.set("X-Shift-Id", sid);
+            return;
+          }
+
+          // Caso 2: RequestInit → crea Headers y re-asigna
+          const headers = new Headers((request as RequestInit).headers || {});
+          const token = sessionStorage.getItem("kiosk_jwt") || "";
+          if (token) headers.set("Authorization", `Bearer ${token}`);
+          const sid = sessionStorage.getItem("cash_shift_id") || "";
+          if (sid) headers.set("X-Shift-Id", sid);
+          (request as RequestInit).headers = headers;
+        },
+
+        beforeUnsubscribe: (request) => {
+          const anyReq = request as any;
+          if (anyReq.headers && typeof anyReq.headers.set === "function") {
+            const token = sessionStorage.getItem("kiosk_jwt") || "";
+            if (token) anyReq.headers.set("Authorization", `Bearer ${token}`);
+            return;
+          }
+          const headers = new Headers((request as RequestInit).headers || {});
+          const token = sessionStorage.getItem("kiosk_jwt") || "";
+          if (token) headers.set("Authorization", `Bearer ${token}`);
+          (request as RequestInit).headers = headers;
+        },
+
+        maxReconnectAttempts: 10,
+        onSubscribeFailed: (res) => {
+          console.error("Transmit subscribe failed", res?.status);
+        },
+      });
+    }
+
+    const sub = transmitRef.current.subscription(`restaurants/${rid}/orders`);
+    const off = sub.onMessage(onOrdersEvent);
+    sub.create().catch((e) => console.error("Transmit create error", e));
+
+    subCleanupRef.current = () => {
+      try {
+        off && off();
+      } catch {}
+      try {
+        sub.delete();
+      } catch {}
+    };
+
+    return () => {
+      try {
+        subCleanupRef.current();
+      } catch {}
+    };
+  }, [onOrdersEvent]);
 
   const payOrder = useCallback(
     async (orderId: number, payload: any) => {

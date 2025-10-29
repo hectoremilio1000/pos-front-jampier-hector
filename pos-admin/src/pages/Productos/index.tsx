@@ -6,7 +6,9 @@ import { BiTrash } from "react-icons/bi";
 import { nextCodeForGroup } from "@/utils/nextCode";
 
 import ProductModal, { type ProductValues } from "./ProductModal";
-import SelectorModal from "./ProductSelectorModal";
+
+import SelectorModal from "./ModifierGroupSelectorModal";
+
 import type { ModifierGroupConfig } from "./ModifierGroupCard";
 import apiOrder from "@/components/apis/apiOrder";
 
@@ -470,9 +472,6 @@ export default function ProductosPage() {
             modifierGroups: [...(form.modifierGroups ?? []), ...(newGs ?? [])],
           })
         }
-        parentGroupId={form.groupId}
-        modifiersGroups={form.modifierGroups ?? []}
-        excludeIds={[]}
       />
     </div>
   );

@@ -1,14 +1,22 @@
+// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/comandero/src/pages/LoginScreen.tsx
+
 import { useEffect, useRef, useState } from "react";
 import type { InputRef } from "antd";
 import { Card, Typography, message } from "antd";
 import { useNavigate } from "react-router-dom";
+import {
+  kioskPairStart,
+  kioskPairConfirm,
+  kioskLoginWithPin,
+} from "@/components/Kiosk/token";
 import Numpad from "@/components/Kiosk/Numpad";
+import { kioskCheckPairedStatus } from "@/components/Kiosk/session";
 import PairingForm from "@/components/Kiosk/PairingForm";
 import PinForm from "@/components/Kiosk/PinForm";
 import HeaderStatus from "@/components/Kiosk/HeaderStatus";
-import { useKioskAuth } from "@/context/KioskAuthProvider";
 
 const { Title } = Typography;
+
 const SAFE_ALLOW_UNPAIR = false;
 
 function getFingerprint(): string {
@@ -23,11 +31,9 @@ function getFingerprint(): string {
 export default function LoginScreen() {
   const navigate = useNavigate();
 
-  const { pairState, deviceLabel, pair, loginWithPin, unpair } = useKioskAuth();
-
-  const hasPair = pairState === "paired";
-
-  // UI-local
+  const [hasPair, setHasPair] = useState<boolean>(
+    !!sessionStorage.getItem("kiosk_token")
+  );
   const [code, setCode] = useState("");
   const [deviceName, setDeviceName] = useState("Comandero");
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | null>(null);
@@ -36,6 +42,14 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [now, setNow] = useState(
     new Date().toLocaleString("es-MX", { hour12: false })
+  );
+  const [deviceLabel, setDeviceLabel] = useState<string>(
+    sessionStorage.getItem("kiosk_device_name") || ""
+  );
+
+  type PairState = "none" | "paired" | "revoked";
+  const [pairState, setPairState] = useState<PairState>(
+    sessionStorage.getItem("kiosk_token") ? "paired" : "none"
   );
 
   // campo activo para keypad
@@ -64,23 +78,62 @@ export default function LoginScreen() {
     else pinRef.current?.focus();
   }, [target]);
 
+  // si hay kiosk_jwt válido → directo a /control
+  useEffect(() => {
+    const expStr = sessionStorage.getItem("kiosk_jwt_exp");
+    const jwt = sessionStorage.getItem("kiosk_jwt");
+    const valid = expStr ? Number(expStr) - Date.now() > 15_000 : false;
+    if (jwt && valid) navigate("/control", { replace: true });
+  }, [navigate]);
+
+  // verifica estado del dispositivo al montar
+  useEffect(() => {
+    (async () => {
+      const status = await kioskCheckPairedStatus();
+      if (status === "paired") {
+        setHasPair(true);
+        setPairState("paired");
+      } else if (status === "revoked") {
+        sessionStorage.removeItem("kiosk_token");
+        sessionStorage.removeItem("kiosk_device_name");
+        setHasPair(false);
+        setPairState("revoked");
+        message.warning(
+          "Este dispositivo fue revocado desde Admin. Vuelve a emparejarlo."
+        );
+      } else if (status === "invalid") {
+        setHasPair(false);
+        setPairState("none");
+      }
+    })();
+  }, []);
+
   async function doPair() {
     try {
       if (sessionStorage.getItem("kiosk_token")) {
-        message.info("Este dispositivo ya está emparejado");
-        return;
+        setHasPair(true);
+        setPairState("paired");
+        return message.info("Este dispositivo ya está emparejado");
       }
       if (!code.trim()) return message.warning("Ingresa el pairing code");
       setLoading(true);
-
-      await pair({
+      const start = await kioskPairStart(code.trim(), "commander");
+      if (start.requireStation) {
+        message.error("Commander no requiere estación; revisa deviceType");
+        return;
+      }
+      await kioskPairConfirm({
         code: code.trim(),
         deviceType: "commander",
         deviceName: deviceName.trim() || "Comandero",
-        deviceId: selectedDeviceId ?? undefined,
         fingerprint: getFingerprint(),
+        deviceId: selectedDeviceId ?? undefined,
       });
-
+      const label = deviceName.trim() || "Comandero";
+      sessionStorage.setItem("kiosk_device_name", label);
+      setDeviceLabel(label);
+      setHasPair(true);
+      setPairState("paired");
       message.success("Dispositivo emparejado");
     } catch (e: any) {
       const txt = String(e?.message || "");
@@ -101,13 +154,16 @@ export default function LoginScreen() {
       if (!/^\d{6}$/.test(pin))
         return message.warning("PIN inválido (6 dígitos)");
       setLoading(true);
-      await loginWithPin(pin);
+      await kioskLoginWithPin(pin);
       navigate("/control", { replace: true });
     } catch (e: any) {
       const msg =
         e?.message || e?.response?.data?.error || "No se pudo iniciar sesión";
-      if (/revocad/i.test(msg)) {
-        // si el backend “revoca”, el provider ya puso pairState="revoked"
+      if (/revocado/i.test(msg)) {
+        sessionStorage.removeItem("kiosk_token");
+        sessionStorage.removeItem("kiosk_device_name");
+        setHasPair(false);
+        setPairState("revoked");
         message.error("Dispositivo revocado. Vuelve a emparejar.");
       } else {
         message.error(msg);
@@ -129,9 +185,16 @@ export default function LoginScreen() {
   };
   const onClearPin = () => setPin("");
 
-  function handleUnpair() {
+  function unpair() {
     if (!SAFE_ALLOW_UNPAIR) return;
-    unpair();
+    sessionStorage.removeItem("kiosk_token");
+    sessionStorage.removeItem("kiosk_jwt");
+    sessionStorage.removeItem("kiosk_jwt_exp");
+    sessionStorage.removeItem("kiosk_device_name");
+    setDeviceLabel("");
+    setHasPair(false);
+    setPairState("none");
+    setPin("");
     message.info("Dispositivo desemparejado");
   }
 
@@ -187,7 +250,7 @@ export default function LoginScreen() {
             )}
 
             {SAFE_ALLOW_UNPAIR && (
-              <button className="text-red-600 underline" onClick={handleUnpair}>
+              <button className="text-red-600 underline" onClick={unpair}>
                 Desemparejar dispositivo
               </button>
             )}
