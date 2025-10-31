@@ -27,6 +27,14 @@ import Dispositivos from "./pages/Dispositivos";
 import Services from "./pages/Services";
 import Propinas from "./pages/Propinas";
 
+import InvoicesPage from "./pages/Billing/Inovoices";
+import CustomersPage from "./pages/Billing/Customers";
+import { SubscriptionProvider } from "./components/Billing/SubscriptionContext";
+import RequireSubscription from "./components/Billing/RequireSubscription";
+import CheckoutSuccess from "./pages/Billing/CheckoutSuccess";
+import Account from "./pages/Billing/Account";
+import Subscribe from "./pages/Billing/Suscribe";
+
 function App() {
   return (
     <AuthProvider>
@@ -35,9 +43,13 @@ function App() {
 
         <Route
           element={
-            <ProtectedRoute>
-              <PrivateLayout />
-            </ProtectedRoute>
+            <SubscriptionProvider>
+              <RequireSubscription>
+                <ProtectedRoute>
+                  <PrivateLayout />
+                </ProtectedRoute>
+              </RequireSubscription>
+            </SubscriptionProvider>
           }
         >
           {/* 👇 al entrar al layout, redirige a /dashboard */}
@@ -49,6 +61,8 @@ function App() {
           <Route path="/areas" element={<Areas />} />
           <Route path="/areasImpresion" element={<AreasImpresionPage />} />
           <Route path="/generatePairing" element={<Dispositivos />} />
+          <Route path="/invoices" element={<InvoicesPage />} />
+          <Route path="/invoices/customers" element={<CustomersPage />} />
           <Route path="/productionMonitors" element={<ProductionMonitors />} />
           <Route path="/usuarios" element={<Usuarios />} />
           <Route path="/mesas" element={<Mesas />} />
@@ -62,8 +76,10 @@ function App() {
             path="/productos/modificadores"
             element={<ModificadoresPage />}
           />
+          <Route path="/account" element={<Account />} />
           <Route path="/control" element={<ControlComandero />} />
           {/* Aquí puedes añadir más rutas protegidas */}
+          <Route path="/checkout/success" element={<CheckoutSuccess />} />
         </Route>
       </Routes>
     </AuthProvider>

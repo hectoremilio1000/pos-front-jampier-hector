@@ -1,6 +1,16 @@
 // /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos_centro_front/src/pages/sa/Restaurants.tsx
 import { useEffect, useMemo, useState } from "react";
-import { Button, Card, Input, Modal, Space, Table, Tag, message } from "antd";
+import {
+  Button,
+  Card,
+  Input,
+  Modal,
+  Space,
+  Switch,
+  Table,
+  Tag,
+  message,
+} from "antd";
 import type { ColumnsType } from "antd/es/table";
 import apiAuth, {
   getPairingCode,
@@ -9,15 +19,21 @@ import apiAuth, {
 import RestaurantFormModal, {
   type RestaurantFormValues,
 } from "@/pages/Restaurants/RestaurantFormModal";
+import FacturapiLinkModal from "@/components/Facturapi/FacturapiLinkModal";
+import FacturapiStatusModal from "@/components/Facturapi/FacturapiStatusModal";
+import {
+  registerLiveSecret,
+  renewLiveSecret,
+  setRestaurantMode,
+} from "@/components/apis/apiFacturaMode";
 
 /* ---------- Tipos ---------- */
 
 type NormalizedStatus = "active" | "inactive";
 type RestaurantStatus = NormalizedStatus | null | undefined;
 
-/** Shape que devuelve el backend (snake_case) */
 type RestaurantApi = {
-  id: number;
+  id: number | string; // ← tu API manda "1" como string
   name: string;
   slug?: string | null;
 
@@ -43,17 +59,24 @@ type RestaurantApi = {
   currency?: string | null;
   plan?: string | null;
   status?: string | null;
+
+  // 🔗 Facturapi (acepta snake/camel)
+  facturapi_org_id?: string | null;
+  facturapi_ready?: boolean | null;
+  facturapi_pending_steps?: any[] | null;
+
+  facturapiOrgId?: string | null;
+  facturapiReady?: boolean | null;
+  facturapiPendingSteps?: any[] | null;
+
+  // 👇 nuevos (si tu backend los serializa)
+  facturapi_mode?: "test" | "live";
+  facturapi_live_enabled?: boolean;
+  facturapi_live_secret?: string | null; // ⚠️ idealmente NO enviar el valor completo por seguridad (puedes enviar booleano en su lugar)
 };
 
-/** Shape para enviar al backend en create/update (sin id/fechas) */
-type RestaurantUpsertApi = Omit<
-  RestaurantApi,
-  "id" | "created_at" | "updated_at"
->;
-
-/** Shape interna para la UI (camelCase) */
 type Restaurant = {
-  id: number;
+  id: number | string; // para no cascar con "1"
   name: string;
   slug?: string | null;
   legalName?: string | null;
@@ -69,7 +92,22 @@ type Restaurant = {
   logoUrl?: string | null;
   createdAt?: string;
   updatedAt?: string;
+
+  // 🔗 Facturapi en UI
+  facturapiOrgId?: string | null;
+  facturapiReady?: boolean;
+  facturapiPendingSteps?: any[];
+  facturapiMode?: "test" | "live";
+  facturapiLiveEnabled?: boolean;
+
+  facturapiLiveSecret?: string | null;
 };
+
+/** Shape para enviar al backend en create/update (sin id/fechas) */
+type RestaurantUpsertApi = Omit<
+  RestaurantApi,
+  "id" | "created_at" | "updated_at"
+>;
 
 type PageMeta = { total: number; page: number; perPage: number };
 
@@ -104,6 +142,25 @@ const fromApi = (row: RestaurantApi): Restaurant => ({
   logoUrl: row.logo_url ?? row.logoUrl ?? null,
   createdAt: row.created_at ?? row.createdAt ?? undefined,
   updatedAt: row.updated_at ?? row.updatedAt ?? undefined,
+
+  // 🔗 Facturapi
+  facturapiOrgId: row.facturapi_org_id ?? row.facturapiOrgId ?? null,
+  facturapiReady: (row.facturapi_ready ??
+    row.facturapiReady ??
+    false) as boolean,
+  facturapiPendingSteps: (row.facturapi_pending_steps ??
+    row.facturapiPendingSteps ??
+    []) as any[],
+  facturapiMode:
+    (row as any).facturapi_mode ?? (row as any).facturapiMode ?? "test",
+  facturapiLiveEnabled:
+    (row as any).facturapi_live_enabled ??
+    (row as any).facturapiLiveEnabled ??
+    false,
+  facturapiLiveSecret:
+    (row as any).facturapi_live_secret ??
+    (row as any).facturapiLiveSecret ??
+    null,
 });
 
 /** UI -> API (camelCase a snake_case) para crear/editar */
@@ -226,6 +283,54 @@ export default function Restaurants() {
     Partial<RestaurantFormValues>
   >({});
 
+  // estado:
+  const [openLink, setOpenLink] = useState(false);
+  const [openStatus, setOpenStatus] = useState(false);
+  const [rowFx, setRowFx] = useState<Restaurant | null>(null);
+
+  // Estado modal live secret
+  const [liveModalOpen, setLiveModalOpen] = useState(false);
+  const [liveModalRow, setLiveModalRow] = useState<Restaurant | null>(null);
+  const [liveSecretInput, setLiveSecretInput] = useState("");
+  const [submittingLive, setSubmittingLive] = useState(false);
+
+  const openLiveSecretModal = (row: Restaurant) => {
+    setLiveModalRow(row);
+    setLiveSecretInput("");
+    setLiveModalOpen(true);
+  };
+
+  const submitLiveSecret = async () => {
+    if (!liveModalRow?.id) return;
+    if (!liveSecretInput || !liveSecretInput.startsWith("sk_live_")) {
+      message.error("La Live Secret debe iniciar con sk_live_");
+      return;
+    }
+    try {
+      setSubmittingLive(true);
+      await registerLiveSecret(liveModalRow.id, liveSecretInput.trim());
+      message.success("Live Secret registrada");
+      setLiveModalOpen(false);
+      setLiveSecretInput("");
+      fetchList();
+    } catch (e: any) {
+      message.error(
+        e?.response?.data?.error || "No se pudo registrar la Live Secret"
+      );
+    } finally {
+      setSubmittingLive(false);
+    }
+  };
+
+  const openFacturapiLink = (row: Restaurant) => {
+    setRowFx(row);
+    setOpenLink(true);
+  };
+  const openFacturapiStatus = (row: Restaurant) => {
+    setRowFx(row);
+    setOpenStatus(true);
+  };
+
   const fetchList = async () => {
     setLoading(true);
     try {
@@ -337,7 +442,7 @@ export default function Restaurants() {
     if (data.length === 1 && page > 1) setPage((p) => p - 1);
     else fetchList();
   };
-
+  const [renewingId, setRenewingId] = useState<string | number | null>(null);
   const columns: ColumnsType<Restaurant> = useMemo(
     () => [
       {
@@ -373,6 +478,130 @@ export default function Restaurants() {
         render: (v?: string) => (v ? new Date(v).toLocaleString("es-MX") : "—"),
       },
       {
+        title: "Facturapi",
+        key: "facturapi",
+        width: 420,
+        render: (_: unknown, row: Restaurant) => {
+          const canRenew = !!row.facturapiOrgId && !!row.facturapiReady;
+          return (
+            <Space wrap>
+              {row.facturapiOrgId ? (
+                <>
+                  <Tag color={row.facturapiReady ? "green" : "orange"}>
+                    {row.facturapiReady ? "Conectado" : "Pendiente"}
+                  </Tag>
+                  <Button size="small" onClick={() => openFacturapiStatus(row)}>
+                    Estado
+                  </Button>
+
+                  {row.facturapiLiveSecret ? (
+                    <Tag color="blue">Live Secret registrada</Tag>
+                  ) : (
+                    <Button
+                      size="small"
+                      type="dashed"
+                      onClick={() => openLiveSecretModal(row)}
+                    >
+                      Registrar Live Secret
+                    </Button>
+                  )}
+
+                  <Button
+                    size="small"
+                    loading={renewingId === row.id}
+                    onClick={async () => {
+                      if (!canRenew) {
+                        message.warning(
+                          "La organización aún no está lista para producción"
+                        );
+                        return;
+                      }
+                      try {
+                        setRenewingId(row.id);
+                        await renewLiveSecret(row.id);
+                        message.success(
+                          "Nueva Live API Key generada y guardada"
+                        );
+                        fetchList();
+                      } catch (e: any) {
+                        message.error(
+                          e?.response?.data?.error ||
+                            "No se pudo generar la Live API Key"
+                        );
+                      } finally {
+                        setRenewingId(null);
+                      }
+                    }}
+                    disabled={!canRenew}
+                  >
+                    Generar nueva Live API Key
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  type="primary"
+                  size="small"
+                  onClick={() => openFacturapiLink(row)}
+                >
+                  Conectar
+                </Button>
+              )}
+            </Space>
+          );
+        },
+      },
+      {
+        title: "Modo",
+        key: "mode",
+        width: 240,
+        render: (_: unknown, row: Restaurant) => {
+          const canLive =
+            !!row.facturapiOrgId &&
+            !!row.facturapiReady &&
+            !!row.facturapiLiveSecret; // backend también valida live keys y readiness
+
+          const disabledReason = !row.facturapiOrgId
+            ? "Conecta Facturapi primero"
+            : !row.facturapiReady
+              ? "La organización no está lista para producción"
+              : !row.facturapiLiveSecret
+                ? "Registra una Live Secret (sk_live_)"
+                : undefined;
+
+          return (
+            <Space wrap>
+              <Tag color={row.facturapiMode === "live" ? "green" : "default"}>
+                {row.facturapiMode?.toUpperCase()}
+              </Tag>
+              <Switch
+                checked={row.facturapiMode === "live"}
+                onChange={async (val) => {
+                  try {
+                    const target = val ? "live" : "test";
+                    await setRestaurantMode(row.id, target as any);
+                    message.success(`Modo ${target.toUpperCase()} establecido`);
+                    fetchList();
+                  } catch (e: any) {
+                    message.error(
+                      e?.response?.data?.error || "No se pudo cambiar modo"
+                    );
+                  }
+                }}
+                checkedChildren="Live"
+                unCheckedChildren="Test"
+                disabled={!canLive}
+              />
+              {disabledReason ? (
+                <span style={{ fontSize: 12, color: "#999" }}>
+                  {disabledReason}
+                </span>
+              ) : null}
+            </Space>
+          );
+        },
+      },
+
+      {
         title: "Acciones",
         key: "actions",
         width: 200,
@@ -381,7 +610,7 @@ export default function Restaurants() {
             <Button size="small" onClick={() => openEdit(row)}>
               Editar
             </Button>
-            <PairingCodeButton restaurantId={row.id} />
+            <PairingCodeButton restaurantId={Number(row.id)} />
             <Button size="small" danger onClick={() => handleDelete(row)}>
               Eliminar
             </Button>
@@ -428,7 +657,6 @@ export default function Restaurants() {
           },
         }}
       />
-
       <RestaurantFormModal
         open={openModal}
         loading={saving}
@@ -438,6 +666,36 @@ export default function Restaurants() {
         onCancel={() => setOpenModal(false)}
         onSubmit={handleSubmit}
       />
+      <FacturapiLinkModal
+        open={openLink}
+        onClose={() => setOpenLink(false)}
+        restaurant={rowFx}
+        onLinked={fetchList}
+      />
+      <FacturapiStatusModal
+        open={openStatus}
+        onClose={() => setOpenStatus(false)}
+        restaurant={rowFx}
+        getRestaurants={fetchList}
+      />
+      <Modal
+        open={liveModalOpen}
+        title={`Registrar Live Secret ${liveModalRow ? `– ${liveModalRow.name}` : ""}`}
+        onCancel={() => setLiveModalOpen(false)}
+        okText="Guardar Live Secret"
+        confirmLoading={submittingLive}
+        onOk={submitLiveSecret}
+      >
+        <Input.Password
+          placeholder="Pega tu sk_live_… (solo se muestra una vez al crearla en Facturapi)"
+          value={liveSecretInput}
+          onChange={(e) => setLiveSecretInput(e.target.value)}
+        />
+        <p style={{ marginTop: 8, fontSize: 12, color: "#888" }}>
+          Recomendación: guarda esta llave de forma segura. Tu backend la
+          utilizará para timbrar en producción.
+        </p>
+      </Modal>
     </Card>
   );
 }
