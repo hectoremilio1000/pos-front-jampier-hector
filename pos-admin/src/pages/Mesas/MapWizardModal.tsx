@@ -147,7 +147,7 @@ export default function MapWizardModal({
       return next;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, cols]);
+  }, [rows, cols, defaultSeats]);
 
   const buildEmptyGrid = (r: number, c: number, seats: number) => {
     setRows(r);

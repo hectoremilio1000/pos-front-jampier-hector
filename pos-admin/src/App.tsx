@@ -25,6 +25,7 @@ import Usuarios from "./pages/Usuarios";
 import Areas from "./pages/AreasMesa";
 import Dispositivos from "./pages/Dispositivos";
 import Services from "./pages/Services";
+import Propinas from "./pages/Propinas";
 
 function App() {
   return (
@@ -51,6 +52,7 @@ function App() {
           <Route path="/productionMonitors" element={<ProductionMonitors />} />
           <Route path="/usuarios" element={<Usuarios />} />
           <Route path="/mesas" element={<Mesas />} />
+          <Route path="/propinas" element={<Propinas />} />
           <Route path="/services" element={<Services />} />
           <Route path="/productos" element={<ProductosPage />} />
           <Route path="/productos/grupos" element={<Grupos />} />

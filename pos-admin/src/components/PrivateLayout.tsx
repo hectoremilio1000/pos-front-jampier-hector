@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useLocation } from "react-router-dom";
 import { Button, Drawer, Tooltip } from "antd";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./Auth/AuthContext";
 
 import { MenuOutlined, LeftOutlined, RightOutlined } from "@ant-design/icons";
@@ -32,10 +32,10 @@ const SECTIONS: Section[] = [
     items: [
       { to: "/mesas", label: "🍽️ Áreas de Venta" },
       { to: "/services", label: "🍽️ Servicios" },
-      { to: "/stations", label: "💵 Cajas" },
+
       { to: "/usuarios", label: "👥 Usuarios" },
       { to: "/facturas", label: "🧾 Facturas (CFDI)" },
-      { to: "/metodos-pago", label: "💳 Métodos de pago y Propinas" },
+      { to: "/propinas", label: "💳 Propinas" },
       { to: "/hour_cut", label: "⏰ Parámetros fiscales" },
       { to: "/admin/cuentas", label: "💵 Cuentas (histórico / auditoría)" },
     ],
@@ -123,30 +123,81 @@ export default function PrivateLayout() {
 
   const [openMap, setOpenMap] = useState<Record<string, boolean>>({});
 
-  // auto-abrir la sección que contiene la ruta actual
-  // auto-abrir la sección que contiene la ruta actual; si no, abrir INICIO
+  const didInitOpenMap = useRef(false);
+  // lleva registro de qué sección(es) estaban activas para la ruta previa
+  const activeHeaderKeysRef = useRef<string[]>([]);
+
   useEffect(() => {
-    // índice del header que contiene la ruta actual
-    const foundHeaderIdx = SECTIONS.findIndex(
-      (s) =>
-        s.kind === "header" &&
-        s.items.some((it) => location.pathname.startsWith(it.to))
-    );
-
-    // índice del primer header (INICIO) como fallback
-    const firstHeaderIdx = SECTIONS.findIndex((s) => s.kind === "header");
-    const openIdx = foundHeaderIdx >= 0 ? foundHeaderIdx : firstHeaderIdx;
-
-    // construir el mapa: solo ese header en true
-    const next: Record<string, boolean> = {};
-    let headerOrdinal = -1;
+    // encuentra los headers que contienen la ruta actual
+    const currentKeys: string[] = [];
     SECTIONS.forEach((s, i) => {
       if (s.kind === "header") {
-        headerOrdinal += 1;
-        next[`sec-${i}`] = headerOrdinal === openIdx;
+        if (s.items.some((it) => location.pathname.startsWith(it.to))) {
+          currentKeys.push(`sec-${i}`);
+        }
       }
     });
-    setOpenMap(next);
+
+    // primer header como fallback
+    const firstHeaderKey = (() => {
+      const idx = SECTIONS.findIndex((s) => s.kind === "header");
+      return idx >= 0 ? `sec-${idx}` : null;
+    })();
+
+    // inicialización (primera carga)
+    if (!didInitOpenMap.current) {
+      didInitOpenMap.current = true;
+      setOpenMap(() => {
+        const base: Record<string, boolean> = {};
+        SECTIONS.forEach((s, i) => {
+          if (s.kind === "header") base[`sec-${i}`] = false;
+        });
+        if (currentKeys.length > 0) {
+          currentKeys.forEach((k) => (base[k] = true));
+          activeHeaderKeysRef.current = [...currentKeys];
+        } else if (firstHeaderKey) {
+          base[firstHeaderKey] = true;
+          activeHeaderKeysRef.current = [firstHeaderKey];
+        }
+        return base;
+      });
+      return;
+    }
+
+    // navegaciones posteriores
+    setOpenMap((prev) => {
+      const prevActive = activeHeaderKeysRef.current;
+
+      // ¿cambiaste de sección? (conjunto distinto)
+      const sameSet =
+        prevActive.length === currentKeys.length &&
+        prevActive.every((k) => currentKeys.includes(k));
+
+      if (sameSet) {
+        // misma sección: asegúrala abierta y no cierres nada más
+        const next = { ...prev };
+        currentKeys.forEach((k) => (next[k] = true));
+        return next;
+      }
+
+      // sección distinta: CERRAR las demás y abrir solo la(s) actual(es)
+      const base: Record<string, boolean> = {};
+      SECTIONS.forEach((s, i) => {
+        if (s.kind === "header") base[`sec-${i}`] = false;
+      });
+
+      if (currentKeys.length > 0) {
+        currentKeys.forEach((k) => (base[k] = true));
+        activeHeaderKeysRef.current = [...currentKeys];
+      } else if (firstHeaderKey) {
+        base[firstHeaderKey] = true;
+        activeHeaderKeysRef.current = [firstHeaderKey];
+      } else {
+        activeHeaderKeysRef.current = [];
+      }
+
+      return base;
+    });
   }, [location.pathname]);
 
   const toggle = (k: string) => setOpenMap((m) => ({ ...m, [k]: !m[k] }));
