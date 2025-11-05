@@ -17,7 +17,7 @@ import {
   kioskLogoutOperator,
   kioskUnpairDevice,
 } from "@/components/Kiosk/session";
-import apiOrder from "@/components/apis/apiOrder";
+import apiCashKiosk from "@/components/apis/apiCashKiosk";
 
 /** Normaliza exp a ms si hiciera falta (seguridad) */
 function normalizeExpToMs(exp: number | string | null): number | null {
@@ -205,17 +205,13 @@ export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
     try {
       if (!restaurantId) return false;
       const url = `/shifts/current?restaurantId=${restaurantId}`;
-      const res = await apiOrder.get(url);
-      console.log(res.data);
+      const res = await apiCashKiosk.get(url); // ← usa el JWT del kiosko
 
-      const id = res.data?.id;
-      if (id) {
-        persistShift(id);
-        return true;
-      }
-      persistShift(null);
-      return false;
+      const id = res.data?.id ?? null;
+      persistShift(id);
+      return !!id;
     } catch {
+      // No tires el storage del kiosko aquí; deja que el guard actúe si expira el JWT
       return false;
     }
   }, [restaurantId]);

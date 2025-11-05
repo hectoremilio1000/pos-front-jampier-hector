@@ -8,20 +8,12 @@ import type { CashOrderItem } from "../hooks/useCashKiosk";
 const money = (n: number) =>
   `$${(Math.round((n ?? 0) * 100) / 100).toFixed(2)}`;
 
-type AnyItem = CashOrderItem & {
-  isModifier?: boolean | null;
-  isCompositeProductMain?: boolean | null;
-  compositeProductId?: number | null;
-  basePrice?: number | null;
-  discountValue?: number | null;
-  product?: { name?: string | null } | null;
-};
-
 export default function OrderDetail() {
   const { selectedOrder, orders } = useCash(); // debe existir orders en tu contexto
   const [open, setOpen] = useState(false);
 
-  const items: AnyItem[] = (selectedOrder?.items as AnyItem[]) ?? [];
+  // Usa directamente CashOrderItem (ya tiene flags y product)
+  const items: CashOrderItem[] = selectedOrder?.items ?? [];
 
   const columns: ColumnsType<CashOrderItem> = [
     {
@@ -44,7 +36,7 @@ export default function OrderDetail() {
       title: "Importe",
       key: "importe",
       align: "right",
-      render: (_, it: AnyItem) => {
+      render: (_, it: any) => {
         const unit = Number(it.unitPrice ?? 0);
         const disc = Number(it.discountValue ?? 0);
         return money(unit - disc);
@@ -55,7 +47,7 @@ export default function OrderDetail() {
       title: "Total",
       key: "total",
       align: "right",
-      render: (_, it: AnyItem) =>
+      render: (_, it: any) =>
         `$${Number(
           it.total ?? Number(it.qty ?? 0) * Number(it.unitPrice ?? 0)
         ).toFixed(2)}`,
@@ -93,7 +85,7 @@ export default function OrderDetail() {
   const orderIndex =
     (orders?.findIndex((o: any) => o.id === selectedOrder.id) ?? -1) + 1;
   // Calcula el importe de una línea: total si existe, si no qty * unitPrice
-  function lineAmount(x: AnyItem): number {
+  function lineAmount(x: CashOrderItem): number {
     const qty = Number(x.qty ?? 0);
     const unit = Number(x.unitPrice ?? 0);
     const tot = Number((x as any).total ?? NaN);
@@ -102,11 +94,11 @@ export default function OrderDetail() {
   }
 
   type TicketRow = { qty: number; desc: string; amount: number };
-  function buildTicketRows(source: AnyItem[]): TicketRow[] {
+  function buildTicketRows(source: CashOrderItem[]): TicketRow[] {
     const rows: TicketRow[] = [];
     const consumed = new Set<number>();
-    const getName = (x: AnyItem) =>
-      x.name ?? x.product?.name ?? `(Producto #${x.id})`;
+    const getName = (x: CashOrderItem) =>
+      x.product?.name ?? x.name ?? `(Producto #${x.id})`;
 
     for (const it of source) {
       if (consumed.has(it.id)) continue;
@@ -117,7 +109,6 @@ export default function OrderDetail() {
       const qty = Number(it.qty ?? 1);
 
       if (isMain && compId) {
-        // Buscar modificadores del mismo compuesto
         const modifiers = source.filter(
           (m) =>
             m.id !== it.id &&
@@ -125,45 +116,35 @@ export default function OrderDetail() {
             (m.compositeProductId ?? null) === compId
         );
 
-        // Marcar consumidos
         consumed.add(it.id);
         modifiers.forEach((m) => consumed.add(m.id));
-        console.log(modifiers);
-        console.log(consumed);
-        // Principal SIEMPRE se muestra
-        const mainAmt = lineAmount(it);
-        rows.push({ qty, desc: getName(it), amount: mainAmt });
 
-        // SOLO imprimir modificadores con importe > 0
+        // principal siempre
+        rows.push({ qty, desc: getName(it), amount: lineAmount(it) });
+
+        // Solo mods con importe > 0
         for (const m of modifiers) {
           const modAmt = lineAmount(m);
-          console.log(modAmt);
-          if (modAmt > 0) {
+          if (modAmt > 0)
             rows.push({ qty, desc: `> ${getName(m)}`, amount: modAmt });
-          }
         }
         continue;
       }
 
       if (isMod) {
-        // Si es modificador pero NO se agrupó con su principal (o no hay compId):
-        // ocultar cuando importe == 0
         const modAmt = lineAmount(it);
         if (modAmt <= 0) {
           consumed.add(it.id);
-          continue; // no se imprime
+          continue;
         }
-        // Si tiene importe > 0, lo mostramos como línea independiente
         consumed.add(it.id);
         rows.push({ qty, desc: `> ${getName(it)}`, amount: modAmt });
         continue;
       }
 
-      // Item normal (no principal compuesto ni modificador)
       consumed.add(it.id);
       rows.push({ qty, desc: getName(it), amount: lineAmount(it) });
     }
-
     return rows;
   }
 

@@ -184,7 +184,7 @@ export default function CashStations() {
         await apiCash.put(`/cash_stations/${editing.id}`, { ...values });
         stationId = editing.id;
       } else {
-        const { data } = await apiCash.post(`/stations`, {
+        const { data } = await apiCash.post(`/cash_stations`, {
           restaurantId,
           ...values,
         }); // 👈 envía restaurantId

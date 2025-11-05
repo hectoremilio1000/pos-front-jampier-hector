@@ -19,8 +19,6 @@ export default function App() {
               </RequireKioskAuth>
             }
           />
-          <Route path="/" element={<Navigate to="/control" replace />} />
-          <Route path="*" element={<Navigate to="/control" replace />} />
         </Routes>
       </KioskAuthProvider>
     </BrowserRouter>

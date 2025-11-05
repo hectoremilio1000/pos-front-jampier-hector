@@ -375,35 +375,46 @@ const ControlComandero: React.FC = () => {
   // ---------- NUEVO: UI para "No hay turno" ----------
   if (!ready) {
     return (
-      <div className="p-6 min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="max-w-md w-full text-center space-y-3">
-          <h2 className="text-xl font-semibold">No hay turno abierto</h2>
-          <p className="text-gray-600">
-            Pida a la caja master abrir el turno. Luego pulse “Reintentar”.
-          </p>
-          <div className="flex gap-2 justify-center">
-            <Button
-              type="primary"
-              onClick={async () => {
-                const ok = await refreshShift(); // 👈 del provider
-                if (ok) {
-                  try {
-                    setReady(true);
-                    await fetchAreas();
-                    await fetchCheques();
-                    message.success("Turno detectado. ¡Listo!");
-                  } catch (e) {
-                    console.error(e);
+      <div className="min-h-screen bg-gray-50 flex">
+        {/* Barra superior con Cerrar sesión */}
+        <div className="absolute top-0 left-0 right-0 h-12 bg-white border-b flex items-center justify-end px-4">
+          <Button danger onClick={cerrarSesion}>
+            Cerrar sesión
+          </Button>
+        </div>
+
+        {/* Contenido central */}
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="max-w-md w-full text-center space-y-3">
+            <h2 className="text-xl font-semibold">No hay turno abierto</h2>
+            <p className="text-gray-600">
+              Pida a la caja master abrir el turno. Luego pulse “Reintentar”.
+            </p>
+
+            <div className="flex gap-2 justify-center">
+              <Button
+                type="primary"
+                onClick={async () => {
+                  const ok = await refreshShift(); // 👈 del provider
+                  if (ok) {
+                    try {
+                      setReady(true);
+                      await fetchAreas();
+                      await fetchCheques();
+                      message.success("Turno detectado. ¡Listo!");
+                    } catch (e) {
+                      console.error(e);
+                    }
+                  } else {
+                    message.info(
+                      "Aún no hay turno. Intenta de nuevo en unos segundos."
+                    );
                   }
-                } else {
-                  message.info(
-                    "Aún no hay turno. Intenta de nuevo en unos segundos."
-                  );
-                }
-              }}
-            >
-              Reintentar
-            </Button>
+                }}
+              >
+                Reintentar
+              </Button>
+            </div>
           </div>
         </div>
       </div>

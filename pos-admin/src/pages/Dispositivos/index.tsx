@@ -43,7 +43,11 @@ export default function Dispositivos() {
       const list: Device[] = res.data || [];
 
       // Si no hay filtro activo, oculta "cash"
-      const filtered = t ? list : list.filter((d) => d.device_type !== "cash");
+      const filtered = t
+        ? list
+        : list.filter(
+            (d) => d.device_type !== "cash" && d.device_type !== "monitor"
+          );
 
       setDevices(filtered);
     } catch {

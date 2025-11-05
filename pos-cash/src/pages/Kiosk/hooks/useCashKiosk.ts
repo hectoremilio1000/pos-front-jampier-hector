@@ -17,20 +17,34 @@ function parseJwt<T = any>(token: string | null): T | null {
     return null;
   }
 }
+export type Product = {
+  id: number;
+  code?: string;
+  name?: string;
+};
 
 export type CashOrderItem = {
   id: number;
-  name?: string;
+  productId?: number;
+  product?: Product; // <- preferimos product.name
+  name?: string; // <- opcional (si el backend lo manda plano)
   qty: number;
   unitPrice: number;
   taxRate: number;
   basePrice: number;
   total?: number;
+
+  // FLAGS para compuestos / modificadores
+  isModifier?: boolean | null;
+  isCompositeProductMain?: boolean | null;
+  compositeProductId?: number | null;
 };
+
 export type Area = {
   id: number;
   name?: string;
 };
+
 export type Waiter = {
   id: number;
   fullName: string;
@@ -162,9 +176,32 @@ export function useCashKiosk() {
       // según tu OrdersController.index, si requiere filtro pásalo aquí (p.ej. { params:{ status:'OPEN' } })
       const { data } = await apiOrderKiosk.get<CashOrder[]>("/orders", {
         validateStatus: () => true,
-        // params: { status: 'OPEN' }, // <- descomenta si lo usas así en ORDER
       });
-      setOrders((data || []).map((o) => ({ ...o, items: o.items || [] })));
+      setOrders(
+        (data || []).map((o: any) => ({
+          ...o,
+          items: (o.items || []).map((it: any) => ({
+            id: Number(it.id),
+            productId: it.productId ?? it.product_id ?? undefined,
+            product: it.product
+              ? {
+                  id: Number(it.product.id),
+                  code: it.product.code,
+                  name: it.product.name,
+                }
+              : undefined,
+            name: it.name ?? it.product_name, // opcional si llega
+            qty: Number(it.qty ?? it.quantity ?? 0),
+            unitPrice: Number(it.unitPrice ?? it.unit_price ?? 0),
+            basePrice: Number(it.basePrice ?? it.base_price ?? 0),
+            taxRate: Number(it.taxRate ?? it.tax_rate ?? 0),
+            total: it.total != null ? Number(it.total) : undefined,
+            isModifier: !!it.isModifier,
+            isCompositeProductMain: !!it.isCompositeProductMain,
+            compositeProductId: it.compositeProductId ?? null,
+          })),
+        }))
+      );
     } catch {
       setOrders([]);
     } finally {
@@ -203,25 +240,26 @@ export function useCashKiosk() {
             ? {
                 ...o,
                 ...data,
-                items: (data.items || []).map((it: any) => {
-                  const productId = it.productId ?? it.product_id;
-                  const name =
-                    it.name ??
-                    it.product_name ?? // 👈 si backend ya lo manda
-                    it.product?.name ?? // 👈 si viene anidado
-                    (productId != null ? `#${productId}` : `#${it.id}`);
-
-                  return {
-                    id: it.id,
-                    productId,
-                    name,
-                    qty: Number(it.qty ?? it.quantity ?? 0),
-                    unitPrice: Number(it.unitPrice ?? it.unit_price ?? 0),
-                    basePrice: Number(it.basePrice ?? it.basePrice ?? 0),
-                    taxRate: Number(it.taxRate ?? it.taxRate ?? 0),
-                    total: it.total != null ? Number(it.total) : undefined,
-                  };
-                }),
+                items: (data.items || []).map((it: any) => ({
+                  id: Number(it.id),
+                  productId: it.productId ?? it.product_id ?? undefined,
+                  product: it.product
+                    ? {
+                        id: Number(it.product.id),
+                        code: it.product.code,
+                        name: it.product.name,
+                      }
+                    : undefined,
+                  name: it.name ?? it.product_name, // opcional
+                  qty: Number(it.qty ?? it.quantity ?? 0),
+                  unitPrice: Number(it.unitPrice ?? it.unit_price ?? 0),
+                  basePrice: Number(it.basePrice ?? it.base_price ?? 0),
+                  taxRate: Number(it.taxRate ?? it.tax_rate ?? 0),
+                  total: it.total != null ? Number(it.total) : undefined,
+                  isModifier: !!it.isModifier,
+                  isCompositeProductMain: !!it.isCompositeProductMain,
+                  compositeProductId: it.compositeProductId ?? null,
+                })),
               }
             : o
         )
