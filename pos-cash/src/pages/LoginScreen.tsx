@@ -208,19 +208,6 @@ export default function LoginScreen() {
   };
   const onClearPin = () => setPin("");
 
-  // function unpair() {
-  //   if (!SAFE_ALLOW_UNPAIR) return;
-  //   sessionStorage.removeItem("kiosk_token");
-  //   sessionStorage.removeItem("kiosk_jwt");
-  //   sessionStorage.removeItem("kiosk_jwt_exp");
-  //   sessionStorage.removeItem("kiosk_device_name");
-  //   setDeviceLabel("");
-  //   setHasPair(false);
-  //   setPairState("none");
-  //   setPin("");
-  //   message.info("Dispositivo desemparejado");
-  // }
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-blue-700 p-4">
       <Card className="w-full max-w-5xl" styles={{ body: { padding: 24 } }}>
@@ -271,12 +258,6 @@ export default function LoginScreen() {
                 onFocusPin={() => setTarget("pin")}
               />
             )}
-
-            {/* {SAFE_ALLOW_UNPAIR && (
-              <button className="text-red-600 underline" onClick={unpair}>
-                Desemparejar dispositivo
-              </button>
-            )} */}
           </div>
 
           {/* Keypad a la derecha */}

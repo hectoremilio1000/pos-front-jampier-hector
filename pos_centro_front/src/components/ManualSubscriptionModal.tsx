@@ -10,8 +10,8 @@ import {
   message,
 } from "antd";
 import dayjs from "dayjs";
-import apiAuth from "@/apis/apiAuth";
-import apiCenter from "@/apis/apiCenter";
+import apiAuth from "./apis/apiAuth";
+import apiCenter from "./apis/apiCenter";
 
 type PlanPrice = {
   id: number;

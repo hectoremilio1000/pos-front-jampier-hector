@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 import { Button, Card, Modal, Space, Table, Tag, message, Divider } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import apiCenter from "@/apis/apiCenter";
-import PlanFormModal, { type PlanFormValues } from "@/components/PlanFormModal";
+import apiCenter from "@/components/apis/apiCenter";
+import PlanFormModal, { type PlanFormValues } from "./PlanFormModal";
 import PlanPriceFormModal, {
   type PlanPriceFormValues,
 } from "@/components/PlanPriceFormModal";

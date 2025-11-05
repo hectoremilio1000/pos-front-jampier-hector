@@ -208,7 +208,7 @@ export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
       const res = await apiOrder.get(url);
       console.log(res.data);
 
-      const id = data?.id;
+      const id = res.data?.id;
       if (id) {
         persistShift(id);
         return true;

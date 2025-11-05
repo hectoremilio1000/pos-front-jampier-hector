@@ -1,4 +1,5 @@
 // /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos-cash/src/pages/Kiosk/KioskProtectedRoute.tsx
+import type { JSX } from "react";
 import { Navigate } from "react-router-dom";
 
 function isJwtValid() {

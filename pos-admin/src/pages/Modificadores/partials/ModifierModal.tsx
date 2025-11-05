@@ -21,6 +21,7 @@ const { Text } = Typography;
 
 type Producto = { id: number; code: string; name: string; groupId: number };
 type GrupoCat = { id: number; name: string; code: string };
+type AreasCat = { id: number; name: string; code: string };
 
 export default function ModifierModal({
   open,
@@ -52,11 +53,13 @@ export default function ModifierModal({
 
   const [products, setProducts] = useState<Producto[]>([]);
   const [groupsCat, setGroupsCat] = useState<GrupoCat[]>([]);
+  const [areasCat, setAreasCat] = useState<AreasCat[]>([]);
 
   // crear producto rápido
   const [quickOpen, setQuickOpen] = useState(false);
   const [qpName, setQpName] = useState("");
   const [qpGroupId, setQpGroupId] = useState<number | undefined>(undefined);
+  const [printArea, setPrintArea] = useState<number | undefined>(undefined);
   const [qpCode, setQpCode] = useState("");
   const [qpTax, setQpTax] = useState(16);
   const [qpPriceGross, setQpPriceGross] = useState(0);
@@ -67,12 +70,14 @@ export default function ModifierModal({
     if (!open) return;
     (async () => {
       try {
-        const [p, gc] = await Promise.all([
+        const [p, gc, ac] = await Promise.all([
           apiOrder.get("/products"),
           apiOrder.get("/groups"),
+          apiOrder.get("/areasImpresion"),
         ]);
         const plist = Array.isArray(p.data) ? p.data : (p.data?.data ?? []);
         const gcat = Array.isArray(gc.data) ? gc.data : (gc.data?.data ?? []);
+        const acat = Array.isArray(ac.data) ? ac.data : (ac.data?.data ?? []);
         setProducts(
           plist.map((x: any) => ({
             id: x.id,
@@ -83,6 +88,9 @@ export default function ModifierModal({
         );
         setGroupsCat(
           gcat.map((x: any) => ({ id: x.id, name: x.name, code: x.code }))
+        );
+        setAreasCat(
+          acat.map((x: any) => ({ id: x.id, name: x.name, code: x.code }))
         );
 
         if (editing) {
@@ -187,6 +195,10 @@ export default function ModifierModal({
       message.warning("Completa nombre, código y grupo");
       return;
     }
+    if (!printArea) {
+      message.warning("Debes seleccionar una area de impresion");
+      return;
+    }
     try {
       setCreatingProduct(true);
       // Tu backend prioriza priceGross si llega
@@ -195,7 +207,7 @@ export default function ModifierModal({
         code: qpCode.trim(),
         groupId: qpGroupId,
         subgroupId: null,
-        printArea: null,
+        printArea: printArea,
         priceGross: Number(qpPriceGross ?? 0),
         taxRate: Number(qpTax ?? 16),
         enabled: true,
@@ -298,6 +310,18 @@ export default function ModifierModal({
                             value={qpGroupId}
                             onChange={setQpGroupId}
                             options={groupsCat.map((g) => ({
+                              value: g.id,
+                              label: g.name,
+                            }))}
+                            showSearch
+                            optionFilterProp="label"
+                          />
+
+                          <Select
+                            placeholder="Areas de Impresion"
+                            value={printArea}
+                            onChange={setPrintArea}
+                            options={areasCat.map((g) => ({
                               value: g.id,
                               label: g.name,
                             }))}

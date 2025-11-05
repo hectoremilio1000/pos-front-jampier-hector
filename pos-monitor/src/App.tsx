@@ -1,41 +1,30 @@
-// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos-monitor/src/App.tsx
+// /pos-monitor/src/App.tsx
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import LoginScreen from "./pages/LoginScreen";
 
 import "@ant-design/v5-patch-for-react-19";
-import { ProtectedRoute } from "./components/Auth/ProtectedRoute";
-import { AuthProvider } from "./components/Auth/AuthContext";
-import PrivateLayout from "./components/PrivateLayout";
-import Dashboard from "./pages/Dashboard";
 
-import Turnos from "./pages/Turnos";
-import Cuentas from "./pages/Cuentas";
-import { KdsApp } from "./pages/KdsApp";
+import { ControlMonitor } from "./pages/ControlMonitor";
+import { ShiftProvider } from "./context/ShiftContext";
+import { KioskProtectedRoute } from "./components/Kiosk/KioskProtectedRote";
 
 function App() {
   return (
-    <Router>
-      <AuthProvider>
+    <ShiftProvider>
+      <Router>
         <Routes>
           <Route path="/" element={<LoginScreen />} />
-
           <Route
+            path="/monitor"
             element={
-              <ProtectedRoute>
-                <PrivateLayout />
-              </ProtectedRoute>
+              <KioskProtectedRoute>
+                <ControlMonitor />
+              </KioskProtectedRoute>
             }
-          >
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/turnos" element={<Turnos />} />
-            <Route path="/ordenes" element={<Cuentas />} />
-            <Route path="/kds" element={<KdsApp />} />
-
-            {/* Aquí puedes añadir más rutas protegidas */}
-          </Route>
+          />
         </Routes>
-      </AuthProvider>
-    </Router>
+      </Router>
+    </ShiftProvider>
   );
 }
 

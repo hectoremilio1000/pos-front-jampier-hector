@@ -1,5 +1,5 @@
 import { Modal, Form, Input, message } from "antd";
-import { linkOrganization } from "@/apis/apiFacturapi";
+import { linkOrganization } from "../apis/apiFacturapi";
 
 export default function FacturapiLinkModal({
   open,

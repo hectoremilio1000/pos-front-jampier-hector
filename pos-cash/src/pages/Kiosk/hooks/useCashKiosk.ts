@@ -31,6 +31,18 @@ export type Area = {
   id: number;
   name?: string;
 };
+export type Waiter = {
+  id: number;
+  fullName: string;
+};
+export type Restaurant = {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  rfc: string;
+  address_line1: string;
+};
 
 export type CashOrder = {
   id: number;
@@ -41,6 +53,9 @@ export type CashOrder = {
   persons?: number;
   total?: number;
   items: CashOrderItem[];
+  waiter?: Waiter;
+  restaurant?: Restaurant;
+  createdAt?: Date;
 };
 
 export type KPIs = {

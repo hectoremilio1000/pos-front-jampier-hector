@@ -1,18 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Card, Select, Pagination, Modal, message } from "antd";
-import { FaCashRegister, FaTable, FaUserEdit } from "react-icons/fa";
+import { FaTable } from "react-icons/fa";
 import CapturaComandaModal from "@/components/CapturaComandaModal";
 import { FaMapLocationDot } from "react-icons/fa6";
 import {
-  MdPlaylistAddCheck,
+  MdAdsClick,
   MdPointOfSale,
-  MdRestore,
   MdSearch,
   MdTableBar,
 } from "react-icons/md";
 import { GiForkKnifeSpoon } from "react-icons/gi";
 import RegistroChequeModal from "@/components/RegistroChequeModal";
-import { RiPrinterLine } from "react-icons/ri";
 import apiOrder from "@/components/apis/apiOrder";
 import ConsultarItemModal from "@/components/ConsultarItemModal";
 
@@ -91,6 +89,7 @@ type Producto = {
 };
 type Mitad = 0 | 1 | 2 | 3;
 interface OrderItem {
+  id?: number;
   orderId: number | null;
   productId: number;
   qty: number;
@@ -112,6 +111,7 @@ interface OrderItem {
   isCompositeProductMain: boolean;
   half: Mitad;
   route_area_id: number;
+  createdAt?: string;
 }
 /** Lee restaurantId del kiosk_jwt */
 function getRestaurantIdFromJwt(): number {
@@ -532,20 +532,20 @@ const ControlComandero: React.FC = () => {
         </div>
 
         <Modal
+          title={"Acciones Orden"}
           footer={false}
-          closeIcon={false}
           open={accionesChequeVisible}
           onCancel={() => setAccionesChequeVisible(false)}
         >
           <div className="w-full">
-            <div className="grid grid-cols-4 gap-4">
-              <div className="col-span-3">
-                <div className="grid grid-cols-3 gap-4">
+            <div className="w-full">
+              <div className="w-full">
+                <div className="grid grid-cols-2 gap-4">
                   <button
                     className="flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 bg-gray-300 text-gray-800"
                     onClick={() => handleCapturaModal()}
                   >
-                    <MdPlaylistAddCheck className="text-[25px] " />
+                    <MdAdsClick className="text-[25px] " />
                     Capturar
                   </button>
                   <button
@@ -555,31 +555,7 @@ const ControlComandero: React.FC = () => {
                     <MdSearch className="text-[25px] " />
                     Consultar
                   </button>
-                  <button className="flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 bg-gray-300 text-gray-800">
-                    <FaUserEdit className="text-[25px] " />
-                    Cambiar Mesero
-                  </button>
-                  <button className="flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 bg-gray-300 text-gray-800">
-                    <RiPrinterLine className="text-[25px] " />
-                    Imprimir Cuenta
-                  </button>
-                  <button className="flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 bg-gray-300 text-gray-800">
-                    <FaCashRegister className="text-[25px] " />
-                    Pagar
-                  </button>
-                  <button className="flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 bg-gray-300 text-gray-800">
-                    <MdRestore className="text-[25px] " />
-                    Reabrir Cuenta
-                  </button>
                 </div>
-              </div>
-              <div className="col-span-1">
-                <button
-                  className="w-full h-full py-2 px-4 rounded bg-red-500 text-white text-md font-bold"
-                  onClick={() => setAccionesChequeVisible(false)}
-                >
-                  Cerrar
-                </button>
               </div>
             </div>
           </div>

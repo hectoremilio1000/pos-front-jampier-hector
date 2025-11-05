@@ -15,7 +15,7 @@ import {
   uploadCsd,
   updateLegal,
   deleteCsd,
-} from "@/apis/apiFacturapi";
+} from "../apis/apiFacturapi";
 import { useEffect, useState } from "react";
 
 export default function FacturapiStatusModal({

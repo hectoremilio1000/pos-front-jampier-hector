@@ -42,7 +42,7 @@ const MODE_OPTS = [
   { label: "Dependiente", value: "DEPENDENT" },
 ];
 
-export default function Stations() {
+export default function CashStations() {
   const { user } = useAuth();
   const restaurantId = user?.restaurant?.id || null;
   const [rows, setRows] = useState<Station[]>([]);
@@ -64,7 +64,7 @@ export default function Stations() {
     setDevOpen(true);
     setDevLoading(true);
     try {
-      const { data } = await apiCash.get(`/stations/${st.id}/devices`);
+      const { data } = await apiCash.get(`/cash_stations/${st.id}/devices`);
       setDevRows(data || []);
     } catch {
       message.error("No se pudieron cargar los dispositivos");
@@ -95,7 +95,7 @@ export default function Stations() {
           "Selecciona un restaurante para ver estaciones."
         );
       }
-      const { data: stations } = await apiCash.get("/stations", {
+      const { data: stations } = await apiCash.get("/cash_stations", {
         params: { restaurantId },
       });
 
@@ -105,7 +105,9 @@ export default function Stations() {
       // 3) por estación, obtener pivote y resolver nombre de cajero
       const rowsWithCashier: Station[] = await Promise.all(
         (stations || []).map(async (st: Station) => {
-          const { data: links } = await apiCash.get(`/stations/${st.id}/users`);
+          const { data: links } = await apiCash.get(
+            `/cash_stations/${st.id}/users`
+          );
           // links = [{ userId }, ...]
           const ids = Array.isArray(links)
             ? links.map((l: any) => Number(l.userId)).filter(Boolean)
@@ -179,7 +181,7 @@ export default function Stations() {
       }
 
       if (editing) {
-        await apiCash.put(`/stations/${editing.id}`, { ...values });
+        await apiCash.put(`/cash_stations/${editing.id}`, { ...values });
         stationId = editing.id;
       } else {
         const { data } = await apiCash.post(`/stations`, {
@@ -190,7 +192,7 @@ export default function Stations() {
       }
 
       // sincroniza pivote station_users con el cajero seleccionado
-      await apiCash.post(`/stations/${stationId}/users`, {
+      await apiCash.post(`/cash_stations/${stationId}/users`, {
         userIds: selectedCashierIds,
       });
 
@@ -209,7 +211,7 @@ export default function Stations() {
       okType: "danger",
       onOk: async () => {
         try {
-          await apiCash.delete(`/stations/${id}`);
+          await apiCash.delete(`/cash_stations/${id}`);
           message.success("Eliminada");
           load();
         } catch {

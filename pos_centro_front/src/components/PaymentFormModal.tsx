@@ -10,8 +10,9 @@ import {
   message,
 } from "antd";
 import dayjs, { Dayjs } from "dayjs";
-import apiCenter from "@/apis/apiCenter";
+
 import type { PaymentRow } from "@/types/billing";
+import apiCenter from "./apis/apiCenter";
 
 export default function PaymentFormModal({
   open,

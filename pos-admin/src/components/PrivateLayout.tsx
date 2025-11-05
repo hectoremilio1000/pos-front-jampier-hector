@@ -56,7 +56,7 @@ const SECTIONS: Section[] = [
     label: "🛠️ INFRAESTRUCTURA",
     items: [
       // { to: "/infra", label: "✅ Checklist" },
-      { to: "/stations", label: "🧾 Caja" },
+      { to: "/cash_stations", label: "🧾 Cajas" },
       { to: "/productionMonitors", label: "🖥️ Monitores de producción" },
       { to: "/generatePairing", label: "🔗 Tabletas y Commanderos" },
       { to: "/areasImpresion", label: "🖨️ Áreas de impresión" },

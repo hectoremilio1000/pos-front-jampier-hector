@@ -10,8 +10,8 @@ import {
   message,
 } from "antd";
 import dayjs from "dayjs";
-import apiCenter from "@/apis/apiCenter";
 import type { PlanPrice, SubscriptionRow } from "@/types/billing";
+import apiCenter from "./apis/apiCenter";
 
 export default function SubscriptionEditModal({
   open,

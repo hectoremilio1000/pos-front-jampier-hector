@@ -13,7 +13,6 @@ import FiscalCutSettings from "./pages/FiscalCutSettings";
 import ProductionMonitors from "./pages/ProductionMonitors";
 
 import Dashboard from "./pages/Dashboard";
-import Stations from "./pages/Stations";
 import Categorias from "./pages/Categorias";
 import Grupos from "./pages/Grupos";
 import ProductosPage from "./pages/Productos";
@@ -34,6 +33,7 @@ import RequireSubscription from "./components/Billing/RequireSubscription";
 import CheckoutSuccess from "./pages/Billing/CheckoutSuccess";
 import Account from "./pages/Billing/Account";
 import Subscribe from "./pages/Billing/Suscribe";
+import CashStations from "./pages/CashStations";
 
 function App() {
   return (
@@ -56,12 +56,12 @@ function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
 
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/stations" element={<Stations />} />
+          <Route path="/cash_stations" element={<CashStations />} />
           <Route path="/hour_cut" element={<FiscalCutSettings />} />
           <Route path="/areas" element={<Areas />} />
           <Route path="/areasImpresion" element={<AreasImpresionPage />} />
           <Route path="/generatePairing" element={<Dispositivos />} />
-          <Route path="/invoices" element={<InvoicesPage />} />
+          <Route path="/facturas" element={<InvoicesPage />} />
           <Route path="/invoices/customers" element={<CustomersPage />} />
           <Route path="/productionMonitors" element={<ProductionMonitors />} />
           <Route path="/usuarios" element={<Usuarios />} />
