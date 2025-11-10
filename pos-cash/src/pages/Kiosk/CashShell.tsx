@@ -17,8 +17,14 @@ const { Title, Text } = Typography;
 function ShellInner() {
   const [movOpen, setMovOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
-  const { loading, openingCash, setOpeningCash, shiftId, openShift } =
-    useCash();
+  const {
+    loading,
+    openingCash,
+    setOpeningCash,
+    shiftId,
+    sessionId,
+    openShift,
+  } = useCash();
 
   useEffect(() => {
     const MAX_IDLE_MS = 5 * 60 * 1000; // 5 min
@@ -56,6 +62,7 @@ function ShellInner() {
   }, []);
 
   const hasShift = !!shiftId;
+  const hasSession = !!sessionId;
 
   if (loading && !hasShift) {
     return (
@@ -66,7 +73,7 @@ function ShellInner() {
   }
 
   return (
-    <div className="min-h-screen grid grid-rows-[auto_auto_1fr_auto] gap-3 p-3">
+    <div className="min-h-screen bg-gray-100 grid grid-rows-[auto_auto_1fr_auto] gap-3 p-3">
       <HeaderBar />
       <ActionStrip
         hasShift={hasShift}
@@ -74,11 +81,12 @@ function ShellInner() {
         onOpenClose={() => setCloseOpen(true)}
       />
 
-      {!hasShift ? (
-        <div className="grid place-items-center">
-          <Card style={{ width: 420 }}>
+      {!hasSession ? (
+        // puedes cambiar el título a "Abrir caja" si quieres
+        <div className="w-full flex items-center justify-center bg-gray-200">
+          <Card className="max-w-[500px]">
             <Title level={3} style={{ marginTop: 0 }}>
-              Abrir turno
+              Abrir caja
             </Title>
             <Space direction="vertical" size="middle" style={{ width: "100%" }}>
               <div>
@@ -92,7 +100,7 @@ function ShellInner() {
                 />
               </div>
               <Button type="primary" block onClick={openShift}>
-                Abrir turno
+                Abrir
               </Button>
             </Space>
           </Card>

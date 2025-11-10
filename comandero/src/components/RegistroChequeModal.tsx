@@ -1,8 +1,8 @@
-// src/components/RegistroMesaModal.tsx
 import React, { useState } from "react";
-import { Modal, Button, Select, Steps, message } from "antd";
+import { Modal, Button, Steps, message, Input, InputNumber, Tag } from "antd";
+import apiOrder from "@/components/apis/apiOrder";
 import TecladoVirtual from "./TecladoVirtual";
-import apiOrder from "./apis/apiOrder";
+
 interface Area {
   id: number | null;
   restaurantId: number;
@@ -15,60 +15,13 @@ interface Service {
   name: string;
   sortOrder: number;
 }
-type Grupo = {
-  id: number;
-  name: string;
-  isEnabled: boolean;
-};
-type ModifierGroups = {
-  id: number;
-  code: string;
-  name: string;
-  modifiers: Modifiers[];
-};
-type Modifiers = {
-  id: number;
-  isInabled: boolean;
-  modifierGroupId: number;
-  modifierId: number;
-  priceDelta: number;
-  productId: number;
-  modifier: Producto;
-};
-type ProductModifierGroups = {
-  productId: number;
-  modifierGroupId: number;
-  includedQty: number;
-  maxQty: number;
-  isForced: boolean;
-  captureIncluded: boolean;
-  priority: number;
-  modifierGroup: ModifierGroups;
-};
-type AreaImpresion = {
-  id: number;
-  restaurantId: number;
-  name: string;
-};
-type Producto = {
-  id: number;
-  name: string;
-  group: Grupo;
-  subgrupo?: string;
-  categoria: "alimentos" | "bebidas" | "otros";
-  unidad: string;
-  basePrice: number;
-  taxRate: number;
-  priceGross: number;
-  contieneIVA: boolean;
-  printArea: number;
-  areaImpresion: AreaImpresion;
-  suspendido: boolean;
-  isEnabled: boolean;
-  modifierGroups: ModifierGroups[];
-  modifiers: Modifiers[];
-  productModifierGroups: ProductModifierGroups[];
-};
+// (Solo si este tipo ya existe globalmente, puedes borrar estas interfaces locales)
+type Producto = any;
+type ModifierGroups = any;
+type Modifiers = any;
+type ProductModifierGroups = any;
+type AreaImpresion = any;
+
 type Mitad = 0 | 1 | 2 | 3;
 interface OrderItem {
   orderId: number | null;
@@ -87,19 +40,19 @@ interface OrderItem {
   discountReason: string | null;
   product: Producto;
   status: string | null;
-  // NUEVOS CAMPOS:
-  compositeProductId: number | null; // id del producto principal al que pertenece el item
-  isModifier: boolean; // true si es una línea de modifier
-  isCompositeProductMain: boolean; // true si es la línea principal del compuesto
-  half: Mitad; // 0/1/2/3 (ver arriba)
+  compositeProductId: number | null;
+  isModifier: boolean;
+  isCompositeProductMain: boolean;
+  half: Mitad;
   route_area_id: number;
 }
+
 type Props = {
   visible: boolean;
   onClose: () => void;
   onRegistrar: (cheque: {
-    shiftId: number | null; // ⬅️ nuevo
-    id: number; // ⬅️ nuevo
+    shiftId: number | null;
+    id: number;
     tableName: string;
     persons: number;
     area_id: number | null;
@@ -111,10 +64,13 @@ type Props = {
 
   areas: Area[];
   services: Service[];
+
+  // NUEVO: llegan fijos desde ControlComandero
+  defaultAreaId?: number;
+  defaultServiceId?: number;
 };
 
 const { Step } = Steps;
-const { Option } = Select;
 
 const RegistroChequeModal: React.FC<Props> = ({
   visible,
@@ -122,62 +78,70 @@ const RegistroChequeModal: React.FC<Props> = ({
   onRegistrar,
   areas,
   services,
+  defaultAreaId,
+  defaultServiceId,
 }) => {
+  // 0: Nombre, 1: Personas, 2: Resumen
   const [step, setStep] = useState(0);
+
   const [cuenta, setCuenta] = useState("");
   const [personas, setPersonas] = useState("");
-  const [area, setArea] = useState<number | null>(
-    areas[0] ? Number(areas[0].id) : null
-  );
-  const [service, setService] = useState<number | null>(
-    services[0] ? Number(services[0].id) : null
-  );
 
-  const avanzar = () => setStep((s) => s + 1);
-  const retroceder = () => setStep((s) => s - 1);
+  // Área/Servicio siempre vienen de arriba. Si faltan, tomamos el primero disponible.
+  const areaId =
+    typeof defaultAreaId === "number"
+      ? defaultAreaId
+      : areas[0]
+        ? Number(areas[0].id)
+        : 0;
+  const serviceId =
+    typeof defaultServiceId === "number"
+      ? defaultServiceId
+      : services[0]
+        ? Number(services[0].id)
+        : 0;
+
+  const areaName = areas.find((a) => a.id === areaId)?.name ?? "—";
+  const serviceName = services.find((s) => s.id === serviceId)?.name ?? "—";
+
+  const avanzar = () => setStep((s) => Math.min(s + 1, 2));
+  const retroceder = () => setStep((s) => Math.max(s - 1, 0));
 
   const limpiar = () => {
     setCuenta("");
     setPersonas("");
-    setArea(null);
-    setService(null);
+    setStep(0);
   };
 
-  // onRegistrar ahora es async
   const registrar = async () => {
-    // Validaciones mínimas para alias
+    // Validaciones mínimas
     if (!cuenta?.trim()) {
       message.warning("Escribe el nombre de mesa/alias");
-      return;
-    }
-    if (!area) {
-      message.warning("Selecciona un área");
-      return;
-    }
-    if (!service) {
-      message.warning("Selecciona un servicio");
       return;
     }
     if (!/^\d+$/.test(personas)) {
       message.warning("Número de personas inválido");
       return;
     }
-    type KioskUser = { id?: number | string; fullName?: string; role?: string };
+    if (!areaId || !serviceId) {
+      message.error("Área o Servicio no configurados.");
+      return;
+    }
 
+    // waiterId y shiftId desde sessionStorage (igual que antes)
+    type KioskUser = { id?: number | string; fullName?: string };
     function getWaiterIdFromSession(): number {
       const raw = sessionStorage.getItem("kiosk_user_json");
       if (!raw) return 0;
-
       try {
         const user: KioskUser = JSON.parse(raw);
         const id =
           typeof user?.id === "number" ? user.id : Number(user?.id ?? NaN);
         return Number.isFinite(id) ? id : 0;
       } catch {
-        return 0; // si el JSON está mal formado
+        return 0;
       }
     }
-
     const waiterId = getWaiterIdFromSession();
     const shiftId = Number(sessionStorage.getItem("kiosk_shift_id") || "0");
     if (!shiftId) {
@@ -187,12 +151,12 @@ const RegistroChequeModal: React.FC<Props> = ({
 
     try {
       const { data } = await apiOrder.post("/orders", {
-        tableName: cuenta.trim(), // alias
+        tableName: cuenta.trim(),
         persons: Number(personas),
-        areaId: area, // requerido por alias
-        serviceId: service, // requerido por alias
-        waiterId, // mesero logueado (PIN)
-        shiftId, // turno activo
+        areaId: areaId,
+        serviceId: serviceId,
+        waiterId,
+        shiftId,
       });
 
       if (data?.id) {
@@ -203,13 +167,12 @@ const RegistroChequeModal: React.FC<Props> = ({
           persons: data.persons,
           area_id: data.areaId ?? null,
           service_id: data.serviceId ?? null,
-          area: data.area, // ya lo devuelve con { id, name }
-          service: data.service, // ya lo devuelve con { id, name }
+          area: data.area,
+          service: data.service,
           items: [],
         });
         onClose();
         limpiar();
-        setStep(0);
         message.success("Mesa registrada");
       } else {
         message.error("No se pudo crear la orden");
@@ -219,128 +182,86 @@ const RegistroChequeModal: React.FC<Props> = ({
       message.error("No se pudo crear la orden");
     }
   };
-  const pintarArea = (a: number | null) => {
-    if (a === null) {
-      return "";
-    } else {
-      const areaSearch = areas.find((ar) => ar.id === a);
-      if (areaSearch) {
-        return areaSearch.name;
-      } else {
-        return "";
-      }
-    }
-  };
-  const pintarService = (s: number | null) => {
-    if (s === null) {
-      return "";
-    } else {
-      const serviceSearch = services.find((sr) => sr.id === s);
-      if (serviceSearch) {
-        return serviceSearch.name;
-      } else {
-        return "";
-      }
-    }
-  };
+
+  // ----- Vistas de pasos -----
+  const PasoNombre = (
+    <div>
+      <p className="mb-2 font-semibold">Nombre de la mesa:</p>
+      <TecladoVirtual
+        onKeyPress={(v) => setCuenta((prev) => prev + v)}
+        onBackspace={() => setCuenta((prev) => prev.slice(0, -1))}
+        onSpace={() => setCuenta((prev) => prev + " ")}
+        onClear={() => setCuenta("")}
+        text={cuenta}
+        setTexto={setCuenta}
+      />
+    </div>
+  );
+
+  const PasoPersonas = (
+    <div>
+      <p className="mb-2 font-semibold">Número de personas:</p>
+      <TecladoVirtual
+        text={personas}
+        setTexto={setPersonas}
+        onKeyPress={(v) => {
+          if (/\d/.test(v)) setPersonas((prev) => prev + v);
+        }}
+        onBackspace={() => setPersonas((prev) => prev.slice(0, -1))}
+        onSpace={() => {}}
+        onClear={() => setPersonas("")}
+      />
+    </div>
+  );
+
+  const PasoResumen = (
+    <div className="grid gap-4">
+      {/* Editables en línea */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="p-3 rounded border bg-white">
+          <div className="text-xs text-gray-500 mb-1">Nombre de la mesa</div>
+          <Input
+            value={cuenta}
+            onChange={(e) => setCuenta(e.target.value)}
+            size="large"
+          />
+        </div>
+        <div className="p-3 rounded border bg-white">
+          <div className="text-xs text-gray-500 mb-1">Personas</div>
+          <InputNumber
+            value={Number(personas || 0)}
+            min={0}
+            onChange={(v) => setPersonas(String(v ?? ""))}
+            size="large"
+            className="w-full"
+          />
+        </div>
+      </div>
+
+      {/* Área/Servicio fijos (solo lectura) */}
+      <div className="p-4 rounded border bg-white">
+        <div className="font-semibold mb-2">Resumen</div>
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <Tag color="blue">Área: {areaName}</Tag>
+          <Tag color="geekblue">Servicio: {serviceName}</Tag>
+          <Tag color="cyan">Mesa: {cuenta || "—"}</Tag>
+          <Tag color="purple">Personas: {personas || "—"}</Tag>
+        </div>
+
+        {/* Acciones rápidas (espacios reservados) */}
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button disabled>Agregar cliente</Button>
+          <Button disabled>Notas</Button>
+          <Button disabled>Etiquetas</Button>
+        </div>
+      </div>
+    </div>
+  );
 
   const renderPaso = () => {
-    switch (step) {
-      case 0:
-        return (
-          <div>
-            <p className="mb-2 font-semibold">Nombre de la mesa:</p>
-            {/* <Input value={cuenta} readOnly className="mb-4 text-lg" /> */}
-            <TecladoVirtual
-              onKeyPress={(v) => setCuenta((prev) => prev + v)}
-              onBackspace={() => setCuenta((prev) => prev.slice(0, -1))}
-              onSpace={() => setCuenta((prev) => prev + " ")}
-              onClear={() => setCuenta("")}
-              text={cuenta}
-              setTexto={setCuenta}
-            />
-          </div>
-        );
-      case 1:
-        return (
-          <div>
-            <p className="mb-2 font-semibold">Número de personas:</p>
-            {/* <Input value={personas} readOnly className="mb-4 text-lg" /> */}
-            <TecladoVirtual
-              text={personas}
-              setTexto={setPersonas}
-              onKeyPress={(v) => {
-                if (/\d/.test(v)) setPersonas((prev) => prev + v);
-              }}
-              onBackspace={() => setPersonas((prev) => prev.slice(0, -1))}
-              onSpace={() => {}}
-              onClear={() => setPersonas("")}
-            />
-          </div>
-        );
-      case 2:
-        return (
-          <div className="flex flex-col gap-4">
-            <p className="font-semibold">Área:</p>
-            <Select value={area} onChange={setArea}>
-              {areas.map((a, index) => {
-                return (
-                  <Option key={index} value={a.id}>
-                    {a.name}
-                  </Option>
-                );
-              })}
-            </Select>
-            <div className="mt-4 p-4 border rounded bg-white shadow">
-              <p className="font-semibold">Resumen:</p>
-              <p>
-                <strong>Cuenta:</strong> {cuenta}
-              </p>
-              <p>
-                <strong>Personas:</strong> {personas}
-              </p>
-              <p>
-                <strong>Área:</strong> {pintarArea(area)}
-              </p>
-              <p>
-                <strong>Service:</strong> {pintarService(service)}
-              </p>
-            </div>
-          </div>
-        );
-      case 3:
-        return (
-          <div className="flex flex-col gap-4">
-            <p className="font-semibold">Servicio:</p>
-            <Select value={service} onChange={setService}>
-              {services.map((s, index) => {
-                return (
-                  <Option key={index} value={s.id}>
-                    {s.name}
-                  </Option>
-                );
-              })}
-            </Select>
-            <div className="mt-4 p-4 border rounded bg-white shadow">
-              <p className="font-semibold">Resumen:</p>
-              <p>
-                <strong>Cuenta:</strong> {cuenta}
-              </p>
-              <p>
-                <strong>Personas:</strong> {personas}
-              </p>
-              <p>
-                <strong>Área:</strong> {pintarArea(area)}
-              </p>
-              <p>
-                <strong>Service:</strong> {pintarService(service)}
-              </p>
-            </div>
-          </div>
-        );
-      default:
-        return null;
-    }
+    if (step === 0) return PasoNombre;
+    if (step === 1) return PasoPersonas;
+    return PasoResumen;
   };
 
   return (
@@ -348,7 +269,6 @@ const RegistroChequeModal: React.FC<Props> = ({
       open={visible}
       onCancel={() => {
         onClose();
-        setStep(0);
         limpiar();
       }}
       footer={[
@@ -357,26 +277,26 @@ const RegistroChequeModal: React.FC<Props> = ({
             Atrás
           </Button>
         ),
-        step < 3 && (
+        step < 2 && (
           <Button key="next" type="primary" onClick={avanzar}>
             Siguiente
           </Button>
         ),
-        step === 3 && (
+        step === 2 && (
           <Button key="submit" type="primary" onClick={registrar}>
             Registrar
           </Button>
         ),
       ]}
-      title="Registro de Mesa"
+      title="Abrir mesa"
       width={800}
     >
       <Steps current={step} size="small" className="mb-4">
         <Step title="Nombre" />
         <Step title="Personas" />
-        <Step title="Área" />
-        <Step title="Service" />
+        <Step title="Resumen" />
       </Steps>
+
       {renderPaso()}
     </Modal>
   );

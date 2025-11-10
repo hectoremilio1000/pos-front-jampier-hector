@@ -347,18 +347,20 @@ export default function OrderDetail() {
         />
 
         <Divider style={{ margin: "8px 0" }} />
-
-        <Descriptions size="small" column={3} bordered>
-          <Descriptions.Item label="Subtotal (base)">
-            {money(baseSubtotal)}
-          </Descriptions.Item>
-          <Descriptions.Item label="Impuestos">
-            {money(taxTotal)}
-          </Descriptions.Item>
-          <Descriptions.Item label="Total">
-            {money(grandTotal)}
-          </Descriptions.Item>
-        </Descriptions>
+        <div className="w-full flex justify-between">
+          <Descriptions size="small" column={3} bordered>
+            <Descriptions.Item label="Subtotal (base)">
+              {money(baseSubtotal)}
+            </Descriptions.Item>
+            <Descriptions.Item label="Impuestos">
+              {money(taxTotal)}
+            </Descriptions.Item>
+          </Descriptions>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold">Total: </h1>
+            <p className="text-2xl font-bold">{money(grandTotal)}</p>
+          </div>
+        </div>
 
         <div className="flex gap-2">
           <Button type="primary" size="large" onClick={() => setOpen(true)}>

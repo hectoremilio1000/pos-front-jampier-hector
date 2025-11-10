@@ -77,6 +77,12 @@ export type KPIs = {
   salesCard: number;
   salesTotal: number;
 };
+type CashStation = {
+  id: number;
+  mode: number;
+  name: number;
+  code: number;
+};
 
 export function useCashKiosk() {
   const [loading, setLoading] = useState(true);
@@ -84,6 +90,14 @@ export function useCashKiosk() {
   const [shiftId, setShiftId] = useState<string | null>(
     sessionStorage.getItem("cash_shift_id")
   );
+  const [stationId, setStationId] = useState<string | null>(
+    sessionStorage.getItem("cash_station_id")
+  );
+  const [stationCurrent, setStationCurrent] = useState<CashStation | null>();
+  const [sessionId, setSessionId] = useState<string | null>(
+    sessionStorage.getItem("cash_session_id")
+  );
+
   const [orders, setOrders] = useState<CashOrder[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -114,6 +128,19 @@ export function useCashKiosk() {
     const stationCode = sessionStorage.getItem("cash_station_code") || "";
     return { restaurantId, stationCode };
   }, []);
+  const fetchCashStation = async () => {
+    try {
+      const res = await apiCashKiosk.get(`/cash/cash_stations/${stationId}`);
+      setStationCurrent(res.data);
+    } catch (error) {
+      message.error(
+        "ocurrio un error al traer la informacion de la caja, vuelva a emparejar e iniciar session"
+      );
+    }
+  };
+  useEffect(() => {
+    fetchCashStation();
+  }, []);
 
   const checkCurrentShift = useCallback(async () => {
     try {
@@ -128,13 +155,20 @@ export function useCashKiosk() {
         params: { restaurantId, stationCode },
         validateStatus: () => true,
       });
-      if (data?.id) {
-        const id = String(data.id);
-        sessionStorage.setItem("cash_shift_id", id);
-        setShiftId(id);
-      } else {
+      if (data.error) {
+        message.error("No se abrio ningun turno");
         sessionStorage.removeItem("cash_shift_id");
         setShiftId(null);
+        setSessionId(null);
+      } else {
+        if (data.shift?.id) {
+          sessionStorage.setItem("cash_shift_id", data.shift.id);
+          setShiftId(data.shift.id);
+        }
+        if (data.session?.id) {
+          sessionStorage.setItem("cash_session_id", data.session.id);
+          setSessionId(data.session.id);
+        }
       }
     } finally {
       setLoading(false);
@@ -155,10 +189,21 @@ export function useCashKiosk() {
         stationCode,
         openingCash: Number(openingCash || 0),
       });
-      const id = String(data?.id);
-      sessionStorage.setItem("cash_shift_id", id);
-      setShiftId(id);
-      message.success("Turno abierto");
+
+      // Respuesta: { shift:{id,...}, session:{id,...} }
+      const sid = data?.shift?.id ? String(data.shift.id) : null;
+      const sess = data?.session?.id ? String(data.session.id) : null;
+
+      if (sid) {
+        sessionStorage.setItem("cash_shift_id", sid);
+        setShiftId(sid);
+      }
+      if (sess) {
+        sessionStorage.setItem("cash_session_id", sess);
+        setSessionId(sess);
+      }
+
+      message.success("Caja abierta");
       await fetchOrders();
       await fetchKPIs();
     } catch (e: any) {
@@ -270,13 +315,50 @@ export function useCashKiosk() {
     }
   }, []);
 
+  // const onOrdersEvent = useCallback(
+  //   async (msg: any) => {
+  //     if (!msg || typeof msg !== "object") return;
+
+  //     if (msg.type === "order_created" && msg.order) {
+  //       const o = msg.order;
+  //       // mapea al tipo CashOrder
+  //       const newOrder: CashOrder = {
+  //         id: Number(o.id),
+  //         tableName: o.tableName ?? null,
+  //         area_id: Number(o.area_id ?? 0),
+  //         area: o.area || {
+  //           id: Number(o.area_id ?? 0),
+  //           name: o.areaName ?? "–",
+  //         },
+  //         persons: Number(o.persons ?? 0),
+  //         items: [], // al abrir, usualmente vacío
+  //         total: Number(o.total ?? 0),
+  //       };
+
+  //       // 1) evita duplicados
+  //       setOrders((prev) => {
+  //         if (prev.some((x) => x.id === newOrder.id)) return prev;
+  //         return [newOrder, ...prev];
+  //       });
+
+  //       // 2) (opcional) sincronizar detalle por id para tener items y totales exactos
+  //       try {
+  //         await fetchOrderById(newOrder.id);
+  //       } catch {}
+  //     }
+
+  //     // En el futuro puedes manejar: 'order_changed', 'order_closed', etc.
+  //   },
+  //   [fetchOrderById, setOrders]
+  // );
+
   const onOrdersEvent = useCallback(
     async (msg: any) => {
       if (!msg || typeof msg !== "object") return;
 
+      // 👉 ORDER CREATED
       if (msg.type === "order_created" && msg.order) {
         const o = msg.order;
-        // mapea al tipo CashOrder
         const newOrder: CashOrder = {
           id: Number(o.id),
           tableName: o.tableName ?? null,
@@ -286,25 +368,48 @@ export function useCashKiosk() {
             name: o.areaName ?? "–",
           },
           persons: Number(o.persons ?? 0),
-          items: [], // al abrir, usualmente vacío
+          items: [],
           total: Number(o.total ?? 0),
         };
 
-        // 1) evita duplicados
         setOrders((prev) => {
           if (prev.some((x) => x.id === newOrder.id)) return prev;
           return [newOrder, ...prev];
         });
 
-        // 2) (opcional) sincronizar detalle por id para tener items y totales exactos
         try {
           await fetchOrderById(newOrder.id);
         } catch {}
+        return;
       }
 
-      // En el futuro puedes manejar: 'order_changed', 'order_closed', etc.
+      // 👉 ORDER CLOSED (emitido por /orders/:id/pay)
+      if (msg.type === "order_closed") {
+        // el controlador envía orderId; si no, intenta msg.order.id
+        const closedId = Number(
+          msg.orderId ?? (msg.order && msg.order.id) ?? 0
+        );
+        if (!closedId) return;
+
+        // 1) saca la orden de la lista
+        setOrders((prev) => prev.filter((o) => o.id !== closedId));
+
+        // 2) si estaba seleccionada, limpia la selección
+        setSelectedOrderId((current) =>
+          current === closedId ? null : current
+        );
+
+        // 3) refresca KPIs (caja)
+        try {
+          await fetchKPIs();
+        } catch {}
+
+        return;
+      }
+
+      // (opcional) aquí podrías manejar: 'order_changed', etc.
     },
-    [fetchOrderById, setOrders]
+    [fetchOrderById, setOrders, setSelectedOrderId, fetchKPIs]
   );
 
   useEffect(() => {
@@ -401,7 +506,7 @@ export function useCashKiosk() {
   useEffect(() => {
     (async () => {
       await checkCurrentShift();
-      if (sessionStorage.getItem("cash_shift_id")) {
+      if (sessionStorage.getItem("cash_session_id")) {
         await fetchOrders();
         await fetchKPIs();
       }
@@ -416,6 +521,8 @@ export function useCashKiosk() {
     setOpeningCash,
     shiftId,
     setShiftId,
+    sessionId,
+    setSessionId, // 👈 nuevo
     orders,
     setOrders,
     selectedOrderId,
@@ -431,5 +538,7 @@ export function useCashKiosk() {
     payOrder,
     recordCashMovement,
     fetchOrderById,
+    // current station
+    stationCurrent,
   };
 }

@@ -27,7 +27,7 @@ export default function CloseShiftModal({
   open: boolean;
   onClose: () => void;
 }) {
-  const { shiftId, setShiftId } = useCash();
+  const { shiftId, setShiftId, setSessionId } = useCash();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [openingCash, setOpeningCash] = useState<number>(0);
@@ -115,17 +115,30 @@ export default function CloseShiftModal({
         declared: Number(vals[`decl_${r.paymentMethodId}`] || 0),
       }));
       setLoading(true);
-      await apiCashKiosk.post(
+      const res = await apiCashKiosk.post(
         `/shifts/${sid}/close`,
         { declarations },
         { validateStatus: () => true }
       );
-      message.success("Turno cerrado");
-      try {
-        sessionStorage.removeItem("cash_shift_id");
-      } catch {}
-      setShiftId(null);
-      onClose();
+      const data = res.data;
+      console.log(data);
+      if (res.status === 500) {
+        message.error("Ocurrio un erro en el servidor reintentarlo mas tarde");
+      } else {
+        if (data.error) {
+          message.warning(data.error);
+        } else {
+          message.success("Turno cerrado");
+          try {
+            sessionStorage.removeItem("cash_shift_id");
+            sessionStorage.removeItem("cash_session_id");
+            setShiftId(null);
+            setSessionId(null);
+          } catch {}
+          setShiftId(null);
+          onClose();
+        }
+      }
     } catch (e: any) {
       message.error(
         String(e?.response?.data?.error || "No se pudo cerrar el turno")

@@ -151,8 +151,32 @@ const ControlComandero: React.FC = () => {
 
   const [areas, setAreas] = useState<Area[]>([]);
   const [areasFilter, setAreasFilter] = useState<Area[]>([]);
-  const [services, setServices] = useState<Area[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
   const [servicesFilter, setServicesFilter] = useState<Area[]>([]);
+
+  // NUEVO: persistencia simple en sessionStorage
+  function getNum(key: string, fallback: number | null) {
+    const v = sessionStorage.getItem(key);
+    if (v === null) return fallback;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  }
+  function setNum(key: string, val: number | null) {
+    if (val === null) sessionStorage.removeItem(key);
+    else sessionStorage.setItem(key, String(val));
+  }
+
+  // Área / Servicio “pegajosos”
+  const [selectedAreaId, setSelectedAreaId] = useState<number | null>(
+    getNum("kiosk_selected_area_id", null)
+  );
+  const [selectedServiceId, setSelectedServiceId] = useState<number | null>(
+    getNum("kiosk_selected_service_id", null)
+  );
+
+  // Filtro por nombre (para grid)
+  const [areaSeleccionadaNombre, setAreaSeleccionadaNombre] =
+    useState<string>("Todas");
 
   const [areaSeleccionada, setAreaSeleccionada] = useState("Todas");
   const [paginaActual, setPaginaActual] = useState(1);
@@ -166,15 +190,12 @@ const ControlComandero: React.FC = () => {
   const fetchAreas = async () => {
     try {
       const res = await apiOrder.get("/kiosk/areas");
-      const newArea: Area = {
-        id: null,
-        name: "Todas",
-        sortOrder: 0,
-        restaurantId: 0,
-      };
       const areasFromAPI: Area[] = res.data;
       setAreas(areasFromAPI);
-      setAreasFilter([newArea, ...areasFromAPI]);
+      if (selectedAreaId == null && areasFromAPI.length) {
+        setSelectedAreaId(areasFromAPI[0].id!);
+        setNum("kiosk_selected_area_id", areasFromAPI[0].id!);
+      }
     } catch (e) {
       console.error(e);
       message.error("Error al cargar las áreas");
@@ -183,20 +204,30 @@ const ControlComandero: React.FC = () => {
   const fetchServices = async () => {
     try {
       const res = await apiOrder.get("/kiosk/services");
-      const newService: Service = {
-        id: null,
-        name: "Todas",
-        sortOrder: 0,
-        restaurantId: 0,
-      };
       const servicesFromAPI: Service[] = res.data;
       setServices(servicesFromAPI);
-      setServicesFilter([newService, ...servicesFromAPI]);
+      if (selectedServiceId == null && servicesFromAPI.length) {
+        setSelectedServiceId(servicesFromAPI[0].id!);
+        setNum("kiosk_selected_service_id", servicesFromAPI[0].id!);
+      }
     } catch (e) {
       console.error(e);
-      message.error("Error al cargar las áreas");
+      message.error("Error al cargar los servicios");
     }
   };
+  // Derivados
+  const selectedAreaName =
+    areas.find((a) => a.id === selectedAreaId)?.name ?? "—";
+  const selectedServiceName =
+    services.find((s) => s.id === selectedServiceId)?.name ?? "—";
+
+  // Aplica filtro visual por nombre (no toca el default seleccionado)
+  const chequesFiltrados =
+    areaSeleccionadaNombre === "Todas"
+      ? cheques
+      : cheques.filter(
+          (c) => (c.area?.name ?? "Sin área") === areaSeleccionadaNombre
+        );
 
   const fetchCheques = async () => {
     try {
@@ -421,13 +452,6 @@ const ControlComandero: React.FC = () => {
     );
   }
 
-  const chequesFiltrados =
-    areaSeleccionada === "Todas"
-      ? cheques
-      : cheques.filter(
-          (c) => (c.area?.name ?? "Sin área") === areaSeleccionada
-        );
-
   const chequesPaginados = chequesFiltrados.slice(
     (paginaActual - 1) * viewPaginate,
     paginaActual * viewPaginate
@@ -466,46 +490,108 @@ const ControlComandero: React.FC = () => {
 
   return (
     <>
-      <div className="p-6 bg-gray-200 min-h-screen">
-        <div className="grid grid-cols-6 gap-6">
-          <div className="col-span-5">
-            <div className="flex items-center mb-4 gap-4">
-              <Button
-                type="primary"
-                className="bg-blue-800"
-                onClick={() => setModalVisible(true)}
-              >
-                <MdTableBar /> Abrir Mesa
-              </Button>
-              <Button className="bg-blue-800">
-                <MdPointOfSale /> Mis ventas
-              </Button>
-              <Button className="bg-blue-800">
-                <GiForkKnifeSpoon /> Monitoreo de pedidos
-              </Button>
-
-              <div style={{ marginLeft: "auto" }} />
+      <div className=" bg-gray-200 min-h-screen">
+        {/* HEADER NUEVO */}
+        <div className="flex items-start gap-4">
+          <div className="flex-1">
+            <div className="bg-blue-600 px-4 py-3 mb-4 flex justify-between">
+              <h1 className="text-2xl font-bold">Control del POS Comandero</h1>
               <Button danger onClick={cerrarSesion}>
                 Cerrar sesión
               </Button>
-              {/* <Button onClick={desemparejar}>Salir y desemparejar</Button> */}
             </div>
+            <div className="mt-2 flex flex-wrap gap-2 p-6">
+              {/* Servicios: chips grandes */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">Servicio:</span>
+                <div className="flex flex-wrap gap-2">
+                  {services.map((s) => (
+                    <button
+                      key={s.id ?? -1}
+                      onClick={() => {
+                        setSelectedServiceId(s.id);
+                        setNum("kiosk_selected_service_id", s.id);
+                      }}
+                      className={`px-3 py-2 rounded-sm text-sm font-medium border transition
+                    ${
+                      selectedServiceId === s.id
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-white text-gray-700 border-gray-300 hover:border-gray-400"
+                    }
+                  `}
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-            <div className="filter my-4">
-              <Select
-                defaultValue="Todas"
-                value={areaSeleccionada}
-                onChange={setAreaSeleccionada}
-                className="w-40"
-              >
-                {areasFilter.map((area, index) => (
-                  <Option key={index} value={area.name}>
-                    {area.name}
-                  </Option>
+              {/* Botón para fijar “Área por defecto” (pegajoso) */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">Área por defecto:</span>
+                <div className="flex flex-wrap gap-2">
+                  {areas.map((a) => (
+                    <button
+                      key={a.id ?? -1}
+                      onClick={() => {
+                        setSelectedAreaId(a.id);
+                        setNum("kiosk_selected_area_id", a.id);
+                      }}
+                      className={`px-3 py-2 rounded-2xl text-sm font-medium border transition
+                    ${
+                      selectedAreaId === a.id
+                        ? "bg-emerald-600 text-white border-emerald-600"
+                        : "bg-white text-gray-700 border-gray-300 hover:border-gray-400"
+                    }
+                  `}
+                    >
+                      {a.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-6 gap-6 p-6">
+          {/* Acciones rápidas */}
+          <div className="flex gap-2">
+            <Button
+              type="primary"
+              className="bg-blue-800"
+              onClick={() => setModalVisible(true)}
+            >
+              <MdTableBar /> Abrir Mesa
+            </Button>
+            <Button className="bg-blue-800">
+              <MdPointOfSale /> Mis ventas
+            </Button>
+            <Button className="bg-blue-800">
+              <GiForkKnifeSpoon /> Monitoreo de pedidos
+            </Button>
+          </div>
+          <div className="col-span-6">
+            {/* Áreas: filtros grandes para grid + default pegajoso aparte */}
+            <div className="flex items-center gap-2 mb-6">
+              <span className="text-sm text-gray-500">Área (filtro):</span>
+              <div className="flex flex-wrap gap-2">
+                {["Todas", ...areas.map((a) => a.name)].map((name) => (
+                  <button
+                    key={name}
+                    onClick={() => setAreaSeleccionadaNombre(name)}
+                    className={`px-3 py-2 rounded-2xl text-sm font-medium border transition
+                    ${
+                      areaSeleccionadaNombre === name
+                        ? "bg-gray-900 text-white border-gray-900"
+                        : "bg-white text-gray-700 border-gray-300 hover:border-gray-400"
+                    }
+                  `}
+                  >
+                    {name}
+                  </button>
                 ))}
-              </Select>
+              </div>
             </div>
-
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
               {chequesPaginados.map((cuenta, i) => (
                 <Card
@@ -532,16 +618,7 @@ const ControlComandero: React.FC = () => {
               />
             </div>
           </div>
-
-          <div className="col-span-1 flex flex-col gap-6 bg-gray-100 p-4">
-            <div className="w-full">
-              <button className="w-full px-3 py-2 bg-blue-600 text-white text-sm font-bold flex flex-col rounded justify-center items-center gap-2 ">
-                <FaMapLocationDot /> Mapa de mesas
-              </button>
-            </div>
-          </div>
         </div>
-
         <Modal
           title={"Acciones Orden"}
           footer={false}
@@ -571,11 +648,12 @@ const ControlComandero: React.FC = () => {
             </div>
           </div>
         </Modal>
-
         <RegistroChequeModal
           visible={modalVisible}
           areas={areas}
           services={services}
+          defaultAreaId={selectedAreaId ?? undefined}
+          defaultServiceId={selectedServiceId ?? undefined}
           onClose={() => setModalVisible(false)}
           onRegistrar={async (cheque) => {
             setCheques([...cheques, cheque]);
@@ -585,7 +663,7 @@ const ControlComandero: React.FC = () => {
             setModalComandaVisible(true);
           }}
         />
-
+        x
         <CapturaComandaModal
           orderIdCurrent={orderIdCurrent}
           visible={modalComandaVisible}
@@ -598,7 +676,6 @@ const ControlComandero: React.FC = () => {
           }}
           mandarComanda={mandarComanda}
         />
-
         <ConsultarItemModal
           visible={modalConsultaVisible}
           mesa={mesaReciente}

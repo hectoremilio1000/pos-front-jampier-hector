@@ -19,6 +19,8 @@ export async function kioskPingOnce() {
 export function kioskLogoutOperator() {
   try {
     sessionStorage.removeItem("kiosk_jwt");
+    sessionStorage.removeItem("cash_shift_id");
+    sessionStorage.removeItem("cash_session_id");
     sessionStorage.removeItem("kiosk_jwt_exp");
   } catch {}
 }

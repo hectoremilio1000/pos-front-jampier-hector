@@ -1,7 +1,9 @@
 import { Badge, Button } from "antd";
 import { kioskLogoutOperator } from "@/components/Kiosk/session";
+import { useCashKiosk } from "../hooks/useCashKiosk";
 
 export default function HeaderBar() {
+  const { stationCurrent } = useCashKiosk();
   const now = new Date().toLocaleString("es-MX", { hour12: false });
   const label = sessionStorage.getItem("kiosk_device_name") || "Caja";
   const hasShift = !!sessionStorage.getItem("cash_shift_id");
@@ -32,6 +34,7 @@ export default function HeaderBar() {
               className={`inline-block w-2 h-2 rounded-full ${hasShift ? "bg-green-500" : "bg-red-500"}`}
             />
             <span>{hasShift ? `Emparejado: ${label}` : "Sin turno"}</span>
+            <span>Mode: {stationCurrent?.mode}</span>
           </div>
         </div>
       </div>

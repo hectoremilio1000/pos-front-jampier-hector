@@ -59,29 +59,40 @@ export default function TipPayoutModal({
     [shiftId]
   );
 
-  // Carga métodos y pendientes
+  // Carga métodos y pendientes (y establece por defecto el método con isCash)
   useEffect(() => {
     if (!open) return;
     (async () => {
       try {
         setLoading(true);
+
+        // 1) Métodos de pago
         const pm = await apiCashKiosk.get("/payment-methods", {
           validateStatus: () => true,
         });
-        setMethods(
-          (pm?.data || []).map((m: any) => ({
-            id: m.id,
-            code: m.code,
-            name: m.name,
-            isCash: !!m.isCash,
-          }))
-        );
 
+        const mapped: Method[] = (pm?.data || []).map((m: any) => ({
+          id: m.id,
+          code: m.code,
+          name: m.name,
+          isCash: !!m.isCash,
+        }));
+
+        setMethods(mapped);
+
+        // Si no hay un valor ya seteado por el usuario, preselecciona el método con isCash
+        const current = form.getFieldValue("paymentMethodId");
+        if (!current) {
+          const cashMethodId = mapped.find((m) => m.isCash)?.id;
+          if (cashMethodId) {
+            form.setFieldsValue({ paymentMethodId: cashMethodId });
+          }
+        }
+
+        // 2) Pendientes de propinas
         const r = await apiCashKiosk.get<PendingResponse>(
           `/tips/pending?shiftId=${sid}`,
-          {
-            validateStatus: () => true,
-          }
+          { validateStatus: () => true }
         );
         const payload = r?.data || { orders: [], waiters: [] };
         setOrders(payload.orders || []);
@@ -96,7 +107,7 @@ export default function TipPayoutModal({
         setLoading(false);
       }
     })();
-  }, [open]);
+  }, [open]); // ← solo al abrir; no sobreescribe elecciones posteriores
 
   // Filtro por mesero
   const filtered = useMemo(() => {
@@ -187,9 +198,7 @@ export default function TipPayoutModal({
       // refrescar lista
       const r = await apiCashKiosk.get<PendingResponse>(
         `/tips/pending?shiftId=${sid}`,
-        {
-          validateStatus: () => true,
-        }
+        { validateStatus: () => true }
       );
       const payload = r?.data || { orders: [], waiters: [] };
       setOrders(payload.orders || []);
@@ -233,9 +242,7 @@ export default function TipPayoutModal({
       // refrescar
       const r = await apiCashKiosk.get<PendingResponse>(
         `/tips/pending?shiftId=${sid}`,
-        {
-          validateStatus: () => true,
-        }
+        { validateStatus: () => true }
       );
       const payload = r?.data || { orders: [], waiters: [] };
       setOrders(payload.orders || []);
@@ -285,7 +292,9 @@ export default function TipPayoutModal({
               onChange={(v) => setSelectedWaiterId(v ?? null)}
               options={waiters.map((w) => ({
                 value: w.id,
-                label: `${w.fullName} · ${w.orders} orden(es) · Pendiente ${money(w.pendingTotal)}`,
+                label: `${w.fullName} · ${w.orders} orden(es) · Pendiente ${money(
+                  w.pendingTotal
+                )}`,
               }))}
             />
           </Form.Item>
