@@ -23,9 +23,6 @@ apiCashKiosk.interceptors.response.use(
     // Importante: NO limpies todo el sessionStorage (no usar sessionStorage.clear()).
     // Si el JWT del kiosko caducó o es inválido, solo regresa 401 y deja que el guard/Provider decida.
     if (err?.response?.status === 401) {
-      // Opcional: si quieres invalidar solo el JWT del kiosko:
-      sessionStorage.removeItem("kiosk_jwt");
-      sessionStorage.removeItem("kiosk_jwt_exp");
       // No navegamos aquí; el guard redirige si corresponde.
     }
     return Promise.reject(err);

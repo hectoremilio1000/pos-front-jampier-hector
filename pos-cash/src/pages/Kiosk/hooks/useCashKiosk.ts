@@ -97,6 +97,9 @@ export function useCashKiosk() {
   const [sessionId, setSessionId] = useState<string | null>(
     sessionStorage.getItem("cash_session_id")
   );
+  const [restaurantId, setRestaurantId] = useState<string | null>(
+    sessionStorage.getItem("restaurantId")
+  );
 
   const [orders, setOrders] = useState<CashOrder[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
@@ -359,14 +362,32 @@ export function useCashKiosk() {
       // 👉 ORDER CREATED
       if (msg.type === "order_created" && msg.order) {
         const o = msg.order;
+
+        // 🔧 Normaliza area: a veces llega como string JSON (caso alias)
+        const parsedArea =
+          typeof o.area === "string"
+            ? (() => {
+                try {
+                  return JSON.parse(o.area);
+                } catch {
+                  return null;
+                }
+              })()
+            : o.area;
+
+        const areaObj = (parsedArea && typeof parsedArea === "object"
+          ? parsedArea
+          : null) || {
+          id: Number(o.area_id ?? 0),
+          name: o.areaName ?? "–",
+        };
+
         const newOrder: CashOrder = {
           id: Number(o.id),
           tableName: o.tableName ?? null,
-          area_id: Number(o.area_id ?? 0),
-          area: o.area || {
-            id: Number(o.area_id ?? 0),
-            name: o.areaName ?? "–",
-          },
+          area_id: Number(o.area_id ?? areaObj.id ?? 0),
+          area: areaObj,
+          areaName: areaObj?.name ?? o.areaName ?? "–",
           persons: Number(o.persons ?? 0),
           items: [],
           total: Number(o.total ?? 0),
@@ -377,15 +398,136 @@ export function useCashKiosk() {
           return [newOrder, ...prev];
         });
 
-        try {
-          await fetchOrderById(newOrder.id);
-        } catch {}
         return;
       }
 
-      // 👉 ORDER CLOSED (emitido por /orders/:id/pay)
+      // 👉 ORDER CHANGED (items nuevos, totales actualizados, movimiento de mesa/alias)
+      if (msg.type === "order_changed") {
+        const changedId = Number(
+          msg.orderId ?? (msg.order && msg.order.id) ?? 0
+        );
+        if (!changedId) return;
+
+        const incomingItemsRaw: any[] = Array.isArray(msg.items)
+          ? msg.items
+          : [];
+        const normalizeItem = (it: any): CashOrderItem => {
+          const productObj =
+            it.product && typeof it.product === "object"
+              ? {
+                  id: Number(it.product.id ?? it.productId ?? 0),
+                  name:
+                    it.product.name ??
+                    it.name ??
+                    (typeof it.productId !== "undefined"
+                      ? String(it.productId)
+                      : ""),
+                }
+              : undefined;
+
+          return {
+            id: Number(it.id),
+            productId:
+              typeof it.productId !== "undefined" && it.productId !== null
+                ? Number(it.productId)
+                : productObj?.id,
+            product: productObj,
+            name: it.name ?? productObj?.name,
+            qty: Number(it.qty ?? 0),
+            unitPrice: Number(it.unitPrice ?? 0),
+            basePrice: Number(
+              it.basePrice ?? it.base_price ?? it.unitPrice ?? 0
+            ),
+            taxRate: Number(it.taxRate ?? it.tax_rate ?? 0),
+            total:
+              typeof it.total !== "undefined" ? Number(it.total) : undefined,
+            isModifier: !!it.isModifier,
+            isCompositeProductMain: !!it.isCompositeProductMain,
+            compositeProductId:
+              typeof it.compositeProductId !== "undefined" &&
+              it.compositeProductId !== null
+                ? Number(it.compositeProductId)
+                : null,
+          };
+        };
+
+        const incomingItems: CashOrderItem[] = incomingItemsRaw
+          .filter((r) => r && typeof r === "object" && Number(r.id))
+          .map(normalizeItem);
+
+        const newTotals =
+          msg.totals && typeof msg.totals === "object" ? msg.totals : null;
+
+        setOrders((prev) =>
+          prev.map((o) => {
+            if (o.id !== changedId) return o;
+
+            // ---- UPSERT de items (agregar si no existe, actualizar si ya existe) ----
+            const byId = new Map<number, CashOrderItem>();
+            // conserva los existentes por defecto
+            for (const e of o.items ?? []) byId.set(e.id, e);
+
+            for (const ni of incomingItems) {
+              const existing = byId.get(ni.id);
+              // mezcla: incoming pisa campos del existente (status/qty/precio/total/nombre)
+              byId.set(ni.id, { ...(existing || {}), ...ni });
+            }
+
+            // Mantener orden: primero los existentes en su orden original, luego los nuevos
+            const existingIds = new Set((o.items ?? []).map((e) => e.id));
+            const merged: CashOrderItem[] = [
+              ...(o.items ?? []).map((e) => byId.get(e.id)!),
+              ...incomingItems.filter((ni) => !existingIds.has(ni.id)),
+            ];
+
+            // ---- Movimiento de mesa/alias (si viene msg.move) ----
+            let nextTableName = o.tableName ?? null;
+            let nextAreaId = o.area_id;
+            let nextArea = o.area;
+            let nextAreaName = o.areaName ?? nextArea?.name ?? "–";
+
+            const mv = msg.move;
+            if (mv && typeof mv === "object") {
+              if (typeof mv.toAlias === "string") {
+                nextTableName = mv.toAlias;
+              }
+              if (Number.isFinite(mv.toTableId)) {
+                // Al moverse a una mesa real, limpiamos alias.
+                nextTableName = null;
+              }
+              if (Number.isFinite(mv.toAreaId)) {
+                nextAreaId = Number(mv.toAreaId);
+                // No conocemos el nombre de área aquí; lo preservamos si coincide o dejamos "–".
+                // (Opcional: un GET /orders/:id podría refrescar, pero evitamos red)
+                if (!nextArea || nextArea.id !== nextAreaId) {
+                  nextArea = {
+                    id: nextAreaId,
+                    name: nextAreaName || "–",
+                  } as any;
+                }
+              }
+            }
+
+            return {
+              ...o,
+              items: merged,
+              total:
+                newTotals && Number.isFinite(Number(newTotals.total))
+                  ? Number(newTotals.total)
+                  : o.total,
+              tableName: nextTableName,
+              area_id: nextAreaId,
+              area: nextArea,
+              areaName: nextAreaName,
+            };
+          })
+        );
+
+        return;
+      }
+
+      // 👉 ORDER CLOSED (emitido por /orders/:id/pay o /orders/:id/close)
       if (msg.type === "order_closed") {
-        // el controlador envía orderId; si no, intenta msg.order.id
         const closedId = Number(
           msg.orderId ?? (msg.order && msg.order.id) ?? 0
         );
@@ -406,8 +548,6 @@ export function useCashKiosk() {
 
         return;
       }
-
-      // (opcional) aquí podrías manejar: 'order_changed', etc.
     },
     [fetchOrderById, setOrders, setSelectedOrderId, fetchKPIs]
   );
@@ -540,5 +680,7 @@ export function useCashKiosk() {
     fetchOrderById,
     // current station
     stationCurrent,
+    restaurantId,
+    stationId,
   };
 }

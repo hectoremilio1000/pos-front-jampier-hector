@@ -5,7 +5,7 @@ export default function TopProducts({
 }) {
   return (
     <div className="rounded-xl border bg-white p-4">
-      <div className="text-sm text-gray-500 mb-3">
+      <div className="text-lg font-bold text-gray-500 mb-3">
         Top 5 productos más vendidos
       </div>
       <ul className="space-y-2">

@@ -25,7 +25,7 @@ export default function KpiCard({
     >
       <div className="text-2xl">{icon}</div>
       <div className="flex-1">
-        <div className="text-sm text-gray-500">{label}</div>
+        <div className="text-lg font-bold text-gray-500">{label}</div>
         <div className="text-2xl font-semibold">
           {typeof value === "number" ? value.toLocaleString() : value}
         </div>

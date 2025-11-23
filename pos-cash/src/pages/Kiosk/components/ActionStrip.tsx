@@ -9,10 +9,14 @@ export default function ActionStrip({
   hasShift,
   onOpenMov,
   onOpenClose,
+  onOpenCutX,
+  onOpenReview,
 }: {
   hasShift: boolean;
   onOpenMov?: () => void;
   onOpenClose?: () => void;
+  onOpenCutX?: () => void;
+  onOpenReview?: () => void;
 }) {
   const { orders } = useCash();
   const [openTip, setOpenTip] = useState(false);
@@ -69,12 +73,20 @@ export default function ActionStrip({
           <Button type="default" disabled={!hasShift}>
             Cobros en línea
           </Button>
-          <Button type="default" disabled={!hasShift}>
+          {/* <Button type="default" disabled={!hasShift}>
             Historial
+          </Button> */}
+          <Button
+            type="default"
+            disabled={!hasShift}
+            onClick={() => onOpenReview?.()}
+          >
+            Consultar cuentas
           </Button>
-          <Button type="default" disabled={!hasShift}>
-            Corte X
+          <Button type="default" onClick={() => onOpenCutX?.()}>
+            🧾 Corte de caja X
           </Button>
+
           <Button
             type="default"
             disabled={!hasShift}

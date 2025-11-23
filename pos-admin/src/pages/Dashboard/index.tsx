@@ -39,8 +39,7 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <HourlySparkline points={hourly} />
-        <AlertsList rows={alerts} />
-        <QuickActions />
+        {/* <QuickActions /> */}
       </div>
 
       {loading && <div className="text-sm text-gray-500">Cargando…</div>}

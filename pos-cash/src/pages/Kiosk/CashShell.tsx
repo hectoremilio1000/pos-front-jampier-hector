@@ -11,12 +11,16 @@ import { CashKioskProvider, useCash } from "./context/CashKioskContext";
 import { kioskLogoutOperator, kioskPingOnce } from "@/components/Kiosk/session";
 import MovementsModal from "./components/modals/MovementsModal"; // 👈 importa el modal
 import CloseShiftModal from "./components/modals/CloseShiftModal";
+import XCutModal from "./components/modals/XCutModal";
+import OrdersReviewDrawer from "./components/modals/OrdersReviewDrawer";
 
 const { Title, Text } = Typography;
 
 function ShellInner() {
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [movOpen, setMovOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
+  const [xCutOpen, setXCutOpen] = useState(false);
   const {
     loading,
     openingCash,
@@ -79,6 +83,8 @@ function ShellInner() {
         hasShift={hasShift}
         onOpenMov={() => setMovOpen(true)}
         onOpenClose={() => setCloseOpen(true)}
+        onOpenCutX={() => setXCutOpen(true)} // ← PASA EL CALLBACK
+        onOpenReview={() => setReviewOpen(true)}
       />
 
       {!hasSession ? (
@@ -114,7 +120,16 @@ function ShellInner() {
 
       <FooterBar />
       <MovementsModal open={movOpen} onClose={() => setMovOpen(false)} />
-      <CloseShiftModal open={closeOpen} onClose={() => setCloseOpen(false)} />
+      <CloseShiftModal
+        open={closeOpen}
+        onClose={() => setCloseOpen(false)}
+        onClosed={() => setXCutOpen(true)}
+      />
+      <XCutModal open={xCutOpen} onClose={() => setXCutOpen(false)} />
+      <OrdersReviewDrawer
+        open={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+      />
     </div>
   );
 }

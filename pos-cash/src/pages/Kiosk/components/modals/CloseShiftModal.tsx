@@ -23,9 +23,11 @@ type Row = {
 export default function CloseShiftModal({
   open,
   onClose,
+  onClosed,
 }: {
   open: boolean;
   onClose: () => void;
+  onClosed?: () => void;
 }) {
   const { shiftId, setShiftId, setSessionId } = useCash();
   const [form] = Form.useForm();

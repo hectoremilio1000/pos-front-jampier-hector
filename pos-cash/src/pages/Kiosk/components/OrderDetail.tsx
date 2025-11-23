@@ -1,18 +1,86 @@
-import { Card, Descriptions, Empty, Space, Table, Button, Divider } from "antd";
+import {
+  Card,
+  Descriptions,
+  Empty,
+  Space,
+  Table,
+  Button,
+  Divider,
+  Modal,
+  Form,
+  Input,
+  InputNumber,
+  Select,
+  Checkbox,
+  message,
+  Tag,
+} from "antd";
 import type { ColumnsType } from "antd/es/table";
 import PayModal from "./modals/PayModal";
 import { useMemo, useState } from "react";
 import { useCash } from "../context/CashKioskContext";
+import apiAuth from "@/components/apis/apiAuth";
+import apiOrderKiosk from "@/components/apis/apiOrderKiosk";
 import type { CashOrderItem } from "../hooks/useCashKiosk";
 
 const money = (n: number) =>
   `$${(Math.round((n ?? 0) * 100) / 100).toFixed(2)}`;
 
-export default function OrderDetail() {
-  const { selectedOrder, orders } = useCash(); // debe existir orders en tu contexto
-  const [open, setOpen] = useState(false);
+type RefundLine = { paymentMethodId: number; amount: number };
 
-  // Usa directamente CashOrderItem (ya tiene flags y product)
+const PAYMENT_METHOD_OPTIONS = [
+  { label: "Efectivo", value: 1 },
+  { label: "Tarjeta", value: 2 },
+  { label: "Transferencia", value: 3 },
+];
+
+export default function OrderDetail() {
+  const {
+    selectedOrder,
+    orders,
+    restaurantId,
+    stationId,
+    setOrders,
+    setSelectedOrderId,
+    fetchKPIs,
+    fetchOrderById,
+  } = useCash() as any;
+
+  // ====== Hooks ======
+  const [openPay, setOpenPay] = useState(false);
+
+  // Cancelación
+  const [cancelVisible, setCancelVisible] = useState(false);
+  const [approvalVisible, setApprovalVisible] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [approvalSubmitting, setApprovalSubmitting] = useState(false);
+  const [refunds, setRefunds] = useState<RefundLine[]>([]);
+  const [reason, setReason] = useState<string>("");
+  const [managerPassword, setManagerPassword] = useState<string>("");
+
+  // Imprimir
+  const [printApprovalVisible, setPrintApprovalVisible] = useState(false);
+  const [printSubmitting, setPrintSubmitting] = useState(false);
+  const [printManagerPassword, setPrintManagerPassword] = useState("");
+
+  // Reabrir
+  const [reopenApprovalVisible, setReopenApprovalVisible] = useState(false);
+  const [reopenSubmitting, setReopenSubmitting] = useState(false);
+  const [reopenManagerPassword, setReopenManagerPassword] = useState("");
+
+  // Eliminar productos
+  const [voidModalVisible, setVoidModalVisible] = useState(false);
+  const [voidApprovalVisible, setVoidApprovalVisible] = useState(false);
+  const [voidSubmitting, setVoidSubmitting] = useState(false);
+  const [voidManagerPassword, setVoidManagerPassword] = useState("");
+  const [voidReason, setVoidReason] = useState("");
+  const [voidItemIds, setVoidItemIds] = useState<number[]>([]);
+  // arriba, con los otros useState
+  const [deleteApprovalVisible, setDeleteApprovalVisible] = useState(false);
+  const [deleteManagerPassword, setDeleteManagerPassword] = useState("");
+
+  // ====== Datos / columnas / totales ======
+  const status: string = (selectedOrder?.status || "").toLowerCase();
   const items: CashOrderItem[] = selectedOrder?.items ?? [];
 
   const columns: ColumnsType<CashOrderItem> = [
@@ -54,6 +122,48 @@ export default function OrderDetail() {
       width: 120,
     },
   ];
+  function openDeleteFlow() {
+    setDeleteManagerPassword("");
+    setDeleteApprovalVisible(true);
+  }
+  // reutiliza tu requestApprovalToken(action, password, targetId)
+
+  async function doDeleteOrderOnApi(approvalToken: string) {
+    const res = await apiOrderKiosk.delete(`/orders/${selectedOrder?.id}`, {
+      headers: { "X-Approval": `Bearer ${approvalToken}` },
+      validateStatus: () => true,
+    });
+    if (!res || res.status < 200 || res.status >= 300) {
+      const err = (res?.data && res.data.error) || "No se pudo borrar la orden";
+      throw new Error(err);
+    }
+    return res.data;
+  }
+
+  async function handleDeleteApprovalConfirm() {
+    if (!deleteManagerPassword) {
+      message.error("Ingresa la contraseña del administrador");
+      return;
+    }
+    try {
+      const approval = await requestApprovalToken(
+        "order.delete",
+        deleteManagerPassword,
+        selectedOrder?.id ?? 0
+      );
+      await doDeleteOrderOnApi(approval);
+      message.success("Orden borrada");
+      setOrders((prev: any[]) =>
+        prev.filter((o) => o.id !== (selectedOrder?.id ?? -1))
+      );
+      setSelectedOrderId(null);
+      await fetchKPIs();
+      setDeleteApprovalVisible(false);
+      setDeleteManagerPassword("");
+    } catch (e: any) {
+      message.error(String(e?.message || "Error al borrar la orden"));
+    }
+  }
 
   const { baseSubtotal, taxTotal, grandTotal } = useMemo(() => {
     let base = 0,
@@ -73,18 +183,10 @@ export default function OrderDetail() {
     return { baseSubtotal: base, taxTotal: tax, grandTotal: total };
   }, [items]);
 
-  if (!selectedOrder) {
-    return (
-      <Card>
-        <Empty description="Selecciona una orden para ver el detalle" />
-      </Card>
-    );
-  }
-
-  // ===== Helpers (definidos ANTES del uso) =====
+  // ====== Helpers ticket ======
   const orderIndex =
-    (orders?.findIndex((o: any) => o.id === selectedOrder.id) ?? -1) + 1;
-  // Calcula el importe de una línea: total si existe, si no qty * unitPrice
+    (orders?.findIndex((o: any) => o.id === selectedOrder?.id) ?? -1) + 1;
+
   function lineAmount(x: CashOrderItem): number {
     const qty = Number(x.qty ?? 0);
     const unit = Number(x.unitPrice ?? 0);
@@ -119,10 +221,8 @@ export default function OrderDetail() {
         consumed.add(it.id);
         modifiers.forEach((m) => consumed.add(m.id));
 
-        // principal siempre
         rows.push({ qty, desc: getName(it), amount: lineAmount(it) });
 
-        // Solo mods con importe > 0
         for (const m of modifiers) {
           const modAmt = lineAmount(m);
           if (modAmt > 0)
@@ -158,18 +258,16 @@ export default function OrderDetail() {
   function formatDate(d: Date | string | number) {
     const dt = new Date(d);
     const pad = (n: number) => String(n).padStart(2, "0");
-    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(
-      dt.getHours()
-    )}:${pad(dt.getMinutes())}`;
+    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(
+      dt.getDate()
+    )} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
   }
 
   function buildTicketHtml() {
     const rows = buildTicketRows(items);
-    console.log(rows);
-
     const createdAt =
-      (selectedOrder as any).createdAt ||
-      (selectedOrder as any).created_at ||
+      (selectedOrder as any)?.createdAt ||
+      (selectedOrder as any)?.created_at ||
       new Date();
 
     const startStr = formatDate(createdAt);
@@ -186,13 +284,12 @@ export default function OrderDetail() {
       (selectedOrder?.waiter as any)?.name ??
       "-";
 
-    // <<< OJO: aquí ya NO hay ${money(${baseSubtotal})}, sino ${money(baseSubtotal)} >>>
     return `
 <!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
-<title>Ticket Orden #${selectedOrder?.id}</title>
+<title>Ticket Orden #${selectedOrder?.id ?? "-"}</title>
 <style>
   @page { size: 80mm auto; margin: 1mm; }
   * { box-sizing: border-box; }
@@ -221,7 +318,7 @@ export default function OrderDetail() {
       Mesa: <span class="bold">${escapeHtml(String(selectedOrder?.tableName ?? "-"))}</span><br/>
       Mesero: <span class="bold">${escapeHtml(String(waiterName))}</span><br/>
       Personas: <span class="bold">${escapeHtml(String(selectedOrder?.persons ?? "-"))}</span><br/>
-      Orden: <span class="bold">${orderIndex > 0 ? orderIndex : "-"}</span> / ${orders?.length ?? "-"}<br/>
+      Orden: <span className="bold">${orderIndex > 0 ? orderIndex : "-"}</span> / ${orders?.length ?? "-"}<br/>
       Inicio: <span class="bold">${startStr}</span><br/>
       Fin: <span class="bold">${endStr}</span>
     </div>
@@ -274,7 +371,6 @@ export default function OrderDetail() {
 `.trim();
   }
 
-  // Opción A (recomendada): imprimir por iframe oculto (más estable que window.open)
   function printViaIframe(html: string) {
     const iframe = document.createElement("iframe");
     iframe.style.position = "fixed";
@@ -289,8 +385,6 @@ export default function OrderDetail() {
       doc.open();
       doc.write(html);
       doc.close();
-      // el onload del ticket llama window.print()
-      // y luego se cierra el window interno; aquí removemos el iframe un poco después
       setTimeout(() => {
         document.body.removeChild(iframe);
       }, 1200);
@@ -299,77 +393,711 @@ export default function OrderDetail() {
     }
   }
 
-  // Opción B: abrir en nueva pestaña (puede ser bloqueado por popup blocker)
-  function printViaPopup(html: string) {
-    const blob = new Blob([html], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const win = window.open(
-      url,
-      "_blank",
-      "noopener,noreferrer,width=480,height=800"
-    );
-    if (!win) URL.revokeObjectURL(url);
-  }
-
-  function handlePrint() {
+  function handlePrintPreview() {
     const html = buildTicketHtml();
-    // Usa 1 de las dos opciones. La A es más confiable:
     printViaIframe(html);
-    // printViaPopup(html);
   }
 
-  // ======= UI =======
+  // ====== Aprobaciones (pos-auth) ======
+  async function requestApprovalToken(
+    action: string,
+    password: string,
+    targetId: number
+  ) {
+    const rid = Number(restaurantId ?? 0);
+    const sid = stationId != null ? Number(stationId) : null;
+    if (!rid) throw new Error("restaurantId faltante");
+
+    const res = await apiAuth.post(
+      "/approvals/issue-by-password",
+      {
+        restaurantId: rid,
+        stationId: sid,
+        password,
+        action,
+        targetId,
+      },
+      { validateStatus: () => true }
+    );
+    if (!res || res.status < 200 || res.status >= 300) {
+      const err = (res?.data && res.data.error) || "Aprobación rechazada";
+      throw new Error(err);
+    }
+    return String(res.data.approval_token || "");
+  }
+
+  // ====== Reglas de negocio (habilitar/deshabilitar) ======
+  const hasItems = items.length > 0;
+
+  // 👉 nuevo: usa printCount de la orden (acepta snake/camel)
+  const printCount = Number(
+    (selectedOrder as any)?.printCount ??
+      (selectedOrder as any)?.print_count ??
+      0
+  );
+
+  const canPrint =
+    hasItems &&
+    (status === "open" || status === "in_progress" || status === "reopened");
+  const canPay = status === "printed"; // debe estar impresa
+  const canVoidItems = hasItems && status !== "printed";
+  const canCancel =
+    status === "printed" || status === "paid" || status === "closed";
+  const canReopen = status === "printed" || status === "paid";
+
+  // 👉 nuevo: borrar cuenta solo si jamás se imprimió y no hay productos
+  const canDeleteOrder = printCount === 0 && !hasItems;
+
+  // ====== Cancelación ======
+  const addRefundLine = () => {
+    setRefunds((prev) => [
+      ...prev,
+      { paymentMethodId: PAYMENT_METHOD_OPTIONS[0].value, amount: 0 },
+    ]);
+  };
+  const updateRefundLine = (idx: number, partial: Partial<RefundLine>) => {
+    setRefunds((prev) =>
+      prev.map((r, i) => (i === idx ? { ...r, ...partial } : r))
+    );
+  };
+  const removeRefundLine = (idx: number) => {
+    setRefunds((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const openCancelFlow = () => {
+    setReason("");
+    setRefunds([]);
+    setManagerPassword("");
+    setCancelVisible(true);
+  };
+
+  const goApproval = async () => {
+    for (const r of refunds) {
+      if (!r.paymentMethodId || !(Number(r.amount) > 0)) {
+        message.error("Línea de reembolso inválida");
+        return;
+      }
+    }
+    setCancelVisible(false);
+    setApprovalVisible(true);
+  };
+
+  async function doCancelOnOrderApi(approvalToken: string) {
+    const res = await apiOrderKiosk.delete(
+      `/orders/${selectedOrder?.id}/cancel`,
+      {
+        data: { refunds, reason: reason || "cancel_by_manager" },
+        headers: { "X-Approval": `Bearer ${approvalToken}` },
+        validateStatus: () => true,
+      }
+    );
+    if (!res || res.status < 200 || res.status >= 300) {
+      const err = (res?.data && res.data.error) || "Cancelación falló";
+      throw new Error(err);
+    }
+    return res.data;
+  }
+
+  const handleApprovalConfirm = async () => {
+    if (!managerPassword) {
+      message.error("Ingresa la contraseña del administrador");
+      return;
+    }
+    setApprovalSubmitting(true);
+    try {
+      const approval = await requestApprovalToken(
+        "order.cancel",
+        managerPassword,
+        selectedOrder?.id ?? 0
+      );
+      const result = await doCancelOnOrderApi(approval);
+
+      message.success(`Orden cancelada (${result?.status ?? "OK"})`);
+      setOrders((prev: any[]) =>
+        prev.filter((o) => o.id !== (selectedOrder?.id ?? -1))
+      );
+      setSelectedOrderId(null);
+      await fetchKPIs();
+
+      setApprovalVisible(false);
+      setManagerPassword("");
+      setRefunds([]);
+      setReason("");
+    } catch (e: any) {
+      message.error(String(e?.message || "Error al cancelar"));
+    } finally {
+      setApprovalSubmitting(false);
+    }
+  };
+
+  // ====== Imprimir ======
+  async function doPrintOnOrderApi(approvalToken: string) {
+    const res = await apiOrderKiosk.post(
+      `/orders/${selectedOrder?.id}/print`,
+      {},
+      {
+        headers: { "X-Approval": `Bearer ${approvalToken}` },
+        validateStatus: () => true,
+      }
+    );
+    if (!res || res.status < 200 || res.status >= 300) {
+      const err = (res?.data && res.data.error) || "Impresión falló";
+      throw new Error(err);
+    }
+    return res.data as { folioSeries: string; folioNumber: number };
+  }
+
+  const openPrintFlow = () => {
+    // previsualización; la asignación real es tras aprobación
+    handlePrintPreview();
+    setPrintManagerPassword("");
+    setPrintApprovalVisible(true);
+  };
+
+  const handlePrintApprovalConfirm = async () => {
+    if (!printManagerPassword) {
+      message.error("Ingresa la contraseña del administrador");
+      return;
+    }
+    setPrintSubmitting(true);
+    try {
+      const approval = await requestApprovalToken(
+        "order.print",
+        printManagerPassword,
+        selectedOrder?.id ?? 0
+      );
+      const r = await doPrintOnOrderApi(approval);
+      message.success(`Folio asignado: ${r.folioSeries}-${r.folioNumber}`);
+
+      if (typeof fetchOrderById === "function") {
+        try {
+          await fetchOrderById(selectedOrder?.id);
+        } catch {}
+      }
+
+      setPrintApprovalVisible(false);
+      setPrintManagerPassword("");
+    } catch (e: any) {
+      message.error(String(e?.message || "Error al imprimir"));
+    } finally {
+      setPrintSubmitting(false);
+    }
+  };
+
+  // ====== Reabrir ======
+  const openReopenFlow = () => {
+    setReopenManagerPassword("");
+    setReopenApprovalVisible(true);
+  };
+
+  async function doReopenOnOrderApi(approvalToken: string) {
+    const res = await apiOrderKiosk.post(
+      `/orders/${selectedOrder?.id}/reopen`,
+      {},
+      {
+        headers: { "X-Approval": `Bearer ${approvalToken}` },
+        validateStatus: () => true,
+      }
+    );
+    if (!res || res.status < 200 || res.status >= 300) {
+      const err = (res?.data && res.data.error) || "No se pudo reabrir";
+      throw new Error(err);
+    }
+    return res.data;
+  }
+
+  const handleReopenApprovalConfirm = async () => {
+    if (!reopenManagerPassword) {
+      message.error("Ingresa la contraseña del administrador");
+      return;
+    }
+    setReopenSubmitting(true);
+    try {
+      const approval = await requestApprovalToken(
+        "order.reopen",
+        reopenManagerPassword,
+        selectedOrder?.id ?? 0
+      );
+      await doReopenOnOrderApi(approval);
+      message.success("Orden reabierta");
+
+      if (typeof fetchOrderById === "function") {
+        try {
+          await fetchOrderById(selectedOrder?.id);
+        } catch {}
+      }
+
+      setReopenApprovalVisible(false);
+      setReopenManagerPassword("");
+    } catch (e: any) {
+      message.error(String(e?.message || "Error al reabrir"));
+    } finally {
+      setReopenSubmitting(false);
+    }
+  };
+
+  // ====== Eliminar productos ======
+  const openVoidFlow = () => {
+    setVoidReason("");
+    setVoidItemIds([]);
+    setVoidManagerPassword("");
+    setVoidModalVisible(true);
+  };
+
+  const proceedVoidApproval = () => {
+    if (!voidItemIds.length) {
+      message.error("Selecciona al menos un producto");
+      return;
+    }
+    if (!voidReason.trim()) {
+      message.error("Escribe el motivo");
+      return;
+    }
+    setVoidModalVisible(false);
+    setVoidApprovalVisible(true);
+  };
+
+  async function doVoidItemsOnOrderApi(approvalToken: string) {
+    const res = await apiOrderKiosk.post(
+      `/orders/${selectedOrder?.id}/items/void`,
+      { itemIds: voidItemIds, reason: voidReason.trim() },
+      {
+        headers: { "X-Approval": `Bearer ${approvalToken}` },
+        validateStatus: () => true,
+      }
+    );
+    if (!res || res.status < 200 || res.status >= 300) {
+      const err =
+        (res?.data && res.data.error) ||
+        "No se pudieron eliminar los productos";
+      throw new Error(err);
+    }
+    return res.data;
+  }
+
+  const handleVoidApprovalConfirm = async () => {
+    if (!voidManagerPassword) {
+      message.error("Ingresa la contraseña del administrador");
+      return;
+    }
+    setVoidSubmitting(true);
+    try {
+      const approval = await requestApprovalToken(
+        "order.items.void",
+        voidManagerPassword,
+        selectedOrder?.id ?? 0
+      );
+      await doVoidItemsOnOrderApi(approval);
+      message.success("Productos eliminados");
+
+      if (typeof fetchOrderById === "function") {
+        try {
+          await fetchOrderById(selectedOrder?.id);
+        } catch {}
+      }
+
+      setVoidApprovalVisible(false);
+      setVoidManagerPassword("");
+      setVoidItemIds([]);
+      setVoidReason("");
+    } catch (e: any) {
+      message.error(String(e?.message || "Error al eliminar productos"));
+    } finally {
+      setVoidSubmitting(false);
+    }
+  };
+
+  // ====== Borrar cuenta ======
+  async function handleDeleteOrder() {
+    Modal.confirm({
+      title: "Borrar cuenta",
+      content:
+        "Esta acción eliminará definitivamente la orden porque nunca fue impresa y no tiene productos. ¿Deseas continuar?",
+      okText: "Borrar",
+      okButtonProps: { danger: true },
+      cancelText: "Cancelar",
+      onOk: async () => {
+        try {
+          const res = await apiOrderKiosk.delete(
+            `/orders/${selectedOrder?.id}`,
+            {
+              validateStatus: () => true,
+            }
+          );
+          if (!res || res.status < 200 || res.status >= 300) {
+            const err =
+              (res?.data && res.data.error) || "No se pudo borrar la orden";
+            throw new Error(err);
+          }
+          message.success("Orden borrada");
+          setOrders((prev: any[]) =>
+            prev.filter((o) => o.id !== (selectedOrder?.id ?? -1))
+          );
+          setSelectedOrderId(null);
+          await fetchKPIs();
+        } catch (e: any) {
+          message.error(String(e?.message || "Error al borrar la orden"));
+        }
+      },
+    });
+  }
+
+  // ====== Render ======
   return (
     <Card
       title={
         <div className="flex items-center justify-between">
-          <span>{`Orden #${selectedOrder.id} · ${selectedOrder.tableName ?? "-"}`}</span>
-          <Button onClick={handlePrint}>🖨️ Imprimir Cuenta</Button>
+          <span>
+            {selectedOrder
+              ? `Orden #${selectedOrder.id} · ${selectedOrder.tableName ?? "-"}`
+              : "Detalle de la orden"}
+          </span>
+          <div className="flex gap-2">
+            {selectedOrder && (
+              <>
+                <Button onClick={openPrintFlow} disabled={!canPrint}>
+                  🖨️ Imprimir Cuenta
+                </Button>
+                {canReopen && (
+                  <Button onClick={openReopenFlow}>🔓 Reabrir</Button>
+                )}
+                {/* <Button danger onClick={openCancelFlow} disabled={!canCancel}>
+                  ⛔ Cancelar
+                </Button> */}
+                <Button onClick={openVoidFlow} disabled={!canVoidItems}>
+                  🗑️ Eliminar productos
+                </Button>
+                {/* 👉 nuevo botón: borrar cuenta */}
+
+                {/* <Button
+                  onClick={openDeleteFlow}
+                  disabled={!canDeleteOrder}
+                  danger
+                  type="dashed"
+                  title="Solo si nunca se imprimió y no tiene productos"
+                >
+                  🗑️ Borrar cuenta
+                </Button> */}
+              </>
+            )}
+          </div>
         </div>
       }
     >
-      <Space direction="vertical" className="w-full">
-        <Descriptions size="small" column={2}>
-          <Descriptions.Item label="Área">
-            {selectedOrder.area?.name ?? "-"}
-          </Descriptions.Item>
-          <Descriptions.Item label="Personas">
-            {selectedOrder.persons ?? "-"}
-          </Descriptions.Item>
-        </Descriptions>
+      {!selectedOrder ? (
+        <Empty description="Selecciona una orden para ver el detalle" />
+      ) : (
+        <>
+          <Space direction="vertical" className="w-full">
+            <Descriptions size="small" column={3}>
+              <Descriptions.Item label="Área">
+                {selectedOrder.area?.name ?? "-"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Personas">
+                {selectedOrder.persons ?? "-"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Estado">
+                <Tag
+                  color={
+                    status === "printed"
+                      ? "blue"
+                      : status === "reopened"
+                        ? "gold"
+                        : status === "paid"
+                          ? "green"
+                          : status === "closed"
+                            ? "default"
+                            : status === "void"
+                              ? "red"
+                              : "processing"
+                  }
+                >
+                  {status || "-"}
+                </Tag>
+              </Descriptions.Item>
+            </Descriptions>
 
-        <Table<CashOrderItem>
-          rowKey={(r) => r.id}
-          columns={columns}
-          dataSource={items}
-          size="small"
-          pagination={false}
-        />
+            <Table<CashOrderItem>
+              rowKey={(r) => r.id}
+              columns={columns}
+              dataSource={items}
+              size="small"
+              pagination={false}
+            />
 
-        <Divider style={{ margin: "8px 0" }} />
-        <div className="w-full flex justify-between">
-          <Descriptions size="small" column={3} bordered>
-            <Descriptions.Item label="Subtotal (base)">
-              {money(baseSubtotal)}
-            </Descriptions.Item>
-            <Descriptions.Item label="Impuestos">
-              {money(taxTotal)}
-            </Descriptions.Item>
-          </Descriptions>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">Total: </h1>
-            <p className="text-2xl font-bold">{money(grandTotal)}</p>
-          </div>
-        </div>
+            <Divider style={{ margin: "8px 0" }} />
+            <div className="w-full flex justify-between">
+              <Descriptions size="small" column={3} bordered>
+                <Descriptions.Item label="Subtotal (base)">
+                  {money(baseSubtotal)}
+                </Descriptions.Item>
+                <Descriptions.Item label="Impuestos">
+                  {money(taxTotal)}
+                </Descriptions.Item>
+              </Descriptions>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-bold">Total: </h1>
+                <p className="text-2xl font-bold">{money(grandTotal)}</p>
+              </div>
+            </div>
 
-        <div className="flex gap-2">
-          <Button type="primary" size="large" onClick={() => setOpen(true)}>
-            Cobrar
-          </Button>
-        </div>
+            <div className="flex gap-2">
+              <Button
+                type="primary"
+                size="large"
+                onClick={() => setOpenPay(true)}
+                disabled={!canPay}
+                title={!canPay ? "Debes imprimir antes de cobrar" : ""}
+              >
+                Cobrar
+              </Button>
+            </div>
 
-        <PayModal open={open} onClose={() => setOpen(false)} />
-      </Space>
+            <PayModal open={openPay} onClose={() => setOpenPay(false)} />
+          </Space>
+
+          {/* ========= Cancelar (Modal 1: config) ========= */}
+          <Modal
+            title="Cancelar orden — configuración"
+            open={cancelVisible}
+            onCancel={() => setCancelVisible(false)}
+            onOk={goApproval}
+            okText="Continuar"
+            confirmLoading={submitting}
+            destroyOnClose
+          >
+            <Space direction="vertical" className="w-full">
+              <Form layout="vertical">
+                <Form.Item label="Motivo (opcional)">
+                  <Input.TextArea
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    placeholder="Escribe el motivo…"
+                    rows={3}
+                  />
+                </Form.Item>
+
+                <Form.Item label="Reembolsos (opcional)">
+                  <Space
+                    direction="vertical"
+                    className="w-full"
+                    style={{ width: "100%" }}
+                  >
+                    {refunds.map((r, idx) => (
+                      <div key={idx} className="flex gap-2 items-center w-full">
+                        <Select
+                          style={{ width: 180 }}
+                          value={r.paymentMethodId}
+                          options={PAYMENT_METHOD_OPTIONS}
+                          onChange={(v) =>
+                            setRefunds((prev) =>
+                              prev.map((x, i) =>
+                                i === idx
+                                  ? { ...x, paymentMethodId: Number(v) }
+                                  : x
+                              )
+                            )
+                          }
+                        />
+                        <InputNumber
+                          style={{ width: 140 }}
+                          min={0}
+                          step={0.01}
+                          value={r.amount}
+                          onChange={(v) =>
+                            setRefunds((prev) =>
+                              prev.map((x, i) =>
+                                i === idx ? { ...x, amount: Number(v || 0) } : x
+                              )
+                            )
+                          }
+                          formatter={(v) =>
+                            v === null || v === undefined ? "" : String(v)
+                          }
+                          placeholder="Monto"
+                        />
+                        <Button
+                          danger
+                          onClick={() =>
+                            setRefunds((p) => p.filter((_, i) => i !== idx))
+                          }
+                        >
+                          Eliminar
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      onClick={() =>
+                        setRefunds((p) => [
+                          ...p,
+                          { paymentMethodId: 1, amount: 0 },
+                        ])
+                      }
+                    >
+                      Agregar línea de reembolso
+                    </Button>
+                  </Space>
+                </Form.Item>
+              </Form>
+            </Space>
+          </Modal>
+          <Modal
+            title="Aprobación — Borrar cuenta"
+            open={deleteApprovalVisible}
+            onCancel={() => setDeleteApprovalVisible(false)}
+            onOk={handleDeleteApprovalConfirm}
+            okText="Autorizar y borrar"
+            destroyOnClose
+          >
+            <p className="mb-2">
+              Ingresa la <b>contraseña</b> de un usuario <b>admin/owner</b> para
+              borrar esta orden (solo permitido si nunca fue impresa y no tiene
+              productos).
+            </p>
+            <Input.Password
+              value={deleteManagerPassword}
+              onChange={(e) => setDeleteManagerPassword(e.target.value)}
+              placeholder="Contraseña de administrador"
+            />
+          </Modal>
+
+          {/* ========= Cancelar (Modal 2: aprobación) ========= */}
+          <Modal
+            title="Aprobación del administrador"
+            open={approvalVisible}
+            onCancel={() => setApprovalVisible(false)}
+            onOk={handleApprovalConfirm}
+            okText="Autorizar y cancelar"
+            confirmLoading={approvalSubmitting}
+            destroyOnClose
+          >
+            <p className="mb-2">
+              Ingresa la <b>contraseña</b> de un usuario <b>admin/owner</b> del
+              restaurante para autorizar la cancelación.
+            </p>
+            <Input.Password
+              value={managerPassword}
+              onChange={(e) => setManagerPassword(e.target.value)}
+              placeholder="Contraseña de administrador"
+            />
+          </Modal>
+
+          {/* ========= Imprimir (aprobación) ========= */}
+          <Modal
+            title="Aprobación — Imprimir cuenta"
+            open={printApprovalVisible}
+            onCancel={() => setPrintApprovalVisible(false)}
+            onOk={handlePrintApprovalConfirm}
+            okText="Autorizar e imprimir"
+            confirmLoading={printSubmitting}
+            destroyOnClose
+          >
+            <p className="mb-2">
+              Ingresa la <b>contraseña</b> de un usuario <b>admin/owner</b> para
+              asignar folio e imprimir.
+            </p>
+            <Input.Password
+              value={printManagerPassword}
+              onChange={(e) => setPrintManagerPassword(e.target.value)}
+              placeholder="Contraseña de administrador"
+            />
+          </Modal>
+
+          {/* ========= Reabrir (aprobación) ========= */}
+          <Modal
+            title="Aprobación — Reabrir orden"
+            open={reopenApprovalVisible}
+            onCancel={() => setReopenApprovalVisible(false)}
+            onOk={handleReopenApprovalConfirm}
+            okText="Autorizar y reabrir"
+            confirmLoading={reopenSubmitting}
+            destroyOnClose
+          >
+            <p className="mb-2">
+              Ingresa la <b>contraseña</b> de un usuario <b>admin/owner</b> para
+              reabrir esta orden.
+            </p>
+            <Input.Password
+              value={reopenManagerPassword}
+              onChange={(e) => setReopenManagerPassword(e.target.value)}
+              placeholder="Contraseña de administrador"
+            />
+          </Modal>
+
+          {/* ========= Eliminar productos (Modal 1: selección) ========= */}
+          <Modal
+            title="Eliminar productos de la orden"
+            open={voidModalVisible}
+            onCancel={() => setVoidModalVisible(false)}
+            onOk={proceedVoidApproval}
+            okText="Continuar"
+            confirmLoading={false}
+            destroyOnClose
+          >
+            <Space direction="vertical" className="w-full">
+              <div className="max-h-64 overflow-auto border p-2 rounded">
+                {items.length === 0 ? (
+                  <div className="text-sm text-gray-500">No hay productos</div>
+                ) : (
+                  items.map((it) => (
+                    <label key={it.id} className="flex items-center gap-2 py-1">
+                      <Checkbox
+                        checked={voidItemIds.includes(it.id)}
+                        onChange={(e) => {
+                          const on = e.target.checked;
+                          setVoidItemIds((prev) =>
+                            on
+                              ? [...prev, it.id]
+                              : prev.filter((x) => x !== it.id)
+                          );
+                        }}
+                        disabled={!canVoidItems}
+                      />
+                      <span className="text-sm">
+                        x{it.qty} — {it.product?.name ?? it.name ?? `#${it.id}`}{" "}
+                        — {money(lineAmount(it))}
+                      </span>
+                    </label>
+                  ))
+                )}
+              </div>
+
+              <Form layout="vertical" className="mt-2">
+                <Form.Item label="Motivo">
+                  <Input.TextArea
+                    value={voidReason}
+                    onChange={(e) => setVoidReason(e.target.value)}
+                    placeholder="Ej. producto enviado por error"
+                    rows={3}
+                    disabled={!canVoidItems}
+                  />
+                </Form.Item>
+              </Form>
+            </Space>
+          </Modal>
+
+          {/* ========= Eliminar productos (aprobación) ========= */}
+          <Modal
+            title="Aprobación — Eliminar productos"
+            open={voidApprovalVisible}
+            onCancel={() => setVoidApprovalVisible(false)}
+            onOk={handleVoidApprovalConfirm}
+            okText="Autorizar y eliminar"
+            confirmLoading={voidSubmitting}
+            destroyOnClose
+          >
+            <p className="mb-2">
+              Ingresa la <b>contraseña</b> de un usuario <b>admin/owner</b> para
+              eliminar los productos seleccionados.
+            </p>
+            <Input.Password
+              value={voidManagerPassword}
+              onChange={(e) => setVoidManagerPassword(e.target.value)}
+              placeholder="Contraseña de administrador"
+            />
+          </Modal>
+        </>
+      )}
     </Card>
   );
 }

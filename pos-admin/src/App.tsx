@@ -39,6 +39,7 @@ function App() {
   return (
     <AuthProvider>
       <Routes>
+        <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginScreen />} />
 
         <Route
@@ -53,7 +54,7 @@ function App() {
           }
         >
           {/* 👇 al entrar al layout, redirige a /dashboard */}
-          <Route index element={<Navigate to="/dashboard" replace />} />
+          {/* <Route index element={<Navigate to="/dashboard" replace />} /> */}
 
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/cash_stations" element={<CashStations />} />

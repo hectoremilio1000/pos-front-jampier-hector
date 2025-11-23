@@ -340,14 +340,18 @@ const ControlComandero: React.FC = () => {
   // ---------- Inicialización ----------
   useEffect(() => {
     // Si no hay JWT válido, NO navegues: el guard se encarga.
-    if (!isJwtValid()) return;
-
+    // Si el JWT aún no refleja el set justo tras el login, intenta una sola vez igual
     if (initRef.current) return;
     initRef.current = true;
 
     (async () => {
+      if (!isJwtValid()) {
+        // pequeño “plan B”: espera un tick y revalida
+        await Promise.resolve();
+        if (!isJwtValid()) return; // ahora sí, corta si sigue inválido
+      }
+
       if (!shiftId) {
-        // intenta traer turno
         const ok = await refreshShift();
         if (!ok) {
           setReady(false); // mostrará la vista "No hay turno"
@@ -377,6 +381,7 @@ const ControlComandero: React.FC = () => {
         try {
           setReady(true);
           await fetchAreas();
+          await fetchServices();
           await fetchCheques();
         } catch (e) {
           console.error(e);
@@ -394,6 +399,7 @@ const ControlComandero: React.FC = () => {
       try {
         setReady(true);
         await fetchAreas();
+        await fetchServices();
         await fetchCheques();
       } catch (e) {
         console.error(e);

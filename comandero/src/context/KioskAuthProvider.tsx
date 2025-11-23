@@ -125,7 +125,7 @@ export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
     () => !!sessionStorage.getItem(K.kioskToken) && pairState === "paired",
     [pairState]
   );
-  const isJwtValid = useCallback(() => isExpValidMs(expMs), [expMs]);
+  // const isJwtValid = useCallback(() => isExpValidMs(expMs), [expMs]);
 
   // ---------- helpers persistentes ----------
   const persistUserMetaFromLogin = (meta: {
@@ -188,9 +188,21 @@ export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
 
   const loginWithPin = useCallback(async (pin: string) => {
     const resp = await kioskLoginWithPin(pin);
-    // kioskLoginWithPin ya setea kiosk_jwt y kiosk_jwt_exp (ms)
-    setJwt(sessionStorage.getItem(K.jwt));
-    setExpMs(normalizeExpToMs(sessionStorage.getItem(K.exp)));
+    // kioskLoginWithPin ya setea kiosk_jwt y kiosk_jwt_exp (en sessionStorage)
+
+    // 🔧 SINCRONIZA INMEDIATAMENTE EL ESTADO DEL PROVIDER
+    const freshJwt = getKioskJwtSync();
+    const freshExp = normalizeExpToMs(sessionStorage.getItem(K.exp));
+    setJwt(freshJwt);
+    setExpMs(freshExp);
+
+    // (opcional) si tu api usa defaults, dejas el header listo
+    try {
+      if (freshJwt) {
+        (apiCashKiosk as any).defaults.headers.common["Authorization"] =
+          `Bearer ${freshJwt}`;
+      }
+    } catch {}
 
     persistUserMetaFromLogin({
       restaurantId: resp.device.restaurantId,
@@ -204,10 +216,10 @@ export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
   const refreshShift = useCallback(async () => {
     try {
       if (!restaurantId) return false;
-      const url = `/shifts/current?restaurantId=${restaurantId}`;
+      const url = `commander/shifts/current?restaurantId=${restaurantId}`;
       const res = await apiCashKiosk.get(url); // ← usa el JWT del kiosko
 
-      const id = res.data?.id ?? null;
+      const id = res.data?.shift?.id ?? null;
       persistShift(id);
       return !!id;
     } catch {
@@ -259,7 +271,8 @@ export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
     deviceLabel,
     hasPair,
 
-    isJwtValid: () => isExpValidMs(expMs),
+    isJwtValid: () =>
+      isExpValidMs(normalizeExpToMs(sessionStorage.getItem(K.exp))),
 
     pair,
     loginWithPin,

@@ -16,15 +16,15 @@ const SECTIONS: Section[] = [
     label: "🚀 INICIO",
     items: [
       { to: "/dashboard", label: "🏠 Dashboard" },
-      { to: "/reportes", label: "📊 Reportes" },
+      // { to: "/reportes", label: "📊 Reportes" },
     ],
   },
-  {
-    kind: "single",
-    label: "Punto de venta",
-    to: "/control",
-    icon: <>🛒</>, // icono para cuando el sidebar está colapsado
-  },
+  // {
+  //   kind: "single",
+  //   label: "Punto de venta",
+  //   to: "/control",
+  //   icon: <>🛒</>, // icono para cuando el sidebar está colapsado
+  // },
 
   {
     kind: "header",
@@ -34,10 +34,10 @@ const SECTIONS: Section[] = [
       { to: "/services", label: "🍽️ Servicios" },
 
       { to: "/usuarios", label: "👥 Usuarios" },
-      { to: "/facturas", label: "🧾 Facturas (CFDI)" },
-      { to: "/propinas", label: "💳 Propinas" },
+      // { to: "/facturas", label: "🧾 Facturas (CFDI)" },
+      // { to: "/propinas", label: "💳 Propinas" },
       { to: "/hour_cut", label: "⏰ Parámetros fiscales" },
-      { to: "/admin/cuentas", label: "💵 Cuentas (histórico / auditoría)" },
+      // { to: "/admin/cuentas", label: "💵 Cuentas (histórico / auditoría)" },
     ],
   },
   {

@@ -6,7 +6,9 @@ export default function CategoryBars({
   const max = Math.max(...rows.map((r) => r.amount), 1);
   return (
     <div className="rounded-xl border bg-white p-4">
-      <div className="text-sm text-gray-500 mb-3">Categorías más fuertes</div>
+      <div className="text-lg font-bold text-gray-500 mb-3">
+        Categorías más fuertes
+      </div>
       <div className="space-y-3">
         {rows.map((r) => (
           <div key={r.name}>
