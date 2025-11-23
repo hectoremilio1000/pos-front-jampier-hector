@@ -33,10 +33,13 @@ export async function kioskLoginWithPin(pin: string): Promise<string> {
   }
 
   const jwt = data.jwt as string;
-  const ttl = 20 * 60 * 1000; // 20m (si luego mandas expiresInMs, úsalo aquí)
+  const ttlMs =
+    typeof data.expiresInSeconds === "number"
+      ? data.expiresInSeconds * 1000
+      : 20 * 60 * 1000; // fallback 20m
   sessionStorage.setItem("kiosk_jwt", jwt);
   sessionStorage.setItem("restaurantId", data.device.restaurantId);
-  sessionStorage.setItem("kiosk_jwt_exp", String(Date.now() + ttl));
+  sessionStorage.setItem("kiosk_jwt_exp", String(Date.now() + ttlMs));
   return jwt;
 }
 

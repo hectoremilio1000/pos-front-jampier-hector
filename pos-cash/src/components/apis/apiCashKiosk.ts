@@ -4,7 +4,9 @@ import axios from "axios";
 
 function isValidKioskJwt() {
   const exp = Number(sessionStorage.getItem("kiosk_jwt_exp") || 0);
-  return exp - Date.now() > 15_000;
+  const diff = exp - Date.now();
+  console.log("[kiosk_jwt] exp:", exp, "diff ms:", diff);
+  return diff > 15_000;
 }
 
 async function ensureKioskJwt(): Promise<string> {
@@ -33,15 +35,37 @@ apiCashKiosk.interceptors.response.use(
   async (err) => {
     const msg = String(err?.message || "");
     const status = err?.response?.status;
-    if (status === 401 || msg.includes("kiosk_jwt_missing")) {
+    const serverError = String(err?.response?.data?.error || "");
+
+    // Caso 1: el propio front detectó que falta/expiró el JWT
+    if (msg.includes("kiosk_jwt_missing")) {
       try {
         sessionStorage.removeItem("kiosk_jwt");
         sessionStorage.removeItem("kiosk_jwt_exp");
       } catch {}
-      if (typeof window !== "undefined")
+      if (typeof window !== "undefined") {
         window.location.replace("/kiosk-login");
+      }
       return;
     }
+
+    // Caso 2: el backend dice 401 explícitamente por token/jwt
+    if (
+      status === 401 &&
+      (serverError.toLowerCase().includes("token") ||
+        serverError.toLowerCase().includes("jwt"))
+    ) {
+      try {
+        sessionStorage.removeItem("kiosk_jwt");
+        sessionStorage.removeItem("kiosk_jwt_exp");
+      } catch {}
+      if (typeof window !== "undefined") {
+        window.location.replace("/kiosk-login");
+      }
+      return;
+    }
+
+    // Cualquier otro error: se lo devolvemos al caller
     return Promise.reject(err);
   }
 );

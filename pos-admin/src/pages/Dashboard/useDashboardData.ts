@@ -212,10 +212,7 @@ export function useDashboardData(restaurantId?: number) {
             (s, o) => s + (o.tipCollectedTotal ?? 0),
             0
           );
-          const bases = closedToday.reduce(
-            (s, o) => s + ((o.total ?? 0) - (o.tipCollectedTotal ?? 0)),
-            0
-          );
+          const bases = closedToday.reduce((s, o) => s + (o.total ?? 0), 0);
           return bases > 0 ? (tips / bases) * 100 : 0;
         })();
 

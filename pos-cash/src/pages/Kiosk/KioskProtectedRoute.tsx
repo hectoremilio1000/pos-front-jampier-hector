@@ -3,9 +3,10 @@ import type { JSX } from "react";
 import { Navigate } from "react-router-dom";
 
 function isJwtValid() {
-  const expStr = sessionStorage.getItem("kiosk_jwt_exp");
-  if (!expStr) return false;
-  return Number(expStr) - Date.now() > 15_000;
+  const exp = Number(sessionStorage.getItem("kiosk_jwt_exp") || 0);
+  const diff = exp - Date.now();
+  console.log("[kiosk_jwt] exp:", exp, "diff ms:", diff);
+  return diff > 15_000;
 }
 
 export const KioskProtectedRoute = ({

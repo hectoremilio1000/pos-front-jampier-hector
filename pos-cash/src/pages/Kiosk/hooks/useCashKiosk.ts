@@ -318,43 +318,6 @@ export function useCashKiosk() {
     }
   }, []);
 
-  // const onOrdersEvent = useCallback(
-  //   async (msg: any) => {
-  //     if (!msg || typeof msg !== "object") return;
-
-  //     if (msg.type === "order_created" && msg.order) {
-  //       const o = msg.order;
-  //       // mapea al tipo CashOrder
-  //       const newOrder: CashOrder = {
-  //         id: Number(o.id),
-  //         tableName: o.tableName ?? null,
-  //         area_id: Number(o.area_id ?? 0),
-  //         area: o.area || {
-  //           id: Number(o.area_id ?? 0),
-  //           name: o.areaName ?? "–",
-  //         },
-  //         persons: Number(o.persons ?? 0),
-  //         items: [], // al abrir, usualmente vacío
-  //         total: Number(o.total ?? 0),
-  //       };
-
-  //       // 1) evita duplicados
-  //       setOrders((prev) => {
-  //         if (prev.some((x) => x.id === newOrder.id)) return prev;
-  //         return [newOrder, ...prev];
-  //       });
-
-  //       // 2) (opcional) sincronizar detalle por id para tener items y totales exactos
-  //       try {
-  //         await fetchOrderById(newOrder.id);
-  //       } catch {}
-  //     }
-
-  //     // En el futuro puedes manejar: 'order_changed', 'order_closed', etc.
-  //   },
-  //   [fetchOrderById, setOrders]
-  // );
-
   const onOrdersEvent = useCallback(
     async (msg: any) => {
       if (!msg || typeof msg !== "object") return;

@@ -24,6 +24,7 @@ type KioskLoginResponse = {
   };
   shift: { id: number; business_date?: string; opened_at?: string } | null;
   expiresIn?: string; // "20m" (opcional)
+  expiresInSeconds: number;
 };
 
 export async function kioskLoginWithPin(
@@ -50,9 +51,12 @@ export async function kioskLoginWithPin(
 
   // Guarda JWT y expiración como antes
   const jwt = data.jwt;
-  const ttl = 20 * 60 * 1000; // 20 min (si luego envías expiresInMs, usa eso)
+  const ttlMs =
+    typeof data.expiresInSeconds === "number"
+      ? data.expiresInSeconds * 1000
+      : 20 * 60 * 1000; // fallback 20m
   sessionStorage.setItem("kiosk_jwt", jwt);
-  sessionStorage.setItem("kiosk_jwt_exp", String(Date.now() + ttl));
+  sessionStorage.setItem("kiosk_jwt_exp", String(Date.now() + ttlMs));
 
   // Devuelve TODO para que el provider guarde metadatos
   return data as KioskLoginResponse;

@@ -71,13 +71,28 @@ export function SubscriptionProvider({
   };
 
   useEffect(() => {
-    if (!authLoading) fetchCurrent();
+    // 1) Mientras el auth siga cargando, no pedimos nada
+    if (authLoading) return;
+
+    // 2) Si todavía no tenemos restaurantId, no asumimos nada de la suscripción.
+    //    Dejamos loading en true para que RequireSubscription siga mostrando el spinner.
+    if (!restaurantId) {
+      setSubscription(null);
+      setLoading(true);
+      return;
+    }
+
+    // 3) Auth listo + restaurantId listo → ahora SÍ consultamos la suscripción
+    fetchCurrent();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, restaurantId]);
 
+  // combinamos el loading de auth + el loading interno de la suscripción
+  const combinedLoading = authLoading || loading;
+
   const value = useMemo(
-    () => ({ loading, subscription, refresh: fetchCurrent }),
-    [loading, subscription]
+    () => ({ loading: combinedLoading, subscription, refresh: fetchCurrent }),
+    [combinedLoading, subscription]
   );
 
   return (
