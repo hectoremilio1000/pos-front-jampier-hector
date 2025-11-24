@@ -1,4 +1,5 @@
 import { Tag } from "antd";
+import type { OrderDTO } from "../useDashboardData";
 
 type Station = {
   id: number;
@@ -15,7 +16,6 @@ type Session = {
 };
 export default function StatePanel({
   cashOpen,
-  tables,
   staff,
   ordersCancel,
 }: {
@@ -23,9 +23,8 @@ export default function StatePanel({
     count: number;
     sessions: Session[];
   };
-  tables: { total: number; byArea: { name: string; count: number }[] };
   staff: { waiters: number; cashiers: number; bartenders: number };
-  ordersCancel: [];
+  ordersCancel: OrderDTO[];
 }) {
   return (
     <div className="grid grid-cols-1 gap-4">

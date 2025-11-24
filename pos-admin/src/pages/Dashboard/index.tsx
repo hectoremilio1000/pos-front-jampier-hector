@@ -3,15 +3,13 @@ import StatePanel from "./components/StatePanel";
 import TopProducts from "./components/TopProducts";
 import CategoryBars from "./components/CategoryBars";
 import HourlySparkline from "./components/HourlySparkline";
-import AlertsList from "./components/AlertsList";
-import QuickActions from "./components/QuickActions";
 import { useDashboardData } from "./useDashboardData";
 import { useAuth } from "@/components/Auth/AuthContext";
 
 export default function Dashboard() {
   const { user } = useAuth();
   const restaurantId = user?.restaurant?.id;
-  const { loading, kpis, state, topProducts, categories, hourly, alerts } =
+  const { loading, kpis, state, topProducts, categories, hourly } =
     useDashboardData(restaurantId);
 
   return (

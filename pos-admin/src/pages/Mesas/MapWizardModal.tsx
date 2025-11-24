@@ -38,7 +38,6 @@ export default function MapWizardModal({
   const [cols, setCols] = useState<number>(4);
   const [defaultSeats, setDefaultSeats] = useState<number>(2);
   const [grid, setGrid] = useState<Cell[][]>([]);
-  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [currentStep, setCurrentStep] = useState<number>(1); // 1: layout, 2: asignar, 3: revisar
   const [editing, setEditing] = useState<{ r: number; c: number } | null>(null); // 👈 nuevo
@@ -72,7 +71,6 @@ export default function MapWizardModal({
     // Inicializa / carga layout actual del área
     const init = async () => {
       if (!area?.id) return;
-      setLoading(true);
       try {
         const res = await apiOrder.get(`/tables?areaId=${area.id}`);
         const list: Array<{
@@ -125,8 +123,6 @@ export default function MapWizardModal({
       } catch {
         message.error("Error al cargar mesas del área");
         buildEmptyGrid(4, 4, 2);
-      } finally {
-        setLoading(false);
       }
     };
     init();

@@ -4,15 +4,15 @@ import { Table, Input, Button, Tag, message, Space, Popconfirm } from "antd";
 import { PlusOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import apiAuth from "@/components/apis/apiAuth";
 import { useAuth } from "@/components/Auth/AuthContext";
-import UserModal, { type UserFormValues } from "./UserModal";
 
-type Role = { id: number; code: string; name: string };
+import UserModal, { type UserFormValues, type RoleOption } from "./UserModal";
+
 type UserRow = {
   id: number;
   fullName: string;
   email?: string | null;
   username?: string | null;
-  role: Role;
+  role: RoleOption;
   status: "active" | "blocked";
 };
 
@@ -27,7 +27,8 @@ function makeAliasEmail(local: string, restaurantId: number | string) {
 export default function Usuarios() {
   const { user } = useAuth();
   const [rows, setRows] = useState<UserRow[]>([]);
-  const [roles, setRoles] = useState<Role[]>([]);
+  const [roles, setRoles] = useState<RoleOption[]>([]);
+
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
 

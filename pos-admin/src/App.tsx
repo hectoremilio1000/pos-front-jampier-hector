@@ -32,7 +32,6 @@ import { SubscriptionProvider } from "./components/Billing/SubscriptionContext";
 import RequireSubscription from "./components/Billing/RequireSubscription";
 import CheckoutSuccess from "./pages/Billing/CheckoutSuccess";
 import Account from "./pages/Billing/Account";
-import Subscribe from "./pages/Billing/Suscribe";
 import CashStations from "./pages/CashStations";
 
 function App() {

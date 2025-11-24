@@ -18,11 +18,13 @@ const { Text } = Typography;
 export type UserFormValues = {
   full_name: string;
   role_code: "admin" | "manager" | "captain" | "cashier" | "waiter";
-  password?: string; // gerenciales: alfanum >=6, operativos: exactamente 6 dígitos
+  password?: string;
   status?: "active" | "blocked" | "suspended" | "invited";
 };
 
-type Role = { id: number; code: UserFormValues["role_code"]; name: string };
+// 👇 Tipo de rol que viene de la API (puede traer owner, superadmin, etc.)
+// code es string genérico
+export type RoleOption = { id: number; code: string; name: string };
 
 export default function UserModal({
   open,
@@ -35,7 +37,7 @@ export default function UserModal({
   open: boolean;
   mode: "create" | "edit";
   initial?: Partial<UserFormValues>;
-  roles: Role[];
+  roles: RoleOption[]; // 👈 usamos el tipo exportado
   onCancel: () => void;
   onSubmit: (values: UserFormValues) => void | Promise<void>;
   currentUserRoleCode?: string;
@@ -53,8 +55,14 @@ export default function UserModal({
   ];
 
   const roleOptions = useMemo(() => {
-    const list = roles.filter((r) => allowedCodes.includes(r.code));
-    return list.map((r) => ({ value: r.code, label: r.name }));
+    const list = roles.filter((r) =>
+      allowedCodes.includes(r.code as UserFormValues["role_code"])
+    );
+
+    return list.map((r) => ({
+      value: r.code as UserFormValues["role_code"],
+      label: r.name,
+    }));
   }, [roles]);
 
   useEffect(() => {

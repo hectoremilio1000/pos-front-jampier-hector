@@ -1,6 +1,6 @@
 // /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos-admin/src/pages/Productos/ProductModal.tsx
 
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect } from "react";
 import {
   Modal,
   Form,
@@ -41,6 +41,7 @@ export type ProductValues = {
   taxRate: number; // %
   enabled: boolean;
   modifierGroups: ModifierGroupConfig[];
+  priceGross?: number; // 👈 NUEVO: precio con IVA (opcional)
 };
 
 export default function ProductModal({
@@ -184,10 +185,15 @@ export default function ProductModal({
   const handleOk = async () => {
     // Aseguramos que el form lleve neto/iva actualizados
     form.setFieldsValue({ price: priceNet, taxRate: vat });
+
     const values = await form.validateFields();
-    // Tip: si más adelante quieres enviar priceGross desde la page, lo pegamos al objeto:
-    (values as any).priceGross = priceGross;
-    await onOk(values);
+
+    const payload: ProductValues = {
+      ...(values as ProductValues),
+      priceGross, // 👈 ya tipado como parte de ProductValues (opcional)
+    };
+
+    await onOk(payload);
     form.resetFields();
   };
 

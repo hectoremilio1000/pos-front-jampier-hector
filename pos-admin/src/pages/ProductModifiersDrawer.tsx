@@ -1,15 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  Modal,
-  Table,
-  Tag,
-  Button,
-  InputNumber,
-  message,
-  Checkbox,
-  Divider,
-  Collapse,
-} from "antd";
+import { Modal, Table, Tag, message, Checkbox, Divider, Collapse } from "antd";
 import apiOrder from "@/components/apis/apiOrder";
 
 const { Panel } = Collapse;

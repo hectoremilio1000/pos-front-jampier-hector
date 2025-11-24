@@ -70,8 +70,7 @@ type OrderItem = {
   areaImpresion?: AreaImpresion;
   product?: Product;
 };
-
-type OrderDTO = {
+export type OrderDTO = {
   id: number;
   status: "open" | "preparing" | "closed";
   createdAt: string;
@@ -112,9 +111,7 @@ export function useDashboardData(restaurantId?: number) {
     { name: string; amount: number }[]
   >([]);
   const [hourly, setHourly] = useState<{ hour: string; amount: number }[]>([]);
-  const [alerts, setAlerts] = useState<
-    { type: "danger" | "warning" | "info"; text: string }[]
-  >([]);
+
   type CategoryStat = { name: string; amount: number };
   function getTopCategories(
     orders: OrderDTO[], // o tu tipo Order[]
@@ -330,5 +327,5 @@ export function useDashboardData(restaurantId?: number) {
     return { cashOpen, tables: tablesAgg, staff, ordersCancel };
   }, [shift, tables, areas, orders]);
 
-  return { loading, kpis, state, topProducts, categories, hourly, alerts };
+  return { loading, kpis, state, topProducts, categories, hourly };
 }

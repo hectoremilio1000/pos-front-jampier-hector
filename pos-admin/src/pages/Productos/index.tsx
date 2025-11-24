@@ -99,11 +99,10 @@ export default function ProductosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.groupId, rows, editingId]);
 
-  type FormWithGross = ProductValues & { priceGross?: number };
   /* ---------- guardar ---------- */
 
   /* ---------- guardar ---------- */
-  const save = async (override?: FormWithGross) => {
+  const save = async (override?: ProductValues) => {
     const f = override ?? form;
 
     const hasName = (f.name ?? "").trim().length > 0;
