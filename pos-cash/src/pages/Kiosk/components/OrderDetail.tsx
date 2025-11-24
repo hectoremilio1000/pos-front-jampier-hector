@@ -49,12 +49,9 @@ export default function OrderDetail() {
   // ====== Hooks ======
   const [openPay, setOpenPay] = useState(false);
 
-  // Cancelación
+  // Cancelación (solo motivo + contraseña, sin reembolsos)
   const [cancelVisible, setCancelVisible] = useState(false);
-  const [approvalVisible, setApprovalVisible] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [approvalSubmitting, setApprovalSubmitting] = useState(false);
-  const [refunds, setRefunds] = useState<RefundLine[]>([]);
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [reason, setReason] = useState<string>("");
   const [managerPassword, setManagerPassword] = useState<string>("");
 
@@ -449,44 +446,18 @@ export default function OrderDetail() {
   const canDeleteOrder = printCount === 0 && !hasItems;
 
   // ====== Cancelación ======
-  const addRefundLine = () => {
-    setRefunds((prev) => [
-      ...prev,
-      { paymentMethodId: PAYMENT_METHOD_OPTIONS[0].value, amount: 0 },
-    ]);
-  };
-  const updateRefundLine = (idx: number, partial: Partial<RefundLine>) => {
-    setRefunds((prev) =>
-      prev.map((r, i) => (i === idx ? { ...r, ...partial } : r))
-    );
-  };
-  const removeRefundLine = (idx: number) => {
-    setRefunds((prev) => prev.filter((_, i) => i !== idx));
-  };
 
   const openCancelFlow = () => {
     setReason("");
-    setRefunds([]);
     setManagerPassword("");
     setCancelVisible(true);
-  };
-
-  const goApproval = async () => {
-    for (const r of refunds) {
-      if (!r.paymentMethodId || !(Number(r.amount) > 0)) {
-        message.error("Línea de reembolso inválida");
-        return;
-      }
-    }
-    setCancelVisible(false);
-    setApprovalVisible(true);
   };
 
   async function doCancelOnOrderApi(approvalToken: string) {
     const res = await apiOrderKiosk.delete(
       `/orders/${selectedOrder?.id}/cancel`,
       {
-        data: { refunds, reason: reason || "cancel_by_manager" },
+        data: { refunds: [], reason: reason || "cancel_by_manager" },
         headers: { "X-Approval": `Bearer ${approvalToken}` },
         validateStatus: () => true,
       }
@@ -498,12 +469,12 @@ export default function OrderDetail() {
     return res.data;
   }
 
-  const handleApprovalConfirm = async () => {
+  const handleCancelConfirm = async () => {
     if (!managerPassword) {
       message.error("Ingresa la contraseña del administrador");
       return;
     }
-    setApprovalSubmitting(true);
+    setCancelSubmitting(true);
     try {
       const approval = await requestApprovalToken(
         "order.cancel",
@@ -519,14 +490,13 @@ export default function OrderDetail() {
       setSelectedOrderId(null);
       await fetchKPIs();
 
-      setApprovalVisible(false);
+      setCancelVisible(false);
       setManagerPassword("");
-      setRefunds([]);
       setReason("");
     } catch (e: any) {
       message.error(String(e?.message || "Error al cancelar"));
     } finally {
-      setApprovalSubmitting(false);
+      setCancelSubmitting(false);
     }
   };
 
@@ -548,8 +518,6 @@ export default function OrderDetail() {
   }
 
   const openPrintFlow = () => {
-    // previsualización; la asignación real es tras aprobación
-    handlePrintPreview();
     setPrintManagerPassword("");
     setPrintApprovalVisible(true);
   };
@@ -577,6 +545,8 @@ export default function OrderDetail() {
 
       setPrintApprovalVisible(false);
       setPrintManagerPassword("");
+      // previsualización; la asignación real es tras aprobación
+      handlePrintPreview();
     } catch (e: any) {
       message.error(String(e?.message || "Error al imprimir"));
     } finally {
@@ -761,9 +731,9 @@ export default function OrderDetail() {
                 {canReopen && (
                   <Button onClick={openReopenFlow}>🔓 Reabrir</Button>
                 )}
-                {/* <Button danger onClick={openCancelFlow} disabled={!canCancel}>
-                  ⛔ Cancelar
-                </Button> */}
+                <Button danger onClick={openCancelFlow} disabled={!canCancel}>
+                  ⛔ Cancelar folio
+                </Button>
                 <Button onClick={openVoidFlow} disabled={!canVoidItems}>
                   🗑️ Eliminar productos
                 </Button>
@@ -857,13 +827,14 @@ export default function OrderDetail() {
           </Space>
 
           {/* ========= Cancelar (Modal 1: config) ========= */}
+          {/* ========= Cancelar orden (motivo + contraseña, sin reembolsos) ========= */}
           <Modal
-            title="Cancelar orden — configuración"
+            title="Cancelar orden"
             open={cancelVisible}
             onCancel={() => setCancelVisible(false)}
-            onOk={goApproval}
-            okText="Continuar"
-            confirmLoading={submitting}
+            onOk={handleCancelConfirm}
+            okText="Autorizar y cancelar"
+            confirmLoading={cancelSubmitting}
             destroyOnClose
           >
             <Space direction="vertical" className="w-full">
@@ -876,71 +847,18 @@ export default function OrderDetail() {
                     rows={3}
                   />
                 </Form.Item>
-
-                <Form.Item label="Reembolsos (opcional)">
-                  <Space
-                    direction="vertical"
-                    className="w-full"
-                    style={{ width: "100%" }}
-                  >
-                    {refunds.map((r, idx) => (
-                      <div key={idx} className="flex gap-2 items-center w-full">
-                        <Select
-                          style={{ width: 180 }}
-                          value={r.paymentMethodId}
-                          options={PAYMENT_METHOD_OPTIONS}
-                          onChange={(v) =>
-                            setRefunds((prev) =>
-                              prev.map((x, i) =>
-                                i === idx
-                                  ? { ...x, paymentMethodId: Number(v) }
-                                  : x
-                              )
-                            )
-                          }
-                        />
-                        <InputNumber
-                          style={{ width: 140 }}
-                          min={0}
-                          step={0.01}
-                          value={r.amount}
-                          onChange={(v) =>
-                            setRefunds((prev) =>
-                              prev.map((x, i) =>
-                                i === idx ? { ...x, amount: Number(v || 0) } : x
-                              )
-                            )
-                          }
-                          formatter={(v) =>
-                            v === null || v === undefined ? "" : String(v)
-                          }
-                          placeholder="Monto"
-                        />
-                        <Button
-                          danger
-                          onClick={() =>
-                            setRefunds((p) => p.filter((_, i) => i !== idx))
-                          }
-                        >
-                          Eliminar
-                        </Button>
-                      </div>
-                    ))}
-                    <Button
-                      onClick={() =>
-                        setRefunds((p) => [
-                          ...p,
-                          { paymentMethodId: 1, amount: 0 },
-                        ])
-                      }
-                    >
-                      Agregar línea de reembolso
-                    </Button>
-                  </Space>
+                <Form.Item label="Contraseña del administrador">
+                  <Input.Password
+                    value={managerPassword}
+                    onChange={(e) => setManagerPassword(e.target.value)}
+                    placeholder="Contraseña de administrador"
+                  />
                 </Form.Item>
               </Form>
             </Space>
           </Modal>
+
+          {/* borrar cuenta */}
           <Modal
             title="Aprobación — Borrar cuenta"
             open={deleteApprovalVisible}
@@ -957,27 +875,6 @@ export default function OrderDetail() {
             <Input.Password
               value={deleteManagerPassword}
               onChange={(e) => setDeleteManagerPassword(e.target.value)}
-              placeholder="Contraseña de administrador"
-            />
-          </Modal>
-
-          {/* ========= Cancelar (Modal 2: aprobación) ========= */}
-          <Modal
-            title="Aprobación del administrador"
-            open={approvalVisible}
-            onCancel={() => setApprovalVisible(false)}
-            onOk={handleApprovalConfirm}
-            okText="Autorizar y cancelar"
-            confirmLoading={approvalSubmitting}
-            destroyOnClose
-          >
-            <p className="mb-2">
-              Ingresa la <b>contraseña</b> de un usuario <b>admin/owner</b> del
-              restaurante para autorizar la cancelación.
-            </p>
-            <Input.Password
-              value={managerPassword}
-              onChange={(e) => setManagerPassword(e.target.value)}
               placeholder="Contraseña de administrador"
             />
           </Modal>

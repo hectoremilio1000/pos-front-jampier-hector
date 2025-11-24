@@ -8,7 +8,11 @@ import {
   Modal,
   Input,
   message,
+  Form,
+  Select,
+  InputNumber,
 } from "antd";
+
 import { useEffect, useState } from "react";
 import apiOrderKiosk from "@/components/apis/apiOrderKiosk";
 import apiAuth from "@/components/apis/apiAuth";
@@ -25,6 +29,14 @@ type Item = {
   product?: { id: number; name: string } | null;
   name?: string | null;
 };
+type RefundLine = { paymentMethodId: number; amount: number };
+
+const PAYMENT_METHOD_OPTIONS = [
+  { label: "Efectivo", value: 1 },
+  { label: "Tarjeta", value: 2 },
+  { label: "Transferencia", value: 3 },
+];
+
 type OrderLite = {
   id: number;
   status: string; // 'closed' | 'void'
@@ -42,9 +54,23 @@ export default function OrdersReviewDrawer({ open, onClose }: Props) {
   const [orders, setOrders] = useState<OrderLite[]>([]);
   const [sel, setSel] = useState<OrderLite | null>(null);
 
+  // Cancelación de folio: config (motivo + refunds) + aprobación (password)
+  const [cancelConfigOpen, setCancelConfigOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [refunds, setRefunds] = useState<RefundLine[]>([]);
+
   // approval modal (password)
   const [pwOpen, setPwOpen] = useState(false);
   const [pw, setPw] = useState("");
+
+  // approval modal (password)
+  type RefundLine = { paymentMethodId: number; amount: number };
+
+  const PAYMENT_METHOD_OPTIONS = [
+    { label: "Efectivo", value: 1 },
+    { label: "Tarjeta", value: 2 },
+    { label: "Transferencia", value: 3 },
+  ];
 
   useEffect(() => {
     if (!open) return;
@@ -128,9 +154,23 @@ export default function OrdersReviewDrawer({ open, onClose }: Props) {
     return String(data.approval_token);
   }
 
-  async function cancelFolio() {
+  function cancelFolio() {
     if (!sel) return;
     if (sel.status.toLowerCase() !== "closed") return;
+    setCancelReason("");
+    setRefunds([]);
+    setCancelConfigOpen(true);
+  }
+  function proceedCancelApproval() {
+    // refunds son opcionales, pero si existen deben ser válidos
+    for (const r of refunds) {
+      if (!r.paymentMethodId || !(Number(r.amount) > 0)) {
+        message.error("Línea de reembolso inválida");
+        return;
+      }
+    }
+    setCancelConfigOpen(false);
+    setPw("");
     setPwOpen(true);
   }
 
@@ -139,10 +179,14 @@ export default function OrdersReviewDrawer({ open, onClose }: Props) {
       if (!sel) return;
       if (!pw) return message.error("Ingresa la contraseña");
       const approval = await requestApprovalToken("order.cancel", pw, sel.id);
+
       const { status, data } = await apiOrderKiosk.delete(
         `/orders/${sel.id}/cancel`,
         {
-          data: { refunds: [], reason: "cancel_from_review" }, // ajusta si harás reembolso
+          data: {
+            refunds,
+            reason: cancelReason || "cancel_from_review",
+          },
           headers: { "X-Approval": `Bearer ${approval}` },
           validateStatus: () => true,
         }
@@ -150,11 +194,15 @@ export default function OrdersReviewDrawer({ open, onClose }: Props) {
       if (status < 200 || status >= 300)
         throw new Error(data?.error || "No fue posible cancelar");
       message.success("Folio cancelado");
+
       // refresca selección
       setOrders((prev) =>
         prev.map((o) => (o.id === sel.id ? { ...o, status: "void" } : o))
       );
       setSel({ ...sel, status: "void" });
+
+      setRefunds([]);
+      setCancelReason("");
     } catch (e: any) {
       message.error(String(e?.message || "Error al cancelar folio"));
     } finally {
@@ -273,7 +321,92 @@ export default function OrdersReviewDrawer({ open, onClose }: Props) {
                   FOLIO CANCELADO
                 </div>
               )}
+              {/* Modal 1: configuración de cancelación (motivo + reembolsos opcionales) */}
+              <Modal
+                title="Cancelar folio — configuración"
+                open={cancelConfigOpen}
+                onCancel={() => setCancelConfigOpen(false)}
+                onOk={proceedCancelApproval}
+                okText="Continuar"
+                destroyOnClose
+              >
+                <Form layout="vertical">
+                  <Form.Item label="Motivo (opcional)">
+                    <Input.TextArea
+                      value={cancelReason}
+                      onChange={(e) => setCancelReason(e.target.value)}
+                      rows={3}
+                      placeholder="Ej. error en el cobro, cortesía, etc."
+                    />
+                  </Form.Item>
 
+                  <Form.Item label="Reembolsos (opcional)">
+                    <Space direction="vertical" className="w-full">
+                      {refunds.map((r, idx) => (
+                        <div
+                          key={idx}
+                          className="flex gap-2 items-center w-full"
+                        >
+                          <Select
+                            style={{ width: 180 }}
+                            value={r.paymentMethodId}
+                            options={PAYMENT_METHOD_OPTIONS}
+                            onChange={(v) =>
+                              setRefunds((prev) =>
+                                prev.map((x, i) =>
+                                  i === idx
+                                    ? { ...x, paymentMethodId: Number(v) }
+                                    : x
+                                )
+                              )
+                            }
+                          />
+                          <InputNumber
+                            style={{ width: 140 }}
+                            min={0}
+                            step={0.01}
+                            value={r.amount}
+                            onChange={(v) =>
+                              setRefunds((prev) =>
+                                prev.map((x, i) =>
+                                  i === idx
+                                    ? { ...x, amount: Number(v || 0) }
+                                    : x
+                                )
+                              )
+                            }
+                            placeholder="Monto"
+                          />
+                          <Button
+                            danger
+                            onClick={() =>
+                              setRefunds((p) => p.filter((_, i) => i !== idx))
+                            }
+                          >
+                            Eliminar
+                          </Button>
+                        </div>
+                      ))}
+
+                      <Button
+                        onClick={() =>
+                          setRefunds((p) => [
+                            ...p,
+                            {
+                              paymentMethodId: PAYMENT_METHOD_OPTIONS[0].value,
+                              amount: 0,
+                            },
+                          ])
+                        }
+                      >
+                        Agregar línea de reembolso
+                      </Button>
+                    </Space>
+                  </Form.Item>
+                </Form>
+              </Modal>
+
+              {/* Modal 2: aprobación con contraseña */}
               <Modal
                 open={pwOpen}
                 onCancel={() => {
@@ -283,6 +416,7 @@ export default function OrdersReviewDrawer({ open, onClose }: Props) {
                 onOk={onConfirmCancel}
                 okText="Autorizar y cancelar"
                 title="Aprobación — Cancelar folio"
+                destroyOnClose
               >
                 <p>
                   Ingresa la contraseña de un admin/owner para cancelar el
