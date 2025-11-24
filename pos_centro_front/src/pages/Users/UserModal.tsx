@@ -38,12 +38,12 @@ type Props = {
 const isOperative = (r?: UserFormValues["roleCode"]) =>
   r === "waiter" || r === "cashier";
 
-const isManagerial = (r?: UserFormValues["roleCode"]) =>
-  r === "superadmin" ||
-  r === "owner" ||
-  r === "admin" ||
-  r === "manager" ||
-  r === "captain";
+// const isManagerial = (r?: UserFormValues["roleCode"]) =>
+//   r === "superadmin" ||
+//   r === "owner" ||
+//   r === "admin" ||
+//   r === "manager" ||
+//   r === "captain";
 
 const needsRestaurant = (r?: UserFormValues["roleCode"]) => r !== "superadmin";
 
@@ -180,7 +180,7 @@ export default function UserModal({
         >
           <Select
             options={roleOptions}
-            onChange={(val) => {
+            onChange={() => {
               // fuerza validación de password al cambiar de rol
               const pwd = form.getFieldValue("password");
               if (pwd) form.validateFields(["password"]).catch(() => {});

@@ -3,17 +3,19 @@ import { Button, Card, Input, Space, Table, Tag, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import axios, { AxiosError } from "axios";
 import apiAuth from "@/components/apis/apiAuth";
+
 import UserModal, {
   type UserFormValues,
   type RoleOption,
   type RestaurantOption,
 } from "@/pages/Users/UserModal";
 
-type UserRole = "owner" | "admin" | "cashier" | "superadmin";
+// reutilizamos exactamente el mismo union que en UserModal
+type UserRole = UserFormValues["roleCode"];
 type UserStatus = "active" | "inactive" | null | undefined;
 
 type Restaurant = { id: number; name: string };
-type Role = { id: number; code: string; name: string };
+type Role = { id: number; code: UserRole; name: string };
 
 type User = {
   id: number;
@@ -153,7 +155,11 @@ export default function Users(): React.ReactElement {
 
   const openEdit = (row: User): void => {
     setEditing(row);
-    const roleCode = (row.roleCode ?? row.role?.code) as string | undefined;
+
+    // 👇 aquí lo tipamos como el mismo tipo que en UserFormValues
+    const roleCode: UserFormValues["roleCode"] | undefined =
+      row.roleCode ?? row.role?.code;
+
     const restaurantId = row.restaurantId ?? row.restaurant?.id;
 
     setInitialValues({

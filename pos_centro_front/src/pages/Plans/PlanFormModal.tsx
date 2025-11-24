@@ -1,5 +1,5 @@
 // /src/components/PlanFormModal.tsx
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Form, Input, Modal, Switch } from "antd";
 
 export type PlanFormValues = {
@@ -33,11 +33,9 @@ export default function PlanFormModal({
   onSubmit,
 }: Props) {
   const [form] = Form.useForm<PlanFormValues>();
-  const [codeTouched, setCodeTouched] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setCodeTouched(false);
       form.resetFields();
       form.setFieldsValue({
         isPublic: true,
@@ -67,12 +65,7 @@ export default function PlanFormModal({
           <Input placeholder="Plan Pro" />
         </Form.Item>
         <Form.Item name="code" label="Code" rules={[{ required: true }]}>
-          <Input
-            placeholder="PRO"
-            disabled={disableCode}
-            onFocus={() => setCodeTouched(true)}
-            onChange={() => setCodeTouched(true)}
-          />
+          <Input placeholder="PRO" disabled={disableCode} />
         </Form.Item>
         <Form.Item name="description" label="Descripción">
           <Input.TextArea rows={3} placeholder="Incluye PDV, Facturas, IA..." />
