@@ -1,7 +1,6 @@
 // /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos-admin/src/App.tsx
 import { Routes, Route, Navigate } from "react-router-dom";
 import LoginScreen from "./pages/LoginScreen";
-import ControlComandero from "./pages/ControlComandero";
 
 import "@ant-design/v5-patch-for-react-19";
 
@@ -77,7 +76,8 @@ function App() {
             element={<ModificadoresPage />}
           />
           <Route path="/account" element={<Account />} />
-          <Route path="/control" element={<ControlComandero />} />
+          {/* por revisar mas adelante como sera el punto de venta */}
+          {/* <Route path="/control" element={<ControlComandero />} /> */}
           {/* Aquí puedes añadir más rutas protegidas */}
           <Route path="/checkout/success" element={<CheckoutSuccess />} />
         </Route>
