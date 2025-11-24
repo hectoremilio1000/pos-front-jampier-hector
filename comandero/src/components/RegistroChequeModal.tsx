@@ -17,10 +17,6 @@ interface Service {
 }
 // (Solo si este tipo ya existe globalmente, puedes borrar estas interfaces locales)
 type Producto = any;
-type ModifierGroups = any;
-type Modifiers = any;
-type ProductModifierGroups = any;
-type AreaImpresion = any;
 
 type Mitad = 0 | 1 | 2 | 3;
 interface OrderItem {

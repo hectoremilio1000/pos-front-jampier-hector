@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { KioskAuthProvider } from "@/context/KioskAuthProvider";
 import RequireKioskAuth from "@/components/route-guards/RequireKioskAuth";
 

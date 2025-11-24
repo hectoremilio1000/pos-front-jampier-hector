@@ -5,15 +5,16 @@ import React, {
   type SetStateAction,
   useMemo,
 } from "react";
-import { Modal, Button, Tag, message, Space, InputNumber } from "antd";
+import { Modal, Button, message, Space, InputNumber } from "antd";
 import { DeleteOutlined } from "@ant-design/icons";
 import TecladoVirtual from "./TecladoVirtual";
 import ComentarioProductoModal from "./ComentarioProductoModal (1)";
 import apiOrder from "./apis/apiOrder";
 import { FaPrint } from "react-icons/fa";
 import DescuentoProductoModal from "./DescuentoProductoModal";
-import { useAuth } from "./Auth/AuthContext";
+
 import ComandaTable from "./Comandero/ComandaTable";
+import { useKioskAuth } from "@/context/KioskAuthProvider";
 
 type SelectedMod = { id: number; half: 1 | 2 | 3 }; // 1=todo, 2=1ra half, 3=2da half
 type Grupo = {
@@ -160,7 +161,7 @@ const CapturaComandaModal: React.FC<Props> = ({
     };
   }
 
-  const { user } = useAuth();
+  const { user } = useKioskAuth();
   const [productos, setProductos] = useState<Producto[]>([]);
   const [productosFiltrados, setProductosFiltrados] = useState<Producto[]>([]);
   const [grupos, setGrupos] = useState<any[]>([]);
@@ -535,80 +536,6 @@ const CapturaComandaModal: React.FC<Props> = ({
     }
   };
 
-  const columnas = [
-    {
-      title: "Acción",
-      render: (_: any, __: any, index: number) => (
-        <div className="flex gap-1">
-          {/* <Button
-            size="small"
-            onClick={() => {
-              setDescuentoIndex(index);
-              setModalDescuentoVisible(true);
-            }}
-          >
-            💸 Descuento
-          </Button> */}
-          <Button
-            danger
-            size="small"
-            icon={<DeleteOutlined />}
-            onClick={() => eliminarProducto(index)}
-          />
-        </div>
-      ),
-    },
-    {
-      title: "Producto",
-      render: (_: any, __: any, index: number) => {
-        const item = detalle_cheque[index];
-        const isModifier = item.isModifier;
-        return isModifier ? `>>>${item.product.name}` : `${item.product.name}`;
-      },
-    },
-    { title: "Cant", dataIndex: "qty" },
-    { title: "Importe", dataIndex: "unitPrice" },
-    { title: "Total", dataIndex: "total" },
-    {
-      title: "Tiempo",
-      dataIndex: "course",
-      render: (tiempo: number) => {
-        const tas = tiempos.find((t) => t.value === tiempo);
-        return <Tag> {tas?.label}</Tag>;
-      },
-    },
-    // {
-    //   title: "Descuento",
-    //   render: (_: any, __: any, index: number) => {
-    //     const item = detalle_cheque[index];
-    //     console.log(item);
-    //     if (item.discountValue !== null && item.discountValue > 0) {
-    //       return (
-    //         <Tag color="green">
-    //           {item.discountType === "percent"
-    //             ? `${item.discountValue}%`
-    //             : `-$${item.discountAmount}`}
-    //         </Tag>
-    //       );
-    //     }
-    //     return <Tag color="default">Sin descuento</Tag>;
-    //   },
-    // },
-    {
-      title: "Comentario",
-      render: (_: any, __: any, index: number) => (
-        <Button
-          size="small"
-          onClick={() => {
-            setComentarioIndex(index);
-            setModalComentarioVisible(true);
-          }}
-        >
-          💬 {detalle_cheque[index].notes ? "✔️" : ""}
-        </Button>
-      ),
-    },
-  ];
   const sumarTotalComanda = () => {
     const sumaTotal = detalle_cheque.reduce((acc, item) => acc + item.total, 0);
     return sumaTotal.toFixed(2);
@@ -771,7 +698,7 @@ const CapturaComandaModal: React.FC<Props> = ({
       )}
       {descuentoIndex !== null && (
         <DescuentoProductoModal
-          visible={true}
+          visible={modalDescuentoVisible}
           onClose={() => {
             setModalDescuentoVisible(false);
             setDescuentoIndex(null);

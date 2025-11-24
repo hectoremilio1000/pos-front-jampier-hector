@@ -1,6 +1,6 @@
 // /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/comandero/src/components/Kiosk/PinForm.tsx
 
-import { FC } from "react";
+import { type FC } from "react";
 import { Button, Input } from "antd";
 
 type Props = {

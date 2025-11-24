@@ -1,6 +1,6 @@
 // /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/comandero/src/components/Kiosk/PairingForm.tsx
 
-import { FC, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FC } from "react";
 import { AutoComplete, Button, Input, message } from "antd";
 import apiKiosk from "@/components/apis/apiKiosk";
 
@@ -16,7 +16,7 @@ type Props = {
   code: string;
   deviceName: string;
   loading: boolean;
-  selectedDeviceId: number | null;
+  // selectedDeviceId: number | null;
   deviceType: "commander" | "cash" | "monitor"; // 👈 filtra por tipo
   onCodeChange: (v: string) => void;
   onDeviceNameChange: (v: string) => void;
@@ -29,7 +29,7 @@ const PairingForm: FC<Props> = ({
   code,
   deviceName,
   loading,
-  selectedDeviceId,
+  // selectedDeviceId,
   deviceType,
   onCodeChange,
   onDeviceNameChange,

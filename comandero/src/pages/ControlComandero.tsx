@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Card, Select, Pagination, Modal, message } from "antd";
+import { Button, Card, Pagination, Modal, message } from "antd";
 import { FaTable } from "react-icons/fa";
 import CapturaComandaModal from "@/components/CapturaComandaModal";
-import { FaMapLocationDot } from "react-icons/fa6";
+
 import {
   MdAdsClick,
   MdPointOfSale,
@@ -19,7 +19,6 @@ import { Transmit } from "@adonisjs/transmit-client";
 import { useNavigate } from "react-router-dom";
 import { kioskLogoutOperator } from "@/components/Kiosk/session";
 import { useKioskAuth } from "@/context/KioskAuthProvider"; // 👈 usar provider
-const { Option } = Select;
 
 interface Area {
   id: number | null;
@@ -150,9 +149,9 @@ const ControlComandero: React.FC = () => {
   >([]);
 
   const [areas, setAreas] = useState<Area[]>([]);
-  const [areasFilter, setAreasFilter] = useState<Area[]>([]);
+  // const [areasFilter, setAreasFilter] = useState<Area[]>([]);
   const [services, setServices] = useState<Service[]>([]);
-  const [servicesFilter, setServicesFilter] = useState<Area[]>([]);
+  // const [servicesFilter, setServicesFilter] = useState<Area[]>([]);
 
   // NUEVO: persistencia simple en sessionStorage
   function getNum(key: string, fallback: number | null) {
@@ -178,7 +177,7 @@ const ControlComandero: React.FC = () => {
   const [areaSeleccionadaNombre, setAreaSeleccionadaNombre] =
     useState<string>("Todas");
 
-  const [areaSeleccionada, setAreaSeleccionada] = useState("Todas");
+  // const [areaSeleccionada, setAreaSeleccionada] = useState("Todas");
   const [paginaActual, setPaginaActual] = useState(1);
   const viewPaginate = 10;
 
@@ -216,10 +215,10 @@ const ControlComandero: React.FC = () => {
     }
   };
   // Derivados
-  const selectedAreaName =
-    areas.find((a) => a.id === selectedAreaId)?.name ?? "—";
-  const selectedServiceName =
-    services.find((s) => s.id === selectedServiceId)?.name ?? "—";
+  // const selectedAreaName =
+  //   areas.find((a) => a.id === selectedAreaId)?.name ?? "—";
+  // const selectedServiceName =
+  //   services.find((s) => s.id === selectedServiceId)?.name ?? "—";
 
   // Aplica filtro visual por nombre (no toca el default seleccionado)
   const chequesFiltrados =

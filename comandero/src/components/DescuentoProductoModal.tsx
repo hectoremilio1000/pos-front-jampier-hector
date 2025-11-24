@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Modal, InputNumber, Select, Input, Button } from "antd";
+import { Modal, InputNumber, Select, Input } from "antd";
 
 type Props = {
   visible: boolean;
