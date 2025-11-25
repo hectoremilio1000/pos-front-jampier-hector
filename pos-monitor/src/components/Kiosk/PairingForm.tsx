@@ -17,7 +17,7 @@ type Props = {
   code: string;
   deviceName: string;
   loading: boolean;
-  selectedDeviceId: number | null;
+  // selectedDeviceId: number | null;
 
   onCodeChange: (v: string) => void;
   onDeviceNameChange: (v: string) => void;
@@ -33,7 +33,7 @@ const PairingForm: FC<Props> = ({
   code,
   deviceName,
   loading,
-  selectedDeviceId,
+  // selectedDeviceId,
   onCodeChange,
   onDeviceNameChange,
   onSelectDeviceId,

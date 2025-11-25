@@ -162,7 +162,7 @@ export default function LoginScreen() {
                 code={code}
                 deviceName={deviceName}
                 loading={loading}
-                selectedDeviceId={selectedDeviceId}
+                // selectedDeviceId={selectedDeviceId}
                 onCodeChange={(v) => setCode(v)}
                 onDeviceNameChange={(v) => setDeviceName(v)}
                 onSelectDeviceId={(id, name) => {

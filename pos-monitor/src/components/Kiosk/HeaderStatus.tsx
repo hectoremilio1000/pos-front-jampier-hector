@@ -1,5 +1,5 @@
 // /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos-cash/src/components/Kiosk/HeaderStatus.tsx
-import { FC } from "react";
+import { type FC } from "react";
 
 type Props = {
   now: string;
