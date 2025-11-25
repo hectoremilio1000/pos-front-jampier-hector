@@ -1,6 +1,6 @@
 // /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos-cash/src/components/Kiosk/PairingForm.tsx
 
-import { FC, useEffect, useMemo, useState } from "react";
+import { type FC, useEffect, useMemo, useState } from "react";
 import { AutoComplete, Button, Input, Select, message } from "antd";
 import apiKiosk from "@/components/apis/apiKiosk"; // 👈 usar igual que en Comandero (default)
 import { kioskPairStart } from "@/components/Kiosk/token"; // 👈 usar la misma función
@@ -19,7 +19,7 @@ type Props = {
   code: string;
   deviceName: string;
   loading: boolean;
-  selectedDeviceId: number | null;
+  // selectedDeviceId: number | null;
 
   onCodeChange: (v: string) => void;
   onDeviceNameChange: (v: string) => void;
@@ -35,7 +35,7 @@ const PairingForm: FC<Props> = ({
   code,
   deviceName,
   loading,
-  selectedDeviceId,
+  // selectedDeviceId,
   onCodeChange,
   onDeviceNameChange,
   onSelectDeviceId,

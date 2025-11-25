@@ -9,8 +9,6 @@ import {
   Modal,
   Form,
   Input,
-  InputNumber,
-  Select,
   Checkbox,
   message,
   Tag,
@@ -26,13 +24,13 @@ import type { CashOrderItem } from "../hooks/useCashKiosk";
 const money = (n: number) =>
   `$${(Math.round((n ?? 0) * 100) / 100).toFixed(2)}`;
 
-type RefundLine = { paymentMethodId: number; amount: number };
+// type RefundLine = { paymentMethodId: number; amount: number };
 
-const PAYMENT_METHOD_OPTIONS = [
-  { label: "Efectivo", value: 1 },
-  { label: "Tarjeta", value: 2 },
-  { label: "Transferencia", value: 3 },
-];
+// const PAYMENT_METHOD_OPTIONS = [
+//   { label: "Efectivo", value: 1 },
+//   { label: "Tarjeta", value: 2 },
+//   { label: "Transferencia", value: 3 },
+// ];
 
 export default function OrderDetail() {
   const {
@@ -119,10 +117,10 @@ export default function OrderDetail() {
       width: 120,
     },
   ];
-  function openDeleteFlow() {
-    setDeleteManagerPassword("");
-    setDeleteApprovalVisible(true);
-  }
+  // function openDeleteFlow() {
+  //   setDeleteManagerPassword("");
+  //   setDeleteApprovalVisible(true);
+  // }
   // reutiliza tu requestApprovalToken(action, password, targetId)
 
   async function doDeleteOrderOnApi(approvalToken: string) {
@@ -427,11 +425,11 @@ export default function OrderDetail() {
   const hasItems = items.length > 0;
 
   // 👉 nuevo: usa printCount de la orden (acepta snake/camel)
-  const printCount = Number(
-    (selectedOrder as any)?.printCount ??
-      (selectedOrder as any)?.print_count ??
-      0
-  );
+  // const printCount = Number(
+  //   (selectedOrder as any)?.printCount ??
+  //     (selectedOrder as any)?.print_count ??
+  //     0
+  // );
 
   const canPrint =
     hasItems &&
@@ -443,7 +441,7 @@ export default function OrderDetail() {
   const canReopen = status === "printed" || status === "paid";
 
   // 👉 nuevo: borrar cuenta solo si jamás se imprimió y no hay productos
-  const canDeleteOrder = printCount === 0 && !hasItems;
+  // const canDeleteOrder = printCount === 0 && !hasItems;
 
   // ====== Cancelación ======
 
@@ -678,39 +676,39 @@ export default function OrderDetail() {
   };
 
   // ====== Borrar cuenta ======
-  async function handleDeleteOrder() {
-    Modal.confirm({
-      title: "Borrar cuenta",
-      content:
-        "Esta acción eliminará definitivamente la orden porque nunca fue impresa y no tiene productos. ¿Deseas continuar?",
-      okText: "Borrar",
-      okButtonProps: { danger: true },
-      cancelText: "Cancelar",
-      onOk: async () => {
-        try {
-          const res = await apiOrderKiosk.delete(
-            `/orders/${selectedOrder?.id}`,
-            {
-              validateStatus: () => true,
-            }
-          );
-          if (!res || res.status < 200 || res.status >= 300) {
-            const err =
-              (res?.data && res.data.error) || "No se pudo borrar la orden";
-            throw new Error(err);
-          }
-          message.success("Orden borrada");
-          setOrders((prev: any[]) =>
-            prev.filter((o) => o.id !== (selectedOrder?.id ?? -1))
-          );
-          setSelectedOrderId(null);
-          await fetchKPIs();
-        } catch (e: any) {
-          message.error(String(e?.message || "Error al borrar la orden"));
-        }
-      },
-    });
-  }
+  // async function handleDeleteOrder() {
+  //   Modal.confirm({
+  //     title: "Borrar cuenta",
+  //     content:
+  //       "Esta acción eliminará definitivamente la orden porque nunca fue impresa y no tiene productos. ¿Deseas continuar?",
+  //     okText: "Borrar",
+  //     okButtonProps: { danger: true },
+  //     cancelText: "Cancelar",
+  //     onOk: async () => {
+  //       try {
+  //         const res = await apiOrderKiosk.delete(
+  //           `/orders/${selectedOrder?.id}`,
+  //           {
+  //             validateStatus: () => true,
+  //           }
+  //         );
+  //         if (!res || res.status < 200 || res.status >= 300) {
+  //           const err =
+  //             (res?.data && res.data.error) || "No se pudo borrar la orden";
+  //           throw new Error(err);
+  //         }
+  //         message.success("Orden borrada");
+  //         setOrders((prev: any[]) =>
+  //           prev.filter((o) => o.id !== (selectedOrder?.id ?? -1))
+  //         );
+  //         setSelectedOrderId(null);
+  //         await fetchKPIs();
+  //       } catch (e: any) {
+  //         message.error(String(e?.message || "Error al borrar la orden"));
+  //       }
+  //     },
+  //   });
+  // }
 
   // ====== Render ======
   return (

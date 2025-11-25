@@ -1,15 +1,8 @@
 // /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos-cash/src/App.tsx
-import {
-  BrowserRouter as Router,
-  Routes,
-  Route,
-  Navigate,
-  BrowserRouter,
-} from "react-router-dom";
+import { Routes, Route, Navigate, BrowserRouter } from "react-router-dom";
 import "@ant-design/v5-patch-for-react-19";
 
 import LoginScreen from "./pages/LoginScreen";
-import { AuthProvider } from "./components/Auth/AuthContext";
 
 // Kiosk Caja (pairing + PIN)
 import { KioskProtectedRoute } from "./pages/Kiosk/KioskProtectedRoute";

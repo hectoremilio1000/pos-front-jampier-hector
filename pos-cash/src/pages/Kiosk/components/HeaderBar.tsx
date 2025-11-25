@@ -1,4 +1,4 @@
-import { Badge, Button } from "antd";
+import { Button } from "antd";
 import { kioskLogoutOperator } from "@/components/Kiosk/session";
 import { useCashKiosk } from "../hooks/useCashKiosk";
 

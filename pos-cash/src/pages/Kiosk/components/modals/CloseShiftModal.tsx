@@ -27,7 +27,7 @@ export default function CloseShiftModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onClosed?: () => void;
+  onClosed: () => void;
 }) {
   const { shiftId, setShiftId, setSessionId } = useCash();
   const [form] = Form.useForm();
@@ -139,6 +139,7 @@ export default function CloseShiftModal({
           } catch {}
           setShiftId(null);
           onClose();
+          onClosed();
         }
       }
     } catch (e: any) {

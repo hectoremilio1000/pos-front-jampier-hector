@@ -20,7 +20,7 @@ import type { ColumnsType } from "antd/es/table";
 
 type Props = { open: boolean; onClose: () => void };
 
-type PM = { id: number; name: string };
+// type PM = { id: number; name: string };
 type Item = {
   id: number;
   qty: number;
@@ -29,13 +29,13 @@ type Item = {
   product?: { id: number; name: string } | null;
   name?: string | null;
 };
-type RefundLine = { paymentMethodId: number; amount: number };
+// type RefundLine = { paymentMethodId: number; amount: number };
 
-const PAYMENT_METHOD_OPTIONS = [
-  { label: "Efectivo", value: 1 },
-  { label: "Tarjeta", value: 2 },
-  { label: "Transferencia", value: 3 },
-];
+// const PAYMENT_METHOD_OPTIONS = [
+//   { label: "Efectivo", value: 1 },
+//   { label: "Tarjeta", value: 2 },
+//   { label: "Transferencia", value: 3 },
+// ];
 
 type OrderLite = {
   id: number;
@@ -69,7 +69,7 @@ export default function OrdersReviewDrawer({ open, onClose }: Props) {
   const PAYMENT_METHOD_OPTIONS = [
     { label: "Efectivo", value: 1 },
     { label: "Tarjeta", value: 2 },
-    { label: "Transferencia", value: 3 },
+    // { label: "Transferencia", value: 3 },
   ];
 
   useEffect(() => {
