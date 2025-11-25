@@ -619,12 +619,14 @@ export function useCashKiosk() {
   return {
     // state
     loading,
+    loadingDetail,
     setLoading,
     openingCash,
     setOpeningCash,
     shiftId,
     setShiftId,
     sessionId,
+    setStationId,
     setSessionId, // 👈 nuevo
     orders,
     setOrders,
@@ -644,6 +646,7 @@ export function useCashKiosk() {
     // current station
     stationCurrent,
     restaurantId,
+    setRestaurantId,
     stationId,
   };
 }

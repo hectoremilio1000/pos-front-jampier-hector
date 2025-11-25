@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Button,
   Divider,
-  Form,
   InputNumber,
   message,
   Modal,
@@ -29,11 +28,11 @@ interface Props {
   onClose: () => void;
 }
 
-const DEFAULT_METHODS: PaymentMethod[] = [
-  { id: 1, name: "Efectivo" },
-  { id: 2, name: "Tarjeta" },
-  { id: 3, name: "Transferencia" },
-];
+// const DEFAULT_METHODS: PaymentMethod[] = [
+//   { id: 1, name: "Efectivo" },
+//   { id: 2, name: "Tarjeta" },
+//   // { id: 3, name: "Transferencia" },
+// ];
 
 const money = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const EPS = 0.009;
