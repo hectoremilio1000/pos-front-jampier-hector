@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { KioskAuthProvider } from "@/context/KioskAuthProvider";
 import RequireKioskAuth from "@/components/route-guards/RequireKioskAuth";
 
@@ -10,6 +10,7 @@ export default function App() {
     <BrowserRouter>
       <KioskAuthProvider>
         <Routes>
+          <Route path="/" element={<Navigate to={"/login"} />} />
           <Route path="/login" element={<LoginScreen />} />
           <Route
             path="/control"
