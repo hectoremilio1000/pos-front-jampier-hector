@@ -28,7 +28,6 @@ export default function HeaderBar() {
           Cerrar sesión
         </Button>
         <div className="text-right text-xs text-gray-500">
-          <div>{now}</div>
           <div className="mt-1 flex items-center gap-1 justify-end">
             <span
               className={`inline-block w-2 h-2 rounded-full ${hasShift ? "bg-green-500" : "bg-red-500"}`}
@@ -36,6 +35,7 @@ export default function HeaderBar() {
             <span>{hasShift ? `Emparejado: ${label}` : "Sin turno"}</span>
             <span>Mode: {stationCurrent?.mode}</span>
           </div>
+          <div>{now}</div>
         </div>
       </div>
     </div>

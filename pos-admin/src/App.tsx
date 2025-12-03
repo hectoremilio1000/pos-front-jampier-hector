@@ -32,6 +32,7 @@ import RequireSubscription from "./components/Billing/RequireSubscription";
 import CheckoutSuccess from "./pages/Billing/CheckoutSuccess";
 import Account from "./pages/Billing/Account";
 import CashStations from "./pages/CashStations";
+import ReportsPage from "./pages/Reports";
 
 function App() {
   return (
@@ -55,6 +56,7 @@ function App() {
           {/* <Route index element={<Navigate to="/dashboard" replace />} /> */}
 
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/reports" element={<ReportsPage />} />
           <Route path="/cash_stations" element={<CashStations />} />
           <Route path="/hour_cut" element={<FiscalCutSettings />} />
           <Route path="/areas" element={<Areas />} />

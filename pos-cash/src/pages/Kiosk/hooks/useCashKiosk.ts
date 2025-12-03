@@ -22,6 +22,8 @@ export type Product = {
   code?: string;
   name?: string;
 };
+// sugerencia: al inicio del archivo
+export type DiscountType = "percent" | "fixed";
 
 export type CashOrderItem = {
   id: number;
@@ -38,6 +40,13 @@ export type CashOrderItem = {
   isModifier?: boolean | null;
   isCompositeProductMain?: boolean | null;
   compositeProductId?: number | null;
+
+  // 👇 NUEVOS CAMPOS
+  discountType?: DiscountType | null;
+  discountValue?: number | null; // % ó monto, según discountType
+  discountAmount?: number | null; // monto total de descuento de la línea
+  discountReason?: string | null;
+  discountAppliedBy?: number | null;
 };
 
 export type Area = {
@@ -70,6 +79,14 @@ export type CashOrder = {
   waiter?: Waiter;
   restaurant?: Restaurant;
   createdAt?: Date;
+  status?: string;
+
+  // 👇 NUEVOS CAMPOS A NIVEL ORDEN
+  discountType?: DiscountType | null;
+  discountValue?: number | null;
+  discountAmount?: number | null;
+  discountReason?: string | null;
+  discountAppliedBy?: number | null;
 };
 
 export type KPIs = {
@@ -225,6 +242,7 @@ export function useCashKiosk() {
       const { data } = await apiOrderKiosk.get<CashOrder[]>("/orders", {
         validateStatus: () => true,
       });
+      console.log(data);
       setOrders(
         (data || []).map((o: any) => ({
           ...o,
@@ -247,6 +265,12 @@ export function useCashKiosk() {
             isModifier: !!it.isModifier,
             isCompositeProductMain: !!it.isCompositeProductMain,
             compositeProductId: it.compositeProductId ?? null,
+
+            discountType: it.discountType,
+            discountValue: it.discountValue,
+            discountAmount: it.discountAmount,
+            discountReason: it.discountReason,
+            discountAppliedBy: it.discountAppliedBy,
           })),
         }))
       );
@@ -307,6 +331,11 @@ export function useCashKiosk() {
                   isModifier: !!it.isModifier,
                   isCompositeProductMain: !!it.isCompositeProductMain,
                   compositeProductId: it.compositeProductId ?? null,
+                  discountType: it.discountType,
+                  discountValue: it.discountValue,
+                  discountAmount: it.discountAmount,
+                  discountReason: it.discountReason,
+                  discountAppliedBy: it.discountAppliedBy,
                 })),
               }
             : o

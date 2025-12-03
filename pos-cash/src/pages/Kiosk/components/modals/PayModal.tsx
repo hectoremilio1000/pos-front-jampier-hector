@@ -71,11 +71,33 @@ export default function PayModal({ open, onClose }: Props) {
 
   const orderSubtotal = useMemo(() => {
     if (!selectedOrder) return 0;
-    const s = selectedOrder.items.reduce(
-      (acc, it) => acc + (it.total ?? it.qty * it.unitPrice),
-      0
-    );
-    return money(s);
+
+    let subtotalAfterItems = 0;
+
+    for (const it of selectedOrder.items as any[]) {
+      const qty = Number(it.qty ?? 0);
+      const unitPrice = Number(it.unitPrice ?? 0);
+
+      // total bruto de la línea (con o sin "total" precalculado)
+      const grossLine = Number(
+        typeof it.total === "number" ? it.total : qty * unitPrice
+      );
+
+      // descuento por ítem (monto total, no %)
+      const lineDiscount = Number(it.discountAmount ?? 0) || 0;
+
+      const netLine = Math.max(grossLine - lineDiscount, 0);
+      subtotalAfterItems += netLine;
+    }
+
+    // descuento general de la orden (monto total)
+    const orderDiscountAmount =
+      Number((selectedOrder as any).discountAmount ?? 0) || 0;
+
+    const net = subtotalAfterItems - orderDiscountAmount;
+
+    // redondeamos a 2 decimales
+    return money(Math.max(net, 0));
   }, [selectedOrder]);
 
   const tipAmount = useMemo(() => {

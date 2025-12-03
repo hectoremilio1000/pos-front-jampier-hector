@@ -3,6 +3,9 @@ import { Button, Card, Typography, message, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useShift } from "@/context/ShiftContext";
 import apiOrder from "@/components/apis/apiOrder";
+import HeaderStatus from "@/components/Kiosk/HeaderStatus";
+import { useNavigate } from "react-router-dom";
+import { kioskLogoutOperator } from "@/components/Kiosk/session";
 
 const CASH_API = import.meta.env.VITE_API_URL_CASH; // p.ej. http://localhost:3335/api
 const { Title, Paragraph } = Typography;
@@ -51,8 +54,15 @@ export function ControlMonitor() {
   const { shiftId, setShiftId } = useShift();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedMainId, setSelectedMainId] = useState<number | null>(null);
+  const stationCode = sessionStorage.getItem("monitor_station_code");
 
+  const [selectedMainId, setSelectedMainId] = useState<number | null>(null);
+  const navigate = useNavigate();
+  function cerrarSesion() {
+    kioskLogoutOperator(); // borra solo kiosk_jwt y exp
+    message.success("Sesión cerrada");
+    navigate("/login", { replace: true }); // ← regresa al login correcto
+  }
   function minutesSince(ts?: string) {
     if (!ts) return 0;
     const ms = Date.now() - new Date(ts).getTime();
@@ -268,62 +278,94 @@ export function ControlMonitor() {
     () => data.find((r) => r.mainItemId === selectedMainId) || null,
     [data, selectedMainId]
   );
-
+  const [now, setNow] = useState(
+    new Date().toLocaleString("es-MX", { hour12: false })
+  );
+  // reloj
+  useEffect(() => {
+    const id = setInterval(
+      () => setNow(new Date().toLocaleString("es-MX", { hour12: false })),
+      1000
+    );
+    return () => clearInterval(id);
+  }, []);
   return (
-    <div className="p-4 grid grid-cols-1 lg:grid-cols-5 gap-4">
-      {/* Tabla de items (agrupados) */}
-      <div className="lg:col-span-3">
-        <Card loading={loading}>
-          <div className="flex items-baseline justify-between mb-3">
-            <Title level={4} style={{ margin: 0 }}>
-              Items del turno {shiftId ?? "—"}
-            </Title>
-            <Button onClick={loadAll}>Actualizar</Button>
-          </div>
-
-          <Table<Row>
-            size="middle"
-            rowKey="key"
-            columns={columns}
-            dataSource={data}
-            pagination={false}
-            rowClassName={(record) =>
-              record.mainItemId === selectedMainId ? "bg-blue-50" : ""
-            }
-            onRow={(record) => ({
-              onClick: () => setSelectedMainId(record.mainItemId),
-              style: { cursor: "pointer" },
-            })}
-          />
-        </Card>
-      </div>
-
-      {/* Acciones */}
-      <div className="lg:col-span-2">
-        <Card>
-          <Title level={4} style={{ marginTop: 0 }}>
-            Acciones
+    <div className="w-full">
+      <div className="flex items-start justify-between mb-6 p-3 bg-gray-100">
+        <div className="w-full">
+          <Title level={2} style={{ margin: 0, color: "#ff6b00" }}>
+            GrowthSuite
           </Title>
-          {selectedRow ? (
-            <>
-              <Paragraph>
-                Item seleccionado: #{selectedRow.mainItemId}
-                {selectedRow.allItemIds.length > 1 &&
-                  ` (compuesto: ${selectedRow.allItemIds.join(", ")})`}
-              </Paragraph>
-              <div className="flex gap-2">
-                <Button
-                  type="primary"
-                  onClick={() => finalizeProductForRow(selectedRow)}
-                >
-                  Finalizar producto
-                </Button>
-              </div>
-            </>
-          ) : (
-            <Paragraph>Selecciona un item de la lista para operar.</Paragraph>
-          )}
-        </Card>
+          <Title level={3} style={{ margin: 0, color: "#0b63ff" }}>
+            Monitor de Producción
+          </Title>
+        </div>
+        <div className="flex items-start gap-3">
+          <Button size="small" onClick={cerrarSesion}>
+            Cerrar sesión
+          </Button>
+          <HeaderStatus
+            now={now}
+            pairState={"paired"}
+            deviceLabel={stationCode ?? ""}
+          />
+        </div>
+      </div>
+      <div className="p-4 grid grid-cols-1 lg:grid-cols-5 gap-4">
+        {/* Tabla de items (agrupados) */}
+        <div className="lg:col-span-3">
+          <Card loading={loading}>
+            <div className="flex items-baseline justify-between mb-3">
+              <Title level={4} style={{ margin: 0 }}>
+                Items del turno {shiftId ?? "—"}
+              </Title>
+              <Button onClick={loadAll}>Actualizar</Button>
+            </div>
+
+            <Table<Row>
+              size="middle"
+              rowKey="key"
+              columns={columns}
+              dataSource={data}
+              pagination={false}
+              rowClassName={(record) =>
+                record.mainItemId === selectedMainId ? "bg-blue-50" : ""
+              }
+              onRow={(record) => ({
+                onClick: () => setSelectedMainId(record.mainItemId),
+                style: { cursor: "pointer" },
+              })}
+            />
+          </Card>
+        </div>
+
+        {/* Acciones */}
+        <div className="lg:col-span-2">
+          <Card>
+            <Title level={4} style={{ marginTop: 0 }}>
+              Acciones
+            </Title>
+            {selectedRow ? (
+              <>
+                <Paragraph>
+                  Item seleccionado: #{selectedRow.mainItemId}
+                  {selectedRow.allItemIds.length > 1 &&
+                    ` (compuesto: ${selectedRow.allItemIds.join(", ")})`}
+                </Paragraph>
+                <div className="flex gap-2">
+                  <Button
+                    type="primary"
+                    onClick={() => finalizeProductForRow(selectedRow)}
+                  >
+                    Finalizar producto
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <Paragraph>Selecciona un item de la lista para operar.</Paragraph>
+            )}
+          </Card>
+        </div>
       </div>
     </div>
   );

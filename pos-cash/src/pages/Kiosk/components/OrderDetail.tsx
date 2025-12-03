@@ -12,7 +12,10 @@ import {
   Checkbox,
   message,
   Tag,
+  Radio,
+  InputNumber,
 } from "antd";
+
 import type { ColumnsType } from "antd/es/table";
 import PayModal from "./modals/PayModal";
 import { useMemo, useState } from "react";
@@ -23,6 +26,7 @@ import type { CashOrderItem } from "../hooks/useCashKiosk";
 
 const money = (n: number) =>
   `$${(Math.round((n ?? 0) * 100) / 100).toFixed(2)}`;
+type DiscountType = "percent" | "fixed";
 
 // type RefundLine = { paymentMethodId: number; amount: number };
 
@@ -53,6 +57,24 @@ export default function OrderDetail() {
   const [reason, setReason] = useState<string>("");
   const [managerPassword, setManagerPassword] = useState<string>("");
 
+  // ====== Descuentos ======
+  const [generalDiscountModalVisible, setGeneralDiscountModalVisible] =
+    useState(false);
+  const [generalDiscountType, setGeneralDiscountType] =
+    useState<DiscountType>("percent");
+  const [generalDiscountValue, setGeneralDiscountValue] = useState<number>(0);
+  const [generalDiscountReason, setGeneralDiscountReason] =
+    useState<string>("");
+
+  const [itemDiscountModalVisible, setItemDiscountModalVisible] =
+    useState(false);
+  const [itemDiscountTarget, setItemDiscountTarget] =
+    useState<CashOrderItem | null>(null);
+  const [itemDiscountType, setItemDiscountType] =
+    useState<DiscountType>("percent");
+  const [itemDiscountValue, setItemDiscountValue] = useState<number>(0);
+  const [itemDiscountReason, setItemDiscountReason] = useState<string>("");
+
   // Imprimir
   const [printApprovalVisible, setPrintApprovalVisible] = useState(false);
   const [printSubmitting, setPrintSubmitting] = useState(false);
@@ -78,6 +100,151 @@ export default function OrderDetail() {
   const status: string = (selectedOrder?.status || "").toLowerCase();
   const items: CashOrderItem[] = selectedOrder?.items ?? [];
 
+  const canApplyDiscounts =
+    status === "open" || status === "in_progress" || status === "reopened";
+
+  function openGeneralDiscountModal() {
+    if (!selectedOrder) return;
+    setGeneralDiscountType(
+      (selectedOrder.discountType as DiscountType) || "percent"
+    );
+    setGeneralDiscountValue(Number(selectedOrder.discountValue ?? 0));
+    setGeneralDiscountReason(selectedOrder.discountReason ?? "");
+    setGeneralDiscountModalVisible(true);
+  }
+
+  function openItemDiscountModal(target: CashOrderItem) {
+    setItemDiscountTarget(target);
+    setItemDiscountType((target.discountType as DiscountType) || "percent");
+    setItemDiscountValue(Number(target.discountValue ?? 0));
+    setItemDiscountReason(target.discountReason ?? "");
+    setItemDiscountModalVisible(true);
+  }
+
+  async function applyGeneralDiscount() {
+    if (!selectedOrder) return;
+    if (!generalDiscountType) {
+      message.error("Selecciona un tipo de descuento");
+      return;
+    }
+
+    // subtotal después de descuentos por ítem (solo con items)
+    let subtotalAfterItems = 0;
+    for (const it of items) {
+      const qty = Number(it.qty ?? 0);
+      const unit = Number(it.unitPrice ?? 0);
+      const gross = qty * unit;
+      const lineDiscount = Number(it.discountAmount ?? 0) || 0;
+      subtotalAfterItems += Math.max(gross - lineDiscount, 0);
+    }
+
+    if (subtotalAfterItems <= 0) {
+      message.error("No hay importe para aplicar descuento");
+      return;
+    }
+
+    let discountAmount = 0;
+    const value = Number(generalDiscountValue ?? 0);
+
+    if (generalDiscountType === "percent") {
+      discountAmount =
+        Math.round(subtotalAfterItems * (value / 100) * 100) / 100;
+    } else {
+      discountAmount = Math.min(value, subtotalAfterItems);
+    }
+
+    try {
+      const res = await apiOrderKiosk.put(
+        `/orders/${selectedOrder.id}`,
+        {
+          discountType: generalDiscountType,
+          discountValue: value,
+          discountAmount,
+          discountReason: generalDiscountReason?.trim() || null,
+        },
+        { validateStatus: () => true }
+      );
+
+      if (!res || res.status < 200 || res.status >= 300) {
+        const err =
+          (res?.data && res.data.error) ||
+          "No se pudo aplicar el descuento general";
+        throw new Error(err);
+      }
+
+      message.success("Descuento general aplicado");
+      setGeneralDiscountModalVisible(false);
+
+      if (typeof fetchOrderById === "function") {
+        try {
+          await fetchOrderById(selectedOrder.id);
+        } catch {}
+      }
+    } catch (e: any) {
+      message.error(String(e?.message || "Error al aplicar descuento"));
+    }
+  }
+
+  async function applyItemDiscount() {
+    if (!selectedOrder || !itemDiscountTarget) return;
+    if (!itemDiscountType) {
+      message.error("Selecciona un tipo de descuento");
+      return;
+    }
+
+    const qty = Number(itemDiscountTarget.qty ?? 0);
+    const unit = Number(itemDiscountTarget.unitPrice ?? 0);
+    const gross = qty * unit;
+
+    if (gross <= 0) {
+      message.error("Este producto no tiene importe para descontar");
+      return;
+    }
+
+    const value = Number(itemDiscountValue ?? 0);
+    let discountAmount = 0;
+
+    if (itemDiscountType === "percent") {
+      discountAmount = Math.round(gross * (value / 100) * 100) / 100;
+    } else {
+      discountAmount = Math.min(value, gross);
+    }
+
+    try {
+      const res = await apiOrderKiosk.put(
+        // 👇 ajusta a tu ruta real: '/order-item/:id' o '/order-items/:id'
+        `/order-items/${itemDiscountTarget.id}`,
+        {
+          discountType: itemDiscountType,
+          discountValue: value,
+          discountAmount,
+          discountReason: itemDiscountReason?.trim() || null,
+        },
+        { validateStatus: () => true }
+      );
+
+      if (!res || res.status < 200 || res.status >= 300) {
+        const err =
+          (res?.data && res.data.error) ||
+          "No se pudo aplicar el descuento al producto";
+        throw new Error(err);
+      }
+
+      message.success("Descuento aplicado al producto");
+      setItemDiscountModalVisible(false);
+      setItemDiscountTarget(null);
+
+      // 🔄 recarga la orden para que items y totales se refresquen
+      if (typeof fetchOrderById === "function") {
+        try {
+          await fetchOrderById(selectedOrder.id);
+        } catch {}
+      }
+    } catch (e: any) {
+      message.error(String(e?.message || "Error al aplicar descuento"));
+    }
+  }
+
   const columns: ColumnsType<CashOrderItem> = [
     {
       title: "Producto",
@@ -86,7 +253,13 @@ export default function OrderDetail() {
       render: (_, it) =>
         (it as any).name ?? (it as any).product?.name ?? `#${it.id}`,
     },
-    { title: "Cant.", dataIndex: "qty", key: "qty", align: "right", width: 80 },
+    {
+      title: "Cant.",
+      dataIndex: "qty",
+      key: "qty",
+      align: "right",
+      width: 80,
+    },
     {
       title: "P. Unit.",
       dataIndex: "unitPrice",
@@ -96,31 +269,51 @@ export default function OrderDetail() {
       width: 120,
     },
     {
+      title: "Dcto.",
+      dataIndex: "discountAmount",
+      key: "discountAmount",
+      align: "right",
+      render: (v) => `$${Number(v ?? 0).toFixed(2)}`,
+      width: 120,
+    },
+    {
       title: "Importe",
       key: "importe",
       align: "right",
       render: (_, it: any) => {
+        console.log(it);
+        const qty = Number(it.qty ?? 0);
         const unit = Number(it.unitPrice ?? 0);
-        const disc = Number(it.discountValue ?? 0);
-        return money(unit - disc);
+        const gross = qty * unit;
+        const disc = Number(it.discountAmount ?? 0) || 0;
+        console.log(disc);
+        console.log(gross);
+        return money(Math.max(gross - disc, 0));
       },
       width: 120,
     },
+
     {
-      title: "Total",
-      key: "total",
-      align: "right",
-      render: (_, it: any) =>
-        `$${Number(
-          it.total ?? Number(it.qty ?? 0) * Number(it.unitPrice ?? 0)
-        ).toFixed(2)}`,
-      width: 120,
+      title: "Dcto",
+      key: "discount",
+      align: "center",
+      width: 90,
+      render: (_, it) => (
+        <Button
+          size="small"
+          onClick={() => openItemDiscountModal(it)}
+          disabled={!canApplyDiscounts}
+        >
+          Dcto
+        </Button>
+      ),
     },
   ];
-  // function openDeleteFlow() {
-  //   setDeleteManagerPassword("");
-  //   setDeleteApprovalVisible(true);
-  // }
+
+  function openDeleteFlow() {
+    setDeleteManagerPassword("");
+    setDeleteApprovalVisible(true);
+  }
   // reutiliza tu requestApprovalToken(action, password, targetId)
 
   async function doDeleteOrderOnApi(approvalToken: string) {
@@ -160,23 +353,66 @@ export default function OrderDetail() {
     }
   }
 
-  const { baseSubtotal, taxTotal, grandTotal } = useMemo(() => {
-    let base = 0,
-      tax = 0,
-      total = 0;
-    for (const it of items) {
-      const qty = Number(it.qty ?? 0);
-      const basePrice = Number(it.basePrice ?? 0);
-      const unitPrice = Number(it.unitPrice ?? 0);
-      base += basePrice * qty;
-      tax += (unitPrice - basePrice) * qty;
-      total += unitPrice * qty;
-    }
-    base = Math.round(base * 100) / 100;
-    tax = Math.round(tax * 100) / 100;
-    total = Math.round(total * 100) / 100;
-    return { baseSubtotal: base, taxTotal: tax, grandTotal: total };
-  }, [items]);
+  const { baseSubtotal, taxTotal, grandTotal, orderDiscountAmount } =
+    useMemo(() => {
+      let base = 0;
+      let tax = 0;
+
+      // 1) Aplicamos descuentos por ítem
+      for (const it of items) {
+        const qty = Number(it.qty ?? 0);
+        const basePrice = Number(it.basePrice ?? 0);
+        const unitPrice = Number(it.unitPrice ?? 0);
+
+        const grossBase = basePrice * qty;
+        const grossTax = (unitPrice - basePrice) * qty;
+        const grossTotal = grossBase + grossTax;
+
+        const lineDiscount = Number(it.discountAmount ?? 0) || 0;
+        const ratio =
+          grossTotal > 0 ? Math.min(lineDiscount / grossTotal, 1) : 0;
+
+        const netBase = grossBase * (1 - ratio);
+        const netTax = grossTax * (1 - ratio);
+
+        base += netBase;
+        tax += netTax;
+      }
+
+      let subtotalAfterItems = base + tax;
+
+      // 2) Descuento general de la orden
+      let orderDisc = Number(selectedOrder?.discountAmount ?? 0) || 0;
+      const oType = selectedOrder?.discountType as DiscountType | null;
+      const oValue = Number(selectedOrder?.discountValue ?? 0);
+
+      if (!orderDisc && oType && subtotalAfterItems > 0) {
+        if (oType === "percent") {
+          orderDisc =
+            Math.round(subtotalAfterItems * (oValue / 100) * 100) / 100;
+        } else {
+          orderDisc = Math.min(oValue, subtotalAfterItems);
+        }
+      }
+
+      if (orderDisc > 0 && subtotalAfterItems > 0) {
+        const ratio = Math.min(orderDisc / subtotalAfterItems, 1);
+        base = base * (1 - ratio);
+        tax = tax * (1 - ratio);
+        subtotalAfterItems = base + tax;
+      }
+
+      base = Math.round(base * 100) / 100;
+      tax = Math.round(tax * 100) / 100;
+      const total = Math.round(subtotalAfterItems * 100) / 100;
+
+      return {
+        baseSubtotal: base,
+        taxTotal: tax,
+        grandTotal: total,
+        orderDiscountAmount: Math.round(orderDisc * 100) / 100,
+      };
+    }, [items, selectedOrder]);
 
   // ====== Helpers ticket ======
   const orderIndex =
@@ -425,11 +661,11 @@ export default function OrderDetail() {
   const hasItems = items.length > 0;
 
   // 👉 nuevo: usa printCount de la orden (acepta snake/camel)
-  // const printCount = Number(
-  //   (selectedOrder as any)?.printCount ??
-  //     (selectedOrder as any)?.print_count ??
-  //     0
-  // );
+  const printCount = Number(
+    (selectedOrder as any)?.printCount ??
+      (selectedOrder as any)?.print_count ??
+      0
+  );
 
   const canPrint =
     hasItems &&
@@ -441,7 +677,7 @@ export default function OrderDetail() {
   const canReopen = status === "printed" || status === "paid";
 
   // 👉 nuevo: borrar cuenta solo si jamás se imprimió y no hay productos
-  // const canDeleteOrder = printCount === 0 && !hasItems;
+  const canDeleteOrder = printCount === 0 && !hasItems;
 
   // ====== Cancelación ======
 
@@ -499,6 +735,23 @@ export default function OrderDetail() {
   };
 
   // ====== Imprimir ======
+  // ====== Imprimir ======
+  // Primera impresión (sin contraseña, otro endpoint)
+  async function doInitialPrintOnOrderApi() {
+    const res = await apiOrderKiosk.post(
+      // 👇 ajusta a tu ruta real si es distinta
+      `/orders/${selectedOrder?.id}/firstPrint`,
+      {},
+      { validateStatus: () => true }
+    );
+    if (!res || res.status < 200 || res.status >= 300) {
+      const err = (res?.data && res.data.error) || "Impresión (primera) falló";
+      throw new Error(err);
+    }
+    return res.data as { folioSeries: string; folioNumber: number };
+  }
+
+  // Reimpresiones (con contraseña / approvals)
   async function doPrintOnOrderApi(approvalToken: string) {
     const res = await apiOrderKiosk.post(
       `/orders/${selectedOrder?.id}/print`,
@@ -518,6 +771,37 @@ export default function OrderDetail() {
   const openPrintFlow = () => {
     setPrintManagerPassword("");
     setPrintApprovalVisible(true);
+  };
+
+  // Click en botón "Imprimir Cuenta"
+  const handlePrintClick = async () => {
+    if (!selectedOrder) return;
+
+    // Si ya se imprimió al menos una vez → reimpresión, pide contraseña
+    if (printCount > 0) {
+      openPrintFlow();
+      return;
+    }
+
+    // Primera impresión → sin contraseña
+    setPrintSubmitting(true);
+    try {
+      const r = await doInitialPrintOnOrderApi();
+      message.success(`Folio asignado: ${r.folioSeries}-${r.folioNumber}`);
+
+      if (typeof fetchOrderById === "function") {
+        try {
+          await fetchOrderById(selectedOrder.id);
+        } catch {}
+      }
+
+      // Ticket local en impresora de navegador / proxy
+      handlePrintPreview();
+    } catch (e: any) {
+      message.error(String(e?.message || "Error al imprimir"));
+    } finally {
+      setPrintSubmitting(false);
+    }
   };
 
   const handlePrintApprovalConfirm = async () => {
@@ -723,9 +1007,10 @@ export default function OrderDetail() {
           <div className="flex gap-2">
             {selectedOrder && (
               <>
-                <Button onClick={openPrintFlow} disabled={!canPrint}>
+                <Button onClick={handlePrintClick} disabled={!canPrint}>
                   🖨️ Imprimir Cuenta
                 </Button>
+
                 {canReopen && (
                   <Button onClick={openReopenFlow}>🔓 Reabrir</Button>
                 )}
@@ -735,9 +1020,8 @@ export default function OrderDetail() {
                 <Button onClick={openVoidFlow} disabled={!canVoidItems}>
                   🗑️ Eliminar productos
                 </Button>
-                {/* 👉 nuevo botón: borrar cuenta */}
 
-                {/* <Button
+                <Button
                   onClick={openDeleteFlow}
                   disabled={!canDeleteOrder}
                   danger
@@ -745,7 +1029,7 @@ export default function OrderDetail() {
                   title="Solo si nunca se imprimió y no tiene productos"
                 >
                   🗑️ Borrar cuenta
-                </Button> */}
+                </Button>
               </>
             )}
           </div>
@@ -802,6 +1086,9 @@ export default function OrderDetail() {
                 <Descriptions.Item label="Impuestos">
                   {money(taxTotal)}
                 </Descriptions.Item>
+                <Descriptions.Item label="Dcto orden">
+                  {money(orderDiscountAmount)}
+                </Descriptions.Item>
               </Descriptions>
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl font-bold">Total: </h1>
@@ -810,6 +1097,14 @@ export default function OrderDetail() {
             </div>
 
             <div className="flex gap-2">
+              <Button
+                size="large"
+                onClick={openGeneralDiscountModal}
+                disabled={!canApplyDiscounts}
+              >
+                Dcto general
+              </Button>
+
               <Button
                 type="primary"
                 size="large"
@@ -823,8 +1118,128 @@ export default function OrderDetail() {
 
             <PayModal open={openPay} onClose={() => setOpenPay(false)} />
           </Space>
+          {/* ========= Descuento general ========= */}
+          <Modal
+            title="Descuento general de la orden"
+            open={generalDiscountModalVisible}
+            onCancel={() => setGeneralDiscountModalVisible(false)}
+            onOk={applyGeneralDiscount}
+            okText="Aplicar descuento"
+            destroyOnClose
+          >
+            <Form layout="vertical">
+              <Form.Item label="Tipo de descuento">
+                <Radio.Group
+                  value={generalDiscountType}
+                  onChange={(e) =>
+                    setGeneralDiscountType(e.target.value as DiscountType)
+                  }
+                >
+                  <Radio value="percent">% porcentaje</Radio>
+                  <Radio value="fixed">Monto fijo</Radio>
+                </Radio.Group>
+              </Form.Item>
 
-          {/* ========= Cancelar (Modal 1: config) ========= */}
+              <Form.Item
+                label={
+                  generalDiscountType === "percent"
+                    ? "Valor (%)"
+                    : "Monto (MXN)"
+                }
+              >
+                <InputNumber
+                  min={0}
+                  max={generalDiscountType === "percent" ? 100 : undefined}
+                  value={generalDiscountValue}
+                  onChange={(v) => setGeneralDiscountValue(Number(v ?? 0))}
+                  style={{ width: "100%" }}
+                />
+              </Form.Item>
+
+              <Form.Item label="Motivo (opcional)">
+                <Input.TextArea
+                  value={generalDiscountReason}
+                  onChange={(e) => setGeneralDiscountReason(e.target.value)}
+                  rows={3}
+                />
+              </Form.Item>
+            </Form>
+          </Modal>
+
+          {/* ========= Descuento por producto ========= */}
+          <Modal
+            title="Descuento por producto"
+            open={itemDiscountModalVisible}
+            onCancel={() => {
+              setItemDiscountModalVisible(false);
+              setItemDiscountTarget(null);
+            }}
+            onOk={applyItemDiscount}
+            okText="Aplicar descuento"
+            destroyOnClose
+          >
+            {itemDiscountTarget && (
+              <div className="mb-3 text-sm">
+                <div>
+                  Producto:{" "}
+                  <b>
+                    {itemDiscountTarget.product?.name ??
+                      itemDiscountTarget.name ??
+                      `#${itemDiscountTarget.id}`}
+                  </b>
+                </div>
+                <div>
+                  Cantidad: <b>{itemDiscountTarget.qty}</b>
+                </div>
+                <div>
+                  Importe bruto:{" "}
+                  <b>
+                    {money(
+                      Number(itemDiscountTarget.qty ?? 0) *
+                        Number(itemDiscountTarget.unitPrice ?? 0)
+                    )}
+                  </b>
+                </div>
+              </div>
+            )}
+
+            <Form layout="vertical">
+              <Form.Item label="Tipo de descuento">
+                <Radio.Group
+                  value={itemDiscountType}
+                  onChange={(e) =>
+                    setItemDiscountType(e.target.value as DiscountType)
+                  }
+                >
+                  <Radio value="percent">% porcentaje</Radio>
+                  <Radio value="fixed">Monto fijo</Radio>
+                </Radio.Group>
+              </Form.Item>
+
+              <Form.Item
+                label={
+                  itemDiscountType === "percent" ? "Valor (%)" : "Monto (MXN)"
+                }
+              >
+                <InputNumber
+                  min={0}
+                  max={itemDiscountType === "percent" ? 100 : undefined}
+                  value={itemDiscountValue}
+                  onChange={(v) => setItemDiscountValue(Number(v ?? 0))}
+                  style={{ width: "100%" }}
+                />
+              </Form.Item>
+
+              <Form.Item label="Motivo (opcional)">
+                <Input.TextArea
+                  value={itemDiscountReason}
+                  onChange={(e) => setItemDiscountReason(e.target.value)}
+                  rows={3}
+                />
+              </Form.Item>
+            </Form>
+          </Modal>
+
           {/* ========= Cancelar orden (motivo + contraseña, sin reembolsos) ========= */}
           <Modal
             title="Cancelar orden"

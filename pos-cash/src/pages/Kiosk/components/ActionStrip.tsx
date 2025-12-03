@@ -70,9 +70,6 @@ export default function ActionStrip({
           <Button type="default" disabled={!hasShift}>
             Reembolsos
           </Button>
-          <Button type="default" disabled={!hasShift}>
-            Cobros en línea
-          </Button>
           {/* <Button type="default" disabled={!hasShift}>
             Historial
           </Button> */}

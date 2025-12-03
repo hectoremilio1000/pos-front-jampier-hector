@@ -16,7 +16,7 @@ const SECTIONS: Section[] = [
     label: "🚀 INICIO",
     items: [
       { to: "/dashboard", label: "🏠 Dashboard" },
-      // { to: "/reportes", label: "📊 Reportes" },
+      { to: "/reports", label: "📊 Reportes" },
     ],
   },
   // {

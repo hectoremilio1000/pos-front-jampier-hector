@@ -176,28 +176,6 @@ export default function ProductosPage() {
             captureIncluded: g.captureIncluded,
             priority: g.priority,
           });
-
-          for (const line of g.modifiers) {
-            let modifierId = line.modifierId;
-            if (line.modifier.isNew) {
-              const { data: newProd } = await apiOrder.post("/products", {
-                groupId: line.modifier.groupId,
-                subgroupId: line.modifier.subgroupId,
-                code: line.modifier.code,
-                name: line.modifier.name,
-                price: line.modifier.basePrice,
-                taxRate: line.modifier.taxRate,
-                enabled: line.modifier.isEnabled,
-              });
-              modifierId = newProd.id;
-            }
-            await apiOrder.post("/modifiers", {
-              modifierGroupId: realGroupId,
-              modifierId,
-              priceDelta: line.priceDelta,
-              isEnabled: line.isEnabled,
-            });
-          }
         }
 
         message.success({ key: "saveProd", content: "Producto creado 🎉" });

@@ -26,7 +26,7 @@ const HeaderStatus: FC<Props> = ({ now, pairState, deviceLabel }) => {
       {now}
       <div className="mt-1 flex items-center gap-1 justify-end">
         <span className={`inline-block w-2 h-2 rounded-full ${dot}`} />
-        <span>{text}</span>
+        <span className="text-nowrap">{text}</span>
       </div>
     </div>
   );
