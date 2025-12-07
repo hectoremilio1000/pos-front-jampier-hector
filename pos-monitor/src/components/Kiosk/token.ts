@@ -85,6 +85,8 @@ export async function kioskPairConfirm(payload: PairConfirmBody) {
     throw new Error(data.error || "No se pudo confirmar el emparejamiento");
   }
   const kt = data.kioskToken as string;
+  const restaurantId = data.restaurantId as string;
   sessionStorage.setItem("kiosk_token", kt);
+  sessionStorage.setItem("kiosk_restaurant_id", restaurantId);
   return kt;
 }

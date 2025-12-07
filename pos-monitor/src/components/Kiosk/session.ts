@@ -18,8 +18,10 @@ export async function kioskPingOnce() {
 
 export function kioskLogoutOperator() {
   try {
-    sessionStorage.removeItem("kiosk_jwt");
-    sessionStorage.removeItem("kiosk_jwt_exp");
+    sessionStorage.removeItem("kiosk_token");
+    sessionStorage.removeItem("monitor_station_code");
+    sessionStorage.removeItem("monitor_station_id");
+    sessionStorage.removeItem("cash_shift_id");
   } catch {}
 }
 

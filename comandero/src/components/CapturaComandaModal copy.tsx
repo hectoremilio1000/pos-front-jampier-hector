@@ -293,6 +293,23 @@ const CapturaComandaModal: React.FC<Props> = ({
     return used;
   };
 
+  // ¿Este item ya seleccionado entra como "incluido" según su posición?
+  const isItemIncludedByIndex = (
+    cfg: ProductModifierGroups,
+    idxSel: number
+  ) => {
+    const arr = getSelected(cfg.modifierGroupId);
+    let prev = 0;
+    for (let i = 0; i < arr.length && i <= idxSel; i++) {
+      const w = halfFactor(arr[i].half);
+      if (i === idxSel) {
+        return prev + w <= cfg.includedQty + EPS;
+      }
+      if (prev + w <= cfg.includedQty + EPS) prev += w;
+    }
+    return false;
+  };
+
   const configOrdenada = useMemo(
     () =>
       [...configModifiersCurrentProduct].sort(
@@ -339,93 +356,34 @@ const CapturaComandaModal: React.FC<Props> = ({
     }, 0);
   }, [configOrdenada, selectedByGroup]);
 
-  // ------ RESUMEN / CARRITO DE MODIFICADORES ------
-  type ResumenLinea = {
-    groupId: number;
-    index: number; // índice dentro de selectedByGroup[groupId]
-    scope: "TODO" | "PRIMERA MITAD" | "SEGUNDA MITAD";
-    name: string;
-    price: number; // precio de ESA línea (ya con half y si es gratis o no)
-  };
-
-  const resumenSeleccion = useMemo<ResumenLinea[]>(() => {
-    const lines: ResumenLinea[] = [];
-
-    configOrdenada.forEach((cfg) => {
-      const selArr = getSelected(cfg.modifierGroupId); // en orden de click
-      let remainingIncluded = cfg.includedQty;
-
-      selArr.forEach((item, idx) => {
-        const mod = cfg.modifierGroup.modifiers.find((x) => x.id === item.id);
-        if (!mod) return;
-
-        const w = halfFactor(item.half);
-        const priceBase = precioExtraDe(mod);
-
-        const fitsIncluded = remainingIncluded + EPS >= w;
-        const price = fitsIncluded ? 0 : priceBase * w;
-
-        if (fitsIncluded) {
-          remainingIncluded -= w;
-        }
-
-        const scopeLabel: ResumenLinea["scope"] =
-          item.half === 1
-            ? "TODO"
-            : item.half === 2
-              ? "PRIMERA MITAD"
-              : "SEGUNDA MITAD";
-
-        lines.push({
-          groupId: cfg.modifierGroupId,
-          index: idx,
-          scope: scopeLabel,
-          name: mod.modifier.name,
-          price,
-        });
-      });
-    });
-
-    return lines;
-  }, [configOrdenada, selectedByGroup]);
-
-  const removeResumenLinea = (groupId: number, index: number) => {
-    setSelectedByGroup((prev) => {
-      const arr = [...(prev[groupId] ?? [])];
-      if (index < 0 || index >= arr.length) return prev;
-      arr.splice(index, 1);
-      return { ...prev, [groupId]: arr };
-    });
-  };
-
-  const clearAllModifiers = () => {
-    setSelectedByGroup({});
-  };
-
   const totalUnitario =
     (productoCompuestoActual?.priceGross ?? 0) + extrasSubtotalUnitario;
 
   // ------------------------
-  // AGREGAR LÍNEAS DE MODIFICADOR (SIN TOGGLE)
+  // TOGGLE DE SELECCIÓN
   // ------------------------
-  const addModifier = (cfg: ProductModifierGroups, mod: Modifiers) => {
+  const toggleModifier = (cfg: ProductModifierGroups, mod: Modifiers) => {
     const scope = (halfByGroup[cfg.modifierGroupId] ?? 1) as 1 | 2 | 3;
 
     setSelectedByGroup((prev) => {
       const arr = [...(prev[cfg.modifierGroupId] ?? [])];
+      const idx = arr.findIndex((x) => x.id === mod.id);
 
-      // solo validamos máximo; no hacemos toggle
-      if (wouldExceed(cfg, scope)) {
-        Modal.info({
-          title: "Modificadores excedidos",
-          content:
-            "Se ha alcanzado el máximo de modificadores permitidos, para capturar modificadores adicionales elimine previamente los modificadores capturados.",
-        });
-        return prev;
+      if (idx !== -1) {
+        // quitar
+        arr.splice(idx, 1);
+        return { ...prev, [cfg.modifierGroupId]: arr };
+      } else {
+        // agregar respetando el máximo por PESO
+        if (wouldExceed(cfg, scope)) {
+          message.warning(
+            `No puedes seleccionar más de ${cfg.maxQty} en “${cfg.modifierGroup.name}”.`
+          );
+          return prev;
+        }
+        arr.push({ id: mod.id, half: scope });
+        return { ...prev, [cfg.modifierGroupId]: arr };
       }
-
-      arr.push({ id: mod.id, half: scope });
-      return { ...prev, [cfg.modifierGroupId]: arr };
     });
   };
 
@@ -834,20 +792,54 @@ const CapturaComandaModal: React.FC<Props> = ({
 
                 <div className="grid grid-cols-2 gap-2 mt-3">
                   {cfg.modifierGroup.modifiers.map((m) => {
+                    const selArr = getSelected(cfg.modifierGroupId);
+                    const idxSel = selArr.findIndex((x) => x.id === m.id);
+                    const selObj = idxSel !== -1 ? selArr[idxSel] : null;
+
+                    // ¿Puede clickear? (si ya está seleccionado, siempre; si no, que no exceda el peso)
+                    const scope = (halfByGroup[cfg.modifierGroupId] ?? 1) as
+                      | 1
+                      | 2
+                      | 3;
+                    const canPick = idxSel !== -1 || !wouldExceed(cfg, scope);
+
+                    // Label:
+                    let label = "";
+                    if (selObj) {
+                      // seleccionado: usa su propia half y si entra como "incluido" según orden/peso
+                      const w = halfFactor(selObj.half);
+                      const esIncluido = isItemIncludedByIndex(cfg, idxSel);
+                      label = esIncluido
+                        ? `Incluido${selObj.half !== 1 ? " · 1/2" : ""}`
+                        : `+ $${(precioExtraDe(m) * w).toFixed(2)}${selObj.half !== 1 ? " · 1/2" : ""}`;
+                    } else {
+                      // preview no seleccionado: ¿con el scope actual entraría como incluido completo?
+                      const used = includedUsedWeight(cfg);
+                      const w = halfFactor(scope);
+                      const previewIncluido = used + w <= cfg.includedQty + EPS;
+                      const previewPrice = previewIncluido
+                        ? 0
+                        : precioExtraDe(m) * w;
+
+                      label = previewIncluido
+                        ? `Incluido${scope !== 1 ? " · 1/2" : ""}`
+                        : `+ $${previewPrice.toFixed(2)}${scope !== 1 ? " · 1/2" : ""}`;
+                    }
+
                     return (
                       <button
                         key={m.id}
-                        onClick={() => addModifier(cfg, m)}
-                        className="border rounded-lg p-2 text-left transition border-gray-300 hover:border-gray-400"
+                        onClick={() => toggleModifier(cfg, m)}
+                        disabled={!canPick}
+                        className={`border rounded-lg p-2 text-left transition
+        ${idxSel !== -1 ? "border-orange-500 bg-orange-50" : "border-gray-300 hover:border-gray-400"}
+        ${!canPick && idxSel === -1 ? "opacity-50 cursor-not-allowed" : ""}
+      `}
                       >
                         <div className="font-medium leading-tight">
                           {m.modifier.name}
                         </div>
-                        {m.priceDelta !== 0 && (
-                          <div className="text-xs text-gray-500">
-                            + ${Number(m.priceDelta).toFixed(2)} por unidad
-                          </div>
-                        )}
+                        <div className="text-xs">{label}</div>
                       </button>
                     );
                   })}
@@ -868,68 +860,6 @@ const CapturaComandaModal: React.FC<Props> = ({
           })}
         </div>
 
-        {/* DETALLE / CARRITO DE MODIFICADORES */}
-        <div className="border-t pt-3 mt-4">
-          <div className="flex justify-between items-center mb-1">
-            <h3 className="text-sm font-semibold">Detalle de modificadores</h3>
-            {resumenSeleccion.length > 0 && (
-              <Button size="small" onClick={clearAllModifiers}>
-                Quitar todos
-              </Button>
-            )}
-          </div>
-          <div className="text-xs text-gray-500 mb-2">
-            Vista previa por todo / 1ra mitad / 2da mitad
-          </div>
-
-          <div className="border rounded-md p-2 max-h-48 overflow-auto text-xs font-mono bg-gray-50">
-            {resumenSeleccion.length === 0 ? (
-              <div className="text-gray-400">
-                Sin modificadores seleccionados.
-              </div>
-            ) : (
-              (["TODO", "PRIMERA MITAD", "SEGUNDA MITAD"] as const).map(
-                (scope) => {
-                  const lines = resumenSeleccion.filter(
-                    (l) => l.scope === scope
-                  );
-                  if (lines.length === 0) return null;
-
-                  return (
-                    <div key={scope} className="mb-2">
-                      <div className="font-semibold">== {scope} ==</div>
-                      {lines.map((l, i) => (
-                        <div
-                          key={`${l.groupId}-${l.index}-${i}`}
-                          className="flex justify-between items-center"
-                        >
-                          <span>
-                            {"> "}
-                            {l.name}
-                          </span>
-                          <span className="flex items-center gap-2">
-                            <span>${l.price.toFixed(2)}</span>
-                            <Button
-                              size="small"
-                              type="text"
-                              onClick={() =>
-                                removeResumenLinea(l.groupId, l.index)
-                              }
-                            >
-                              ×
-                            </Button>
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                }
-              )
-            )}
-          </div>
-        </div>
-
-        {/* TOTALES (igual que antes) */}
         <div className="border-t pt-3 mt-4 space-y-1">
           <div className="flex justify-between text-sm">
             <span>Precio</span>

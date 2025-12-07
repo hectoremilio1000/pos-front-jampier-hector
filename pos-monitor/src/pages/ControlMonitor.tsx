@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Card, Typography, message, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useShift } from "@/context/ShiftContext";
@@ -6,6 +6,7 @@ import apiOrder from "@/components/apis/apiOrder";
 import HeaderStatus from "@/components/Kiosk/HeaderStatus";
 import { useNavigate } from "react-router-dom";
 import { kioskLogoutOperator } from "@/components/Kiosk/session";
+import { Transmit } from "@adonisjs/transmit-client";
 
 const CASH_API = import.meta.env.VITE_API_URL_CASH; // p.ej. http://localhost:3335/api
 const { Title, Paragraph } = Typography;
@@ -49,19 +50,28 @@ type Row = {
   allItemIds: number[]; // para payload de finalizar
   status?: string;
 };
-
+function getRestaurantIdFromJwt(): number {
+  try {
+    const t = sessionStorage.getItem("kiosk_restaurant_id") || "";
+    console.log(t);
+    return Number(t);
+  } catch {
+    return 0;
+  }
+}
 export function ControlMonitor() {
   const { shiftId, setShiftId } = useShift();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const stationCode = sessionStorage.getItem("monitor_station_code");
 
+  const token = sessionStorage.getItem("kiosk_token");
   const [selectedMainId, setSelectedMainId] = useState<number | null>(null);
   const navigate = useNavigate();
   function cerrarSesion() {
     kioskLogoutOperator(); // borra solo kiosk_jwt y exp
     message.success("Sesión cerrada");
-    navigate("/login", { replace: true }); // ← regresa al login correcto
+    navigate("/", { replace: true }); // ← regresa al login correcto
   }
   function minutesSince(ts?: string) {
     if (!ts) return 0;
@@ -120,6 +130,94 @@ export function ControlMonitor() {
     // const t = setInterval(loadAll, 10000);
     // return () => clearInterval(t);
   }, []); // eslint-disable-line
+
+  const transmitRef = useRef<Transmit | null>(null);
+  const subCleanupRef = useRef<() => void>(() => {});
+
+  /** handler central de eventos del canal */
+  const onOrdersEvent = useCallback(
+    async (msg: any) => {
+      if (!msg || typeof msg !== "object") return;
+      if (msg.type === "order_changed") {
+        try {
+          // Igual: traemos la foto completa desde la API
+          await fetchOrdersByShift(shiftId ?? 0);
+        } catch (e) {
+          console.error("Error al refrescar órdenes (order_changed):", e);
+        }
+        return;
+      }
+      if (msg.type === "order_closed") {
+        const id = Number(msg.orderId);
+        if (!Number.isFinite(id)) return;
+
+        // 1) quita de la UI inmediatamente
+        setOrders((prev) => prev.filter((c) => c.id !== id));
+
+        // 2) (opcional) re-sincroniza desde API para quedar 100% consistente
+        try {
+          await fetchOrdersByShift(shiftId ?? 0);
+        } catch {}
+      }
+
+      // (futuro) puedes manejar order_created / order_changed aquí
+    },
+    [fetchOrdersByShift]
+  );
+  useEffect(() => {
+    if (!token) return;
+
+    // instancia única
+    if (!transmitRef.current) {
+      transmitRef.current = new Transmit({
+        baseUrl: `${apiOrder.defaults.baseURL}/kiosk` || "/api/kiosk",
+        beforeSubscribe: (request) => {
+          const anyReq = request as any;
+          // Si es Request (tiene headers.set), muta en sitio
+          if (anyReq.headers && typeof anyReq.headers.set === "function") {
+            const token = sessionStorage.getItem("kiosk_token") || "";
+            if (token) anyReq.headers.set("Authorization", `Bearer ${token}`);
+          } else {
+            // Si es RequestInit, re-asigna headers
+            const headers = new Headers((request as RequestInit).headers || {});
+            const token = sessionStorage.getItem("kiosk_token") || "";
+            if (token) headers.set("Authorization", `Bearer ${token}`);
+          }
+        },
+
+        maxReconnectAttempts: 10,
+        onSubscribeFailed: (res) => {
+          console.error("Transmit subscribe failed", res?.status);
+        },
+      });
+    }
+
+    const rid = getRestaurantIdFromJwt();
+    if (!rid) return;
+
+    // crea suscripción al canal del restaurante
+    const sub = transmitRef.current.subscription(`restaurants/${rid}/orders`);
+    const off = sub.onMessage(onOrdersEvent);
+
+    sub.create().catch((e) => console.error("Transmit create error", e));
+
+    // cleanup en unmount
+    subCleanupRef.current = () => {
+      try {
+        off && off();
+      } catch {}
+      try {
+        sub.delete();
+      } catch {}
+    };
+
+    return () => {
+      try {
+        subCleanupRef.current();
+      } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   /**
    * Agrupa ítems por:

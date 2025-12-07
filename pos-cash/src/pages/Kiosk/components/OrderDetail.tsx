@@ -28,6 +28,39 @@ const money = (n: number) =>
   `$${(Math.round((n ?? 0) * 100) / 100).toFixed(2)}`;
 type DiscountType = "percent" | "fixed";
 
+// ====== Config nprint (impresión por API) ======
+const NPRINT_URL = "https://172.27.106.19/nprint/printers/print";
+const NPRINT_PRINTER_NAME = "XP-80C";
+const NPRINT_TEMPLATE_ID = "2";
+
+type NPrintItem = {
+  codigo: string;
+  descripcion: string;
+  cantidad: number;
+  precio_unitario: number;
+  importe: number;
+};
+
+type NPrintJobData = {
+  numero: string;
+  fecha: string;
+  cliente: {
+    nombre: string;
+    direccion: string;
+    rfc: string;
+  };
+  items: NPrintItem[];
+  subtotal: number;
+  iva: number;
+  total: number;
+};
+
+type NPrintJob = {
+  printerName: string;
+  templateId: string;
+  data: NPrintJobData;
+};
+
 // type RefundLine = { paymentMethodId: number; amount: number };
 
 // const PAYMENT_METHOD_OPTIONS = [
@@ -602,6 +635,111 @@ export default function OrderDetail() {
 `.trim();
   }
 
+  // 👉 NUEVO: construir payload para nprint usando los mismos datos de la cuenta
+  function buildNPrintJobPayload(opts?: {
+    folioSeries?: string;
+    folioNumber?: number;
+  }): NPrintJob[] {
+    if (!selectedOrder) {
+      throw new Error("No hay orden seleccionada");
+    }
+
+    const rows = buildTicketRows(items);
+
+    const numero =
+      opts?.folioSeries && typeof opts.folioNumber === "number"
+        ? `${opts.folioSeries}-${String(opts.folioNumber).padStart(3, "0")}`
+        : `ORD-${selectedOrder.id}`;
+
+    const createdAt =
+      (selectedOrder as any)?.createdAt ||
+      (selectedOrder as any)?.created_at ||
+      new Date();
+
+    const fecha = formatDate(createdAt);
+
+    const clienteNombre =
+      (selectedOrder as any)?.customerName ||
+      (selectedOrder as any)?.customer?.name ||
+      "Público en general";
+
+    const clienteDireccion = (selectedOrder as any)?.customer?.address ?? "";
+    const clienteRfc = (selectedOrder as any)?.customer?.rfc ?? "";
+
+    const itemsPayload: NPrintItem[] = rows.map((r, idx) => {
+      const importe = Number(r.amount ?? 0);
+      const cantidad = Number(r.qty ?? 0) || 1;
+      const precio_unitario = Math.round((importe / cantidad) * 100) / 100;
+
+      return {
+        codigo: `L${idx + 1}`, // línea simple, puedes cambiarlo a product.code si lo deseas
+        descripcion: r.desc,
+        cantidad,
+        precio_unitario,
+        importe,
+      };
+    });
+
+    return [
+      {
+        printerName: NPRINT_PRINTER_NAME,
+        templateId: NPRINT_TEMPLATE_ID,
+        data: {
+          numero,
+          fecha,
+          cliente: {
+            nombre: clienteNombre,
+            direccion: clienteDireccion,
+            rfc: clienteRfc,
+          },
+          items: itemsPayload,
+          subtotal: baseSubtotal,
+          iva: taxTotal,
+          total: grandTotal,
+        },
+      },
+    ];
+  }
+
+  // 👉 NUEVO: enviar payload a la API de nprint
+  async function sendTicketToPrintProxy(opts?: {
+    folioSeries?: string;
+    folioNumber?: number;
+  }) {
+    const payload = buildNPrintJobPayload(opts);
+
+    const res = await fetch(NPRINT_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      let detail = "";
+      try {
+        detail = await res.text();
+      } catch {
+        // ignorar
+      }
+      throw new Error(
+        `Error al enviar a impresora (${res.status})${
+          detail ? `: ${detail}` : ""
+        }`
+      );
+    }
+
+    // si tu API responde algo útil, lo puedes usar
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  // ⛔ Opcional: si ya NO quieres imprimir en navegador, puedes dejar estos helpers,
+  // pero SIN usarlos más abajo. Si quieres, luego los eliminamos.
   function printViaIframe(html: string) {
     const iframe = document.createElement("iframe");
     iframe.style.position = "fixed";
@@ -795,10 +933,17 @@ export default function OrderDetail() {
         } catch {}
       }
 
-      // Ticket local en impresora de navegador / proxy
-      handlePrintPreview();
+      // 👉 ENVÍA la cuenta a la API de impresión nprint
+      await sendTicketToPrintProxy({
+        folioSeries: r.folioSeries,
+        folioNumber: r.folioNumber,
+      });
+
+      message.success("Cuenta enviada a la impresora");
     } catch (e: any) {
-      message.error(String(e?.message || "Error al imprimir"));
+      message.error(
+        String(e?.message || "Error al imprimir/enviar a impresora")
+      );
     } finally {
       setPrintSubmitting(false);
     }
@@ -827,10 +972,18 @@ export default function OrderDetail() {
 
       setPrintApprovalVisible(false);
       setPrintManagerPassword("");
-      // previsualización; la asignación real es tras aprobación
-      handlePrintPreview();
+
+      // 👉 Reimpresión: también va a nprint
+      await sendTicketToPrintProxy({
+        folioSeries: r.folioSeries,
+        folioNumber: r.folioNumber,
+      });
+
+      message.success("Cuenta reimpresa (enviada a la impresora)");
     } catch (e: any) {
-      message.error(String(e?.message || "Error al imprimir"));
+      message.error(
+        String(e?.message || "Error al imprimir/enviar a impresora")
+      );
     } finally {
       setPrintSubmitting(false);
     }
