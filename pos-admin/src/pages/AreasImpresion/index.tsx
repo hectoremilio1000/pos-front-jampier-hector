@@ -1,21 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ColumnsType } from "antd/es/table";
-import { Table, Input, Button, Space, Popconfirm, message } from "antd";
+import { Table, Input, Button, Space, Popconfirm, message, Tag } from "antd";
 import { PlusOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
 
-import AreaModal from "./AreaModal";
+import AreaModal, { type AreaImpresion } from "./AreaModal";
 import { listAreas, removeArea } from "./areasImpresion.api";
 
-export interface AreaImpresion {
-  id: number;
-  name: string;
-  sortOrder: number;
-}
-
-export interface AreaUpsert {
-  name: string;
-  sortOrder: number;
-}
+// Si prefieres mantener los tipos aquí, puedes copiarlos desde AreaModal,
+// pero reutilizarlos evita inconsistencias.
 
 export default function AreasImpresionPage() {
   const [rows, setRows] = useState<AreaImpresion[]>([]);
@@ -56,8 +48,22 @@ export default function AreasImpresionPage() {
     {
       title: "Orden",
       dataIndex: "sortOrder",
-      width: 140,
+      width: 100,
       sorter: (a, b) => a.sortOrder - b.sortOrder,
+    },
+    {
+      title: "Impresora",
+      dataIndex: "printerName",
+      render: (_, rec) =>
+        rec.printerName ? (
+          <Space size="small">
+            <span>{rec.printerName}</span>
+            {rec.printerShared && <Tag color="blue">Compartida</Tag>}
+            {rec.printerDefault && <Tag color="green">Predeterminada</Tag>}
+          </Space>
+        ) : (
+          <span style={{ color: "#999" }}>Sin asignar</span>
+        ),
     },
     {
       title: "Acciones",

@@ -19,6 +19,17 @@ import { useAuth } from "@/components/Auth/AuthContext"; // 👈 nuevo
 import { Drawer } from "antd";
 
 type Mode = "MASTER" | "DEPENDENT";
+
+type NPrintPrinter = {
+  name: string;
+  shared: string;
+  work_offline: string;
+  default: string;
+  status: string;
+  network: string;
+  availability: string;
+};
+
 type Station = {
   id: number;
   restaurantId: number;
@@ -27,12 +38,19 @@ type Station = {
   mode: Mode;
   isEnabled: boolean;
   openingRequired: boolean;
-  // ↓ campos originales pueden venir vacíos si no hay JOIN en backend
   users?: { id: number; full_name: string }[];
 
-  // ↓ resueltos en el front cruzando pivote + pos-auth
-  _cashierIds?: number[]; // varios IDs
+  _cashierIds?: number[];
   _cashierNames?: string[];
+
+  // 👇 nuevos campos impresora (desde backend)
+  printerName?: string | null;
+  printerShared?: boolean | null;
+  printerWorkOffline?: boolean | null;
+  printerDefault?: boolean | null;
+  printerStatus?: string | null;
+  printerNetwork?: boolean | null;
+  printerAvailability?: string | null;
 };
 
 type Cashier = { id: number; full_name: string };
@@ -54,10 +72,29 @@ export default function CashStations() {
   const [cashiers, setCashiers] = useState<Cashier[]>([]);
   const [selectedCashierIds, setSelectedCashierIds] = useState<number[]>([]);
 
+  // impresoras
+  const [printers, setPrinters] = useState<NPrintPrinter[]>([]);
+  const [loadingPrinters, setLoadingPrinters] = useState(false);
+
   const [devOpen, setDevOpen] = useState(false);
   const [devLoading, setDevLoading] = useState(false);
   const [devRows, setDevRows] = useState<any[]>([]);
   const [devStation, setDevStation] = useState<Station | null>(null);
+
+  // cargar impresoras
+  async function loadPrinters() {
+    setLoadingPrinters(true);
+    try {
+      const res = await fetch("https://172.27.106.19/nprint/printers");
+      const data = (await res.json()) as { printers: NPrintPrinter[] };
+      const shared = data.printers.filter((p) => p.shared === "TRUE");
+      setPrinters(shared.length ? shared : data.printers);
+    } catch {
+      // opcional: message.error("No se pudieron cargar impresoras");
+    } finally {
+      setLoadingPrinters(false);
+    }
+  }
 
   async function openDevices(st: Station) {
     setDevStation(st);
@@ -140,6 +177,7 @@ export default function CashStations() {
   useEffect(() => {
     load();
     loadCashiers();
+    loadPrinters();
   }, [restaurantId]);
 
   function openCreate() {
@@ -149,8 +187,15 @@ export default function CashStations() {
       mode: "MASTER",
       isEnabled: true,
       openingRequired: true,
+      printerName: null,
+      printerShared: null,
+      printerWorkOffline: null,
+      printerDefault: null,
+      printerStatus: null,
+      printerNetwork: null,
+      printerAvailability: null,
     });
-    setSelectedCashierIds([]); // 👈 vacío (multi-selección)
+    setSelectedCashierIds([]);
     setIsModalOpen(true);
   }
 
@@ -162,13 +207,46 @@ export default function CashStations() {
       mode: st.mode,
       isEnabled: st.isEnabled,
       openingRequired: st.openingRequired,
+      printerName: st.printerName ?? null,
+      printerShared: st.printerShared ?? null,
+      printerWorkOffline: st.printerWorkOffline ?? null,
+      printerDefault: st.printerDefault ?? null,
+      printerStatus: st.printerStatus ?? null,
+      printerNetwork: st.printerNetwork ?? null,
+      printerAvailability: st.printerAvailability ?? null,
     });
-    // usar la pivote resuelta
     setSelectedCashierIds(
       st._cashierIds ?? (st.users?.[0]?.id ? [st.users[0].id] : [])
     );
-
     setIsModalOpen(true);
+  }
+
+  function handlePrinterChange(printerName: string | null) {
+    if (!printerName) {
+      form.setFieldsValue({
+        printerName: null,
+        printerShared: null,
+        printerWorkOffline: null,
+        printerDefault: null,
+        printerStatus: null,
+        printerNetwork: null,
+        printerAvailability: null,
+      });
+      return;
+    }
+
+    const p = printers.find((pr) => pr.name === printerName);
+    if (!p) return;
+
+    form.setFieldsValue({
+      printerName: p.name,
+      printerShared: p.shared === "TRUE",
+      printerWorkOffline: p.work_offline === "TRUE",
+      printerDefault: p.default === "TRUE",
+      printerStatus: p.status || null,
+      printerNetwork: p.network === "TRUE",
+      printerAvailability: p.availability || null,
+    });
   }
 
   async function save() {
@@ -239,6 +317,20 @@ export default function CashStations() {
       title: "Requiere apertura",
       dataIndex: "openingRequired",
       render: (v: boolean) => (v ? "Sí" : "No"),
+    },
+    {
+      title: "Impresora",
+      dataIndex: "printerName",
+      render: (_: any, st: Station) =>
+        st.printerName ? (
+          <Space size="small">
+            <span>{st.printerName}</span>
+            {st.printerShared && <Tag color="blue">Compartida</Tag>}
+            {st.printerDefault && <Tag color="green">Predeterminada</Tag>}
+          </Space>
+        ) : (
+          <span className="opacity-60">Sin asignar</span>
+        ),
     },
     {
       title: "Dispositivos",
@@ -421,6 +513,47 @@ export default function CashStations() {
             valuePropName="checked"
           >
             <Switch />
+          </Form.Item>
+          <Form.Item label="Impresora local" name="printerName">
+            {loadingPrinters ? (
+              <span>Cargando impresoras...</span>
+            ) : (
+              <Select
+                allowClear
+                placeholder="Selecciona impresora local"
+                showSearch
+                optionFilterProp="children"
+                onChange={(value) =>
+                  handlePrinterChange((value as string) || null)
+                }
+              >
+                {printers.map((p) => (
+                  <Select.Option key={p.name} value={p.name}>
+                    {p.name}
+                    {p.shared === "TRUE" ? " (Compartida)" : ""}
+                    {p.default === "TRUE" ? " [Predeterminada]" : ""}
+                  </Select.Option>
+                ))}
+              </Select>
+            )}
+          </Form.Item>
+          <Form.Item name="printerShared" hidden>
+            <Input type="hidden" />
+          </Form.Item>
+          <Form.Item name="printerWorkOffline" hidden>
+            <Input type="hidden" />
+          </Form.Item>
+          <Form.Item name="printerDefault" hidden>
+            <Input type="hidden" />
+          </Form.Item>
+          <Form.Item name="printerStatus" hidden>
+            <Input type="hidden" />
+          </Form.Item>
+          <Form.Item name="printerNetwork" hidden>
+            <Input type="hidden" />
+          </Form.Item>
+          <Form.Item name="printerAvailability" hidden>
+            <Input type="hidden" />
           </Form.Item>
 
           <div className="mt-2">

@@ -46,7 +46,7 @@ type OrderItem = {
   // Compuesto / modificadores:
   isModifier?: boolean | null;
   isCompositeProductMain?: boolean | null;
-  compositeProductId?: number | null;
+  compositeProductId?: string | null;
 
   // Timestamps para “Minutos”
   createdAt?: string;

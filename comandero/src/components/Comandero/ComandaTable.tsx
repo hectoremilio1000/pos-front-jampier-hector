@@ -98,7 +98,7 @@ export interface OrderItem {
   product: Producto;
   status: string | null;
   // NUEVOS CAMPOS:
-  compositeProductId: number | null; // id del producto principal al que pertenece el item
+  compositeProductId: string | null; // id del producto principal al que pertenece el item
   isModifier: boolean; // true si es una línea de modifier
   isCompositeProductMain: boolean; // true si es la línea principal del compuesto
   half: Half; // 0/1/2/3 (ver arriba)
@@ -151,7 +151,8 @@ interface ItemRow extends BaseRow {
 interface HalfGroupRow extends BaseRow {
   rowType: "halfGroup";
   half: Half; // 1|2|3
-  parentCompositeId: number; // product.id del main
+  // ID temporal del compuesto (mismo que compositeProductId)
+  parentCompositeId: string | null;
 }
 
 type TableRow = ItemRow | HalfGroupRow;
@@ -173,11 +174,12 @@ function buildTree(detalle_cheque: OrderItem[]): TableRow[] {
   const mains: WithIndex[] = [];
   const standalone: WithIndex[] = [];
 
-  // Map { compositeProductId -> modifiers[] }
-  const modifiersByComposite = new Map<number, WithIndex[]>();
+  // Map { compositeProductId (string) -> modifiers[] }
+  const modifiersByComposite = new Map<string, WithIndex[]>();
 
   for (const it of items) {
     if (it.isModifier && it.compositeProductId) {
+      // agrupar modifiers por compositeProductId (string)
       const arr = modifiersByComposite.get(it.compositeProductId) ?? [];
       arr.push(it);
       modifiersByComposite.set(it.compositeProductId, arr);
@@ -214,7 +216,11 @@ function buildTree(detalle_cheque: OrderItem[]): TableRow[] {
     .sort((a, b) => orderKey(a) - orderKey(b))
     .forEach((main) => {
       const children: TableRow[] = [];
-      const mods = (modifiersByComposite.get(main.product.id) ?? []).slice();
+
+      // 🔑 Usamos compositeProductId como llave de agrupación
+      const compositeKey =
+        main.compositeProductId ?? `MAIN-${main.originalIndex}`;
+      const mods = (modifiersByComposite.get(compositeKey) ?? []).slice();
 
       // Separar por half
       const byHalf = new Map<Half, WithIndex[]>();
@@ -235,10 +241,10 @@ function buildTree(detalle_cheque: OrderItem[]): TableRow[] {
         const list = byHalf.get(h);
         if (!list || list.length === 0) continue;
         const halfRow: HalfGroupRow = {
-          key: `half-${main.product.id}-${h}`,
+          key: `half-${compositeKey}-${h}`,
           rowType: "halfGroup",
           half: h,
-          parentCompositeId: main.product.id,
+          parentCompositeId: main.compositeProductId ?? null,
           children: list.map((mm) => ({
             key: `mod-${mm.originalIndex}`,
             rowType: "item",

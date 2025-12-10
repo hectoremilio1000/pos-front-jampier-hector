@@ -66,7 +66,16 @@ type AreaImpresion = {
   id: number;
   restaurantId: number;
   name: string;
+  sortOrder?: number;
+  printerName?: string | null;
+  printerShared?: boolean | null;
+  printerWorkOffline?: boolean | null;
+  printerDefault?: boolean | null;
+  printerStatus?: string | null;
+  printerNetwork?: boolean | null;
+  printerAvailability?: string | null;
 };
+
 type Producto = {
   id: number;
   name: string;
@@ -105,13 +114,14 @@ interface OrderItem {
   discountReason: string | null;
   product: Producto;
   status: string | null;
-  compositeProductId: number | null;
+  compositeProductId: string | null;
   isModifier: boolean;
   isCompositeProductMain: boolean;
   half: Mitad;
   route_area_id: number;
   createdAt?: string;
 }
+
 /** Lee restaurantId del kiosk_jwt */
 function getRestaurantIdFromJwt(): number {
   try {
@@ -147,6 +157,25 @@ const ControlComandero: React.FC = () => {
       items: OrderItem[];
     }[]
   >([]);
+
+  const rid = getRestaurantIdFromJwt();
+
+  // ---- NUEVO: helper para imprimir por área de impresión ----
+  type NPrintJobPayload = {
+    printerName: string;
+    templateId: string;
+    data: {
+      orderId: number | null;
+      tableName: string;
+      areaName: string;
+      items: {
+        name: string;
+        qty: number;
+        notes: string | null;
+        course: number;
+      }[];
+    };
+  };
 
   const [areas, setAreas] = useState<Area[]>([]);
   // const [areasFilter, setAreasFilter] = useState<Area[]>([]);
@@ -239,6 +268,35 @@ const ControlComandero: React.FC = () => {
       message.error("Error al cargar las órdenes");
     }
   };
+  const [areasImpresions, setAreasImpresions] = useState<AreaImpresion[]>([]);
+
+  const fetchAreasImpresions = async () => {
+    try {
+      const res = await apiOrder.get(
+        `/commander/areasImpresion?restaurantId=${rid}`
+      );
+      setAreasImpresions(res.data);
+    } catch (e) {
+      console.error(e);
+      message.error("Error al cargar las areas de impresions");
+    }
+  };
+
+  async function sendPrintJobToLocalPrinter(payload: NPrintJobPayload[]) {
+    try {
+      const res = await fetch("https://172.27.106.19/nprint/printers/print", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload), // 🔴 IMPORTANTE: objeto, NO array
+      });
+
+      if (!res.ok) {
+        console.error("Error al imprimir", res.status);
+      }
+    } catch (err) {
+      console.error("Error de red al imprimir", err);
+    }
+  }
 
   const transmitRef = useRef<Transmit | null>(null);
   const subCleanupRef = useRef<() => void>(() => {});
@@ -300,7 +358,6 @@ const ControlComandero: React.FC = () => {
       });
     }
 
-    const rid = getRestaurantIdFromJwt();
     if (!rid) return;
 
     // crea suscripción al canal del restaurante
@@ -362,6 +419,7 @@ const ControlComandero: React.FC = () => {
         await fetchAreas();
         await fetchServices();
         await fetchCheques();
+        await fetchAreasImpresions();
       } catch (e) {
         console.error(e);
         message.error("No se pudo cargar datos");
@@ -480,13 +538,79 @@ const ControlComandero: React.FC = () => {
 
   const mandarComanda = async () => {
     try {
+      // 1) Enviar ítems al POS (lo que ya hacía)
       await apiOrder.post(`/orders/${orderIdCurrent}/items`, {
         orderItems: detalle_cheque,
       });
+
+      // 2) Agrupar por área de impresión (route_area_id / product.areaImpresion)
+      const itemsPorArea = new Map<number, OrderItem[]>();
+      console.log(detalle_cheque);
+      detalle_cheque.forEach((item) => {
+        const areaId =
+          item.route_area_id ||
+          item.product?.areaImpresion?.id ||
+          item.product?.printArea;
+
+        if (!areaId) {
+          // Si el producto no tiene área, no se manda a ninguna impresora
+          return;
+        }
+
+        if (!itemsPorArea.has(areaId)) {
+          itemsPorArea.set(areaId, []);
+        }
+        itemsPorArea.get(areaId)!.push(item);
+      });
+
+      // Datos de la mesa / orden para el ticket
+      const chequeActual = cheques.find((c) => c.id === orderIdCurrent);
+      const tableName = chequeActual?.tableName ?? "";
+      const templateId = "4"; // 🔁 ajusta al ID real de tu plantilla NPrint
+
+      // 3) Por cada área, mandar un solo print job a la impresora
+      const printPromises: Promise<void | null>[] = [];
+
+      itemsPorArea.forEach((items, areaId) => {
+        const areaCfg = areasImpresions.find((a) => a.id === areaId);
+        const printerName = areaCfg?.printerName || undefined;
+
+        if (!printerName) {
+          console.warn(
+            `No hay printerName configurado para el área de impresión ${areaId}`
+          );
+          return; // No intentamos imprimir sin impresora configurada
+        }
+
+        const payload: NPrintJobPayload[] = [
+          {
+            printerName,
+            templateId,
+            data: {
+              orderId: orderIdCurrent,
+              tableName,
+              areaName: areaCfg?.name ?? "",
+              items: items.map((it) => ({
+                name: it.product?.name ?? "",
+                qty: it.qty,
+                notes: it.notes,
+                course: it.course,
+              })),
+            },
+          },
+        ];
+
+        printPromises.push(sendPrintJobToLocalPrinter(payload));
+      });
+
+      // Esperar a que terminen los prints (sin romper el flujo si alguno falla)
+      await Promise.all(printPromises);
+
+      // 4) Reset UI como antes
       setDetalle_cheque([]);
       setModalComandaVisible(false);
       await fetchCheques();
-      message.success("Ítems enviados");
+      message.success("Ítems enviados y comandas impresas");
     } catch (error) {
       console.error(error);
       message.error("Ocurrió un error al enviar ítems");

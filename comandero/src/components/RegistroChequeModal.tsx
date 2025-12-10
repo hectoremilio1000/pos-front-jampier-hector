@@ -36,7 +36,7 @@ interface OrderItem {
   discountReason: string | null;
   product: Producto;
   status: string | null;
-  compositeProductId: number | null;
+  compositeProductId: string | null;
   isModifier: boolean;
   isCompositeProductMain: boolean;
   half: Mitad;

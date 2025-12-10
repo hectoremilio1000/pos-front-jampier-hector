@@ -90,7 +90,7 @@ type OrderItem = {
   product: Producto;
   status: string | null;
   // NUEVOS CAMPOS:
-  compositeProductId: number | null; // id del producto principal al que pertenece el item
+  compositeProductId: string | null; // id del producto principal al que pertenece el item
   isModifier: boolean; // true si es una línea de modifier
   isCompositeProductMain: boolean; // true si es la línea principal del compuesto
   half: half; // 0/1/2/3 (ver arriba)
@@ -106,6 +106,10 @@ type Props = {
   mandarComanda: () => void;
   orderIdCurrent: number | null;
 };
+// ID temporal tipo SoftRestaurant (similar a idproductocompuesto)
+function makeTempCompositeId() {
+  return "_" + Math.random().toString(36).substring(2, 9).toUpperCase(); // ejemplo: _7CE16WR
+}
 
 const CapturaComandaModal: React.FC<Props> = ({
   visible,
@@ -125,7 +129,7 @@ const CapturaComandaModal: React.FC<Props> = ({
     taxRate: number;
     course: number;
     // flags nuevos:
-    compositeProductId: number | null;
+    compositeProductId: string | null;
     isModifier: boolean;
     isCompositeProductMain: boolean;
     half: half;
@@ -472,6 +476,9 @@ const CapturaComandaModal: React.FC<Props> = ({
     const base = productoCompuestoActual;
     const lineas: OrderItem[] = [];
 
+    // 🔑 ID temporal único para este producto compuesto (principal + mods)
+    const compositeId = makeTempCompositeId();
+
     // 1) Principal
     lineas.push(
       makeOrderItem({
@@ -482,7 +489,7 @@ const CapturaComandaModal: React.FC<Props> = ({
         taxRate: base.taxRate,
         basePrice: base.basePrice,
         course: tiempoSeleccionado,
-        compositeProductId: base.id,
+        compositeProductId: compositeId,
         isModifier: false,
         isCompositeProductMain: true,
         half: 1, // 0 lo usas para principal si así lo definiste; ajusta si aplica
@@ -512,7 +519,7 @@ const CapturaComandaModal: React.FC<Props> = ({
             basePrice: mod.modifier.basePrice,
             taxRate: mod.modifier.taxRate,
             course: tiempoSeleccionado,
-            compositeProductId: base.id,
+            compositeProductId: compositeId,
             isModifier: true,
             isCompositeProductMain: false,
             half: item.half,

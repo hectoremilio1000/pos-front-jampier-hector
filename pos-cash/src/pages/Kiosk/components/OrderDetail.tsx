@@ -30,7 +30,7 @@ type DiscountType = "percent" | "fixed";
 
 // ====== Config nprint (impresión por API) ======
 const NPRINT_URL = "https://172.27.106.19/nprint/printers/print";
-const NPRINT_PRINTER_NAME = "XP-80C";
+
 const NPRINT_TEMPLATE_ID = "2";
 
 type NPrintItem = {
@@ -79,6 +79,7 @@ export default function OrderDetail() {
     setSelectedOrderId,
     fetchKPIs,
     fetchOrderById,
+    stationCurrent,
   } = useCash() as any;
 
   // ====== Hooks ======
@@ -682,7 +683,7 @@ export default function OrderDetail() {
 
     return [
       {
-        printerName: NPRINT_PRINTER_NAME,
+        printerName: stationCurrent.printerName,
         templateId: NPRINT_TEMPLATE_ID,
         data: {
           numero,
@@ -1415,6 +1416,7 @@ export default function OrderDetail() {
                 </Form.Item>
                 <Form.Item label="Contraseña del administrador">
                   <Input.Password
+                    autoComplete="new-password"
                     value={managerPassword}
                     onChange={(e) => setManagerPassword(e.target.value)}
                     placeholder="Contraseña de administrador"
@@ -1439,6 +1441,7 @@ export default function OrderDetail() {
               productos).
             </p>
             <Input.Password
+              autoComplete="new-password"
               value={deleteManagerPassword}
               onChange={(e) => setDeleteManagerPassword(e.target.value)}
               placeholder="Contraseña de administrador"
@@ -1460,6 +1463,7 @@ export default function OrderDetail() {
               asignar folio e imprimir.
             </p>
             <Input.Password
+              autoComplete="new-password"
               value={printManagerPassword}
               onChange={(e) => setPrintManagerPassword(e.target.value)}
               placeholder="Contraseña de administrador"
@@ -1481,6 +1485,7 @@ export default function OrderDetail() {
               reabrir esta orden.
             </p>
             <Input.Password
+              autoComplete="new-password"
               value={reopenManagerPassword}
               onChange={(e) => setReopenManagerPassword(e.target.value)}
               placeholder="Contraseña de administrador"
@@ -1555,6 +1560,7 @@ export default function OrderDetail() {
             </p>
             <Input.Password
               value={voidManagerPassword}
+              autoComplete="new-password"
               onChange={(e) => setVoidManagerPassword(e.target.value)}
               placeholder="Contraseña de administrador"
             />

@@ -41,6 +41,7 @@ export default function OrdersPanel() {
             <Input.Search
               placeholder="Buscar mesa / folio"
               allowClear
+              autoComplete="off"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               onSearch={fetchOrders}
