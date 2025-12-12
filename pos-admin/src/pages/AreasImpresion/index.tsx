@@ -45,12 +45,7 @@ export default function AreasImpresionPage() {
       dataIndex: "name",
       sorter: (a, b) => a.name.localeCompare(b.name),
     },
-    {
-      title: "Orden",
-      dataIndex: "sortOrder",
-      width: 100,
-      sorter: (a, b) => a.sortOrder - b.sortOrder,
-    },
+
     {
       title: "Impresora",
       dataIndex: "printerName",

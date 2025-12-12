@@ -1,14 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  Modal,
-  Form,
-  Input,
-  InputNumber,
-  Steps,
-  message,
-  Select,
-  Spin,
-} from "antd";
+import { Modal, Form, Input, Steps, message, Select, Spin } from "antd";
 import { createArea, updateArea } from "./areasImpresion.api";
 
 // 🔹 Estructura que viene de NPrint
@@ -26,7 +17,6 @@ type NPrintPrinter = {
 export interface AreaImpresion {
   id: number;
   name: string;
-  sortOrder: number;
   printerName?: string | null;
   printerShared?: boolean | null;
   printerWorkOffline?: boolean | null;
@@ -39,7 +29,6 @@ export interface AreaImpresion {
 // 🔹 Payload que mandamos al backend
 export interface AreaUpsert {
   name: string;
-  sortOrder: number;
   printerName?: string | null;
   printerShared?: boolean | null;
   printerWorkOffline?: boolean | null;
@@ -96,7 +85,6 @@ export default function AreaModal({
     if (open) {
       form.setFieldsValue({
         name: initial?.name ?? "",
-        sortOrder: initial?.sortOrder ?? 1,
         printerName: initial?.printerName ?? null,
         printerShared: initial?.printerShared ?? null,
         printerWorkOffline: initial?.printerWorkOffline ?? null,
@@ -191,14 +179,6 @@ export default function AreaModal({
           rules={[{ required: true, message: "El nombre es requerido" }]}
         >
           <Input placeholder="Ej. Cocina, Barra, Repostería" maxLength={80} />
-        </Form.Item>
-
-        <Form.Item
-          label="Orden"
-          name="sortOrder"
-          rules={[{ required: true, message: "El orden es requerido" }]}
-        >
-          <InputNumber min={1} step={1} className="w-full" placeholder="1" />
         </Form.Item>
 
         <Form.Item label="Impresora local" name="printerName">

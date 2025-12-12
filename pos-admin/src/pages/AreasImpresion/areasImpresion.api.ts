@@ -3,12 +3,10 @@ import apiOrder from "@/components/apis/apiOrder";
 export interface AreaImpresion {
   id: number;
   name: string;
-  sortOrder: number;
 }
 
 export interface AreaUpsert {
   name: string;
-  sortOrder: number;
 }
 export async function listAreas(): Promise<AreaImpresion[]> {
   const res = await apiOrder.get("/areasImpresion");
