@@ -15,6 +15,10 @@ import {
   Radio,
   InputNumber,
 } from "antd";
+import {
+  createInvoiceForOrder,
+  getInvoiceByOrder,
+} from "@/components/apis/apiOrderInvoices";
 
 import type { ColumnsType } from "antd/es/table";
 import PayModal from "./modals/PayModal";
@@ -90,6 +94,11 @@ export default function OrderDetail() {
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [reason, setReason] = useState<string>("");
   const [managerPassword, setManagerPassword] = useState<string>("");
+
+  // facturas states
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
+  const [invoiceSubmitting, setInvoiceSubmitting] = useState(false);
+  const [invoiceForm] = Form.useForm();
 
   // ====== Descuentos ======
   const [generalDiscountModalVisible, setGeneralDiscountModalVisible] =
@@ -1268,6 +1277,25 @@ export default function OrderDetail() {
               >
                 Cobrar
               </Button>
+              <Button
+                size="large"
+                title="Emitir factura electrónica"
+                onClick={async () => {
+                  if (!selectedOrder) return;
+
+                  // si ya existe, avisa (no bloquea abrir modal)
+                  try {
+                    await getInvoiceByOrder(selectedOrder.id);
+                    message.info(
+                      "Esta orden ya tiene una factura local registrada."
+                    );
+                  } catch {
+                    setInvoiceModalOpen(true);
+                  }
+                }}
+              >
+                Factura
+              </Button>
             </div>
 
             <PayModal open={openPay} onClose={() => setOpenPay(false)} />
@@ -1317,6 +1345,111 @@ export default function OrderDetail() {
                   rows={3}
                 />
               </Form.Item>
+            </Form>
+          </Modal>
+
+          {/* modal para facturar una order */}
+          <Modal
+            open={invoiceModalOpen}
+            title="Emitir factura (por esta orden)"
+            okText="Generar"
+            confirmLoading={invoiceSubmitting}
+            onCancel={() => setInvoiceModalOpen(false)}
+            onOk={async () => {
+              if (!selectedOrder) return;
+
+              try {
+                const v = await invoiceForm.validateFields();
+                setInvoiceSubmitting(true);
+
+                const res = await createInvoiceForOrder(selectedOrder.id, {
+                  customer: {
+                    legalName: v.legalName,
+                    taxId: v.taxId,
+                    taxSystem: v.taxSystem,
+                    email: v.email || undefined,
+                    zip: v.zip,
+                  },
+                  cfdiUse: v.cfdiUse || "G03",
+                  paymentForm: v.paymentForm || "03",
+
+                  // snapshot de totales que ya calculas en tu UI
+                  amountBase: baseSubtotal,
+                  amountTax: taxTotal,
+                  amountTotal: grandTotal,
+                });
+
+                if (res.data?.alreadyInvoiced) {
+                  message.info("Ya existía una factura para esta orden.");
+                } else if (res.data?.facturapiError) {
+                  message.warning(
+                    `Factura local creada, pero NO timbró: ${res.data.facturapiError}`
+                  );
+                } else {
+                  message.success("Factura creada y timbrada");
+                }
+
+                setInvoiceModalOpen(false);
+                invoiceForm.resetFields();
+              } catch (e: any) {
+                console.log(e);
+                message.error(
+                  e?.response?.data?.error || "No se pudo generar la factura"
+                );
+              } finally {
+                setInvoiceSubmitting(false);
+              }
+            }}
+          >
+            <Form
+              form={invoiceForm}
+              layout="vertical"
+              initialValues={{ cfdiUse: "G03", paymentForm: "03" }}
+            >
+              <Form.Item
+                name="legalName"
+                label="Razón social"
+                rules={[{ required: true }]}
+              >
+                <Input />
+              </Form.Item>
+              <Form.Item name="taxId" label="RFC" rules={[{ required: true }]}>
+                <Input />
+              </Form.Item>
+              <Form.Item
+                name="taxSystem"
+                label="Régimen fiscal (SAT)"
+                rules={[{ required: true }]}
+              >
+                <Input placeholder="Ej. 601" />
+              </Form.Item>
+              <Form.Item
+                name="zip"
+                label="CP (SAT)"
+                rules={[{ required: true }]}
+              >
+                <Input />
+              </Form.Item>
+              <Form.Item name="email" label="Email (opcional)">
+                <Input type="email" />
+              </Form.Item>
+
+              <Space style={{ display: "flex" }} wrap>
+                <Form.Item name="paymentForm" label="Forma de pago">
+                  <Input style={{ width: 140 }} placeholder="03" />
+                </Form.Item>
+                <Form.Item name="cfdiUse" label="Uso CFDI">
+                  <Input style={{ width: 140 }} placeholder="G03" />
+                </Form.Item>
+              </Space>
+
+              <Card size="small" title="Totales (snapshot)">
+                <Space wrap>
+                  <Tag>Base: {money(baseSubtotal)}</Tag>
+                  <Tag>IVA: {money(taxTotal)}</Tag>
+                  <Tag color="blue">Total: {money(grandTotal)}</Tag>
+                </Space>
+              </Card>
             </Form>
           </Modal>
 

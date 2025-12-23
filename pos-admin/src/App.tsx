@@ -33,6 +33,7 @@ import CheckoutSuccess from "./pages/Billing/CheckoutSuccess";
 import Account from "./pages/Billing/Account";
 import CashStations from "./pages/CashStations";
 import ReportsPage from "./pages/Reports";
+import FolioSeriesPage from "./pages/FoliosSeries";
 
 function App() {
   return (
@@ -59,6 +60,7 @@ function App() {
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/cash_stations" element={<CashStations />} />
           <Route path="/hour_cut" element={<FiscalCutSettings />} />
+          <Route path="/folio_series" element={<FolioSeriesPage />} />
           <Route path="/areas" element={<Areas />} />
           <Route path="/areasImpresion" element={<AreasImpresionPage />} />
           <Route path="/generatePairing" element={<Dispositivos />} />

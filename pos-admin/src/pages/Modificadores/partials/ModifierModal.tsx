@@ -7,7 +7,6 @@ import {
   InputNumber,
   Switch,
   Button,
-  Divider,
   Input,
   Space,
   Card,
@@ -210,7 +209,7 @@ export default function ModifierModal({
         printArea: printArea,
         priceGross: Number(qpPriceGross ?? 0),
         taxRate: Number(qpTax ?? 16),
-        enabled: true,
+        enabled: false,
       });
       const nuevo: Producto = {
         id: prod.id,
@@ -229,6 +228,7 @@ export default function ModifierModal({
       setQpPriceGross(0);
       setQpTax(16);
       message.success("Producto creado");
+      setQuickOpen(false); // ✅ cerrar modal rápido
     } finally {
       setCreatingProduct(false);
     }
@@ -271,7 +271,7 @@ export default function ModifierModal({
         <Form.Item
           label="Producto (modificador)"
           name="modifierId"
-          rules={[{ required: true, message: "Elige o crea un producto" }]}
+          rules={[{ required: true, message: "Elige un producto" }]}
           normalize={(v) => (v === null ? null : Number(v))}
         >
           <Select
@@ -282,98 +282,20 @@ export default function ModifierModal({
               value: p.id,
               label: `${p.code} ${p.name}`,
             }))}
-            dropdownRender={(menu) => (
-              <div>
-                {menu}
-                <Divider style={{ margin: "8px 0" }} />
-                <div style={{ padding: 8 }}>
-                  <Space direction="vertical" style={{ width: "100%" }}>
-                    <Button
-                      type="dashed"
-                      icon={<PlusOutlined />}
-                      onClick={() => setQuickOpen((v) => !v)}
-                    >
-                      {quickOpen
-                        ? "Ocultar creación rápida"
-                        : "Crear producto rápido"}
-                    </Button>
-                    {quickOpen && (
-                      <Card size="small">
-                        <Space direction="vertical" style={{ width: "100%" }}>
-                          <Input
-                            placeholder="Nombre"
-                            value={qpName}
-                            onChange={(e) => setQpName(e.target.value)}
-                          />
-                          <Select
-                            placeholder="Grupo de catálogo"
-                            value={qpGroupId}
-                            onChange={setQpGroupId}
-                            options={groupsCat.map((g) => ({
-                              value: g.id,
-                              label: g.name,
-                            }))}
-                            showSearch
-                            optionFilterProp="label"
-                          />
-
-                          <Select
-                            placeholder="Areas de Impresion"
-                            value={printArea}
-                            onChange={setPrintArea}
-                            options={areasCat.map((g) => ({
-                              value: g.id,
-                              label: g.name,
-                            }))}
-                            showSearch
-                            optionFilterProp="label"
-                          />
-                          <Input
-                            placeholder="Código"
-                            value={qpCode}
-                            onChange={(e) => setQpCode(e.target.value)}
-                          />
-                          <Space.Compact>
-                            <InputNumber
-                              addonBefore="$"
-                              placeholder="Precio con IVA"
-                              value={qpPriceGross}
-                              min={0}
-                              step={0.01}
-                              onChange={(v) => setQpPriceGross(v ?? 0)}
-                              style={{ width: "60%" }}
-                            />
-                            <InputNumber
-                              addonAfter="%"
-                              placeholder="IVA"
-                              value={qpTax}
-                              min={0}
-                              step={0.5}
-                              onChange={(v) => setQpTax(v ?? 16)}
-                              style={{ width: "40%" }}
-                            />
-                          </Space.Compact>
-
-                          <Button
-                            type="primary"
-                            loading={creatingProduct}
-                            onClick={createQuickProduct}
-                          >
-                            Crear producto y usar
-                          </Button>
-                          <Text type="secondary">
-                            El backend calculará el precio neto/base desde el
-                            bruto (priceGross) y el IVA.
-                          </Text>
-                        </Space>
-                      </Card>
-                    )}
-                  </Space>
-                </div>
-              </div>
-            )}
+            // 👇 evita glitches de popup en modales
+            getPopupContainer={(trigger) => trigger.parentElement!}
           />
         </Form.Item>
+
+        <div className="flex justify-end -mt-2 mb-4">
+          <Button
+            type="dashed"
+            icon={<PlusOutlined />}
+            onClick={() => setQuickOpen(true)}
+          >
+            Crear producto rápido
+          </Button>
+        </div>
 
         <Form.Item
           label="Extra (monto a sumar)"
@@ -409,6 +331,86 @@ export default function ModifierModal({
           </Space>
         </Card>
       </Form>
+      <Modal
+        open={quickOpen}
+        title="Crear producto rápido"
+        onCancel={() => setQuickOpen(false)}
+        footer={null}
+        destroyOnClose
+      >
+        <Space direction="vertical" style={{ width: "100%" }}>
+          <Input
+            placeholder="Nombre"
+            value={qpName}
+            onChange={(e) => setQpName(e.target.value)}
+            autoFocus
+          />
+
+          <Select
+            placeholder="Grupo de catálogo"
+            value={qpGroupId}
+            onChange={setQpGroupId}
+            options={groupsCat.map((g) => ({ value: g.id, label: g.name }))}
+            showSearch
+            optionFilterProp="label"
+            getPopupContainer={(trigger) => trigger.parentElement!}
+          />
+
+          <Select
+            placeholder="Área de impresión"
+            value={printArea}
+            onChange={setPrintArea}
+            options={areasCat.map((a) => ({ value: a.id, label: a.name }))}
+            showSearch
+            optionFilterProp="label"
+            getPopupContainer={(trigger) => trigger.parentElement!}
+          />
+
+          <Input
+            placeholder="Código"
+            value={qpCode}
+            onChange={(e) => setQpCode(e.target.value)}
+          />
+
+          <Space.Compact style={{ width: "100%" }}>
+            <InputNumber
+              addonBefore="$"
+              placeholder="Precio con IVA"
+              value={qpPriceGross}
+              min={0}
+              step={0.01}
+              onChange={(v) => setQpPriceGross(v ?? 0)}
+              style={{ width: "60%" }}
+            />
+            <InputNumber
+              addonAfter="%"
+              placeholder="IVA"
+              value={qpTax}
+              min={0}
+              step={0.5}
+              onChange={(v) => setQpTax(v ?? 16)}
+              style={{ width: "40%" }}
+            />
+          </Space.Compact>
+
+          <Button
+            type="primary"
+            loading={creatingProduct}
+            onClick={async () => {
+              await createQuickProduct();
+              // si se creó OK, cerramos el modal (createQuickProduct ya selecciona modifierId)
+              setQuickOpen(false);
+            }}
+          >
+            Crear producto y usar
+          </Button>
+
+          <Text type="secondary">
+            El backend calculará el precio neto/base desde el bruto (priceGross)
+            y el IVA.
+          </Text>
+        </Space>
+      </Modal>
     </Modal>
   );
 }

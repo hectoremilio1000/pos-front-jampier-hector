@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Button, Modal, Table, Tag, Typography, message, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import apiOrder from "@/components/apis/apiOrder";
+import { QRCodeCanvas } from "qrcode.react";
 
 const { Text } = Typography;
 
@@ -32,6 +33,8 @@ type OrderItem = {
   productId: number;
   qty: number;
   unitPrice: number;
+  basePrice: number;
+  taxRate: number;
   total: number;
   notes: string | null;
   course: number;
@@ -57,6 +60,7 @@ type Props = {
   onClose: () => void;
   mesa: number | string;
   detalle_cheque: OrderItem[];
+  orderCurrent?: any[] | null;
 };
 
 type Row = {
@@ -99,9 +103,57 @@ const ConsultarItemModal: React.FC<Props> = ({
   onClose,
   mesa,
   detalle_cheque,
+  orderCurrent,
 }) => {
   const [items, setItems] = useState<OrderItem[]>(detalle_cheque || []);
   const [loading, setLoading] = useState(false);
+  const [qrVisible, setQrVisible] = useState(false);
+
+  const order = useMemo(() => {
+    if (Array.isArray(orderCurrent)) return orderCurrent[0] ?? null;
+    return orderCurrent ?? null;
+  }, [orderCurrent]);
+
+  const canViewQr = String(order?.status ?? "").toLowerCase() === "printed";
+  const restaurantId = order?.restaurantId;
+  const orderId = order?.id;
+
+  const publicPath =
+    restaurantId && orderId ? `/${restaurantId}/qrscan/${orderId}` : null;
+
+  const publicUrl = useMemo(() => {
+    if (!publicPath) return null;
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    return `${origin}${publicPath}`;
+  }, [publicPath]);
+
+  const money = (n: number) =>
+    new Intl.NumberFormat("es-MX", {
+      style: "currency",
+      currency: "MXN",
+      maximumFractionDigits: 2,
+    }).format(Number.isFinite(n) ? n : 0);
+
+  const totals = useMemo(() => {
+    const sumTotal = items.reduce(
+      (acc, it) => acc + (Number(it.total) || 0),
+      0
+    );
+
+    const sumBase = items.reduce((acc, it) => {
+      const qty = Number(it.qty) || 0;
+      const base = Number(it.basePrice ?? it.unitPrice) || 0;
+      return acc + base * qty;
+    }, 0);
+
+    const iva = sumTotal - sumBase;
+
+    return {
+      subtotal: sumBase,
+      iva,
+      total: sumTotal,
+    };
+  }, [items]);
 
   useEffect(() => {
     setItems(detalle_cheque || []);
@@ -290,27 +342,117 @@ const ConsultarItemModal: React.FC<Props> = ({
   }
 
   return (
-    <Modal
-      open={visible}
-      title={`Consultar productos — MESA: ${mesa}`}
-      onCancel={onClose}
-      footer={null}
-      width={1200}
-      style={{ top: 10 }}
-      destroyOnClose
-    >
-      <div className="flex gap-4 min-h-[600px]">
-        <Table<Row>
-          className="w-full"
-          dataSource={data}
-          columns={columns}
-          rowKey={(r) => r.key}
-          loading={loading}
-          pagination={false}
-          size="middle"
-        />
-      </div>
-    </Modal>
+    <>
+      <Modal
+        open={visible}
+        title={`Consultar productos — MESA: ${mesa}`}
+        onCancel={onClose}
+        footer={null}
+        width={1200}
+        style={{ top: 10 }}
+        destroyOnClose
+      >
+        {/* contenedor con scroll + footer fijo */}
+        <div className="flex flex-col h-[75vh]">
+          <div className="flex-1 overflow-auto">
+            <Table<Row>
+              className="w-full"
+              dataSource={data}
+              columns={columns}
+              rowKey={(r) => r.key}
+              loading={loading}
+              pagination={false}
+              size="middle"
+            />
+          </div>
+
+          {/* footer sticky abajo, totales a la derecha */}
+          <div
+            className="sticky bottom-0 border-t bg-white"
+            style={{ padding: 12 }}
+          >
+            <div className="flex justify-end">
+              <div className="flex flex-col items-end gap-2">
+                <Button
+                  type="primary"
+                  onClick={() => setQrVisible(true)}
+                  disabled={!canViewQr || !publicUrl}
+                >
+                  Ver QR
+                </Button>
+
+                <div className="text-right">
+                  <div className="flex gap-6 justify-end">
+                    <span className="text-gray-500">Subtotal</span>
+                    <span className="font-medium">
+                      {money(totals.subtotal)}
+                    </span>
+                  </div>
+
+                  <div className="flex gap-6 justify-end">
+                    <span className="text-gray-500">IVA</span>
+                    <span className="font-medium">{money(totals.iva)}</span>
+                  </div>
+
+                  <div className="flex gap-6 justify-end">
+                    <span className="text-gray-500">Total</span>
+                    <span className="text-lg font-semibold">
+                      {money(totals.total)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {!canViewQr && (
+              <div className="text-right text-xs text-gray-500 mt-2">
+                El QR solo está disponible cuando la orden está en status{" "}
+                <b>printed</b>.
+              </div>
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal QR */}
+      <Modal
+        open={qrVisible}
+        title="QR de la cuenta"
+        onCancel={() => setQrVisible(false)}
+        footer={null}
+        destroyOnClose
+      >
+        {publicUrl ? (
+          <div className="flex flex-col items-center gap-4">
+            <QRCodeCanvas value={publicUrl} size={220} includeMargin />
+
+            <div className="w-full">
+              <div className="text-xs text-gray-500 mb-1">Link público:</div>
+              <div className="break-all text-sm">{publicUrl}</div>
+
+              <div className="flex justify-end mt-3">
+                <Button
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(publicUrl);
+                      message.success("Link copiado");
+                    } catch {
+                      message.error("No se pudo copiar el link");
+                    }
+                  }}
+                >
+                  Copiar link
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div>
+            No hay link público disponible (falta restaurantId / orderId).
+          </div>
+        )}
+      </Modal>
+    </>
   );
 };
 

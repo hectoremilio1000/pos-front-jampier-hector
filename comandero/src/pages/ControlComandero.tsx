@@ -137,6 +137,7 @@ const ControlComandero: React.FC = () => {
   const { isJwtValid, shiftId, refreshShift } = useKioskAuth(); // 👈 del provider
   const [ready, setReady] = useState(false);
   const initRef = useRef(false);
+  const [orderCurrent, setOrderCurrent] = useState(null);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [orderIdCurrent, setOrderIdCurrent] = useState<number | null>(null);
@@ -155,6 +156,7 @@ const ControlComandero: React.FC = () => {
       area: Area | null;
       service: Service | null;
       items: OrderItem[];
+      status?: string | null;
     }[]
   >([]);
 
@@ -263,11 +265,14 @@ const ControlComandero: React.FC = () => {
         params: { shift: shiftId },
       });
       setCheques(res.data);
+      return res.data; // ✅ importante
     } catch (e) {
       console.error(e);
       message.error("Error al cargar las órdenes");
+      return null;
     }
   };
+
   const [areasImpresions, setAreasImpresions] = useState<AreaImpresion[]>([]);
 
   const fetchAreasImpresions = async () => {
@@ -309,16 +314,37 @@ const ControlComandero: React.FC = () => {
         const id = Number(msg.orderId);
         if (!Number.isFinite(id)) return;
 
-        // 1) quita de la UI inmediatamente
         setCheques((prev) => prev.filter((c) => c.id !== id));
         if (orderIdCurrent === id) {
           setAccionesChequeVisible(false);
         }
 
-        // 2) (opcional) re-sincroniza desde API para quedar 100% consistente
         try {
           await fetchCheques();
         } catch {}
+      }
+
+      if (msg.type === "order_printed") {
+        console.log("evento print");
+        const id = Number(msg.orderId);
+        if (!Number.isFinite(id)) return;
+
+        // ✅ resync para que:
+        // - en la lista ya aparezca status printed
+        // - en el modal consultar ya se habilite Ver QR
+        const updated = await fetchCheques();
+        if (!updated) return;
+
+        const found = updated.find((o: any) => Number(o.id) === id);
+        if (!found) return;
+
+        // si justo estás viendo esa orden, refresca states para que el modal pinte el botón
+        if (orderIdCurrent === id) {
+          setOrderCurrent(found);
+        }
+
+        // si el modal de consulta está abierto, refresca items
+        setDetalle_cheque_consulta(found.items ?? []);
       }
 
       // (futuro) puedes manejar order_created / order_changed aquí
@@ -528,9 +554,9 @@ const ControlComandero: React.FC = () => {
     setDetalle_cheque_consulta(itemsCurrentCheque); // 👈 sin filtrar a "pending"
     setModalConsultaVisible(true);
   };
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleAccionesCheque = (cuenta: any, i: number) => {
+    setOrderCurrent(cuenta);
     setOrderIdCurrent(cuenta.id);
     setMesaReciente(i);
     setAccionesChequeVisible(true);
@@ -792,7 +818,7 @@ const ControlComandero: React.FC = () => {
             setModalComandaVisible(true);
           }}
         />
-        x
+
         <CapturaComandaModal
           orderIdCurrent={orderIdCurrent}
           visible={modalComandaVisible}
@@ -806,6 +832,7 @@ const ControlComandero: React.FC = () => {
           mandarComanda={mandarComanda}
         />
         <ConsultarItemModal
+          orderCurrent={orderCurrent}
           visible={modalConsultaVisible}
           mesa={mesaReciente}
           detalle_cheque={detalle_cheque_consulta}

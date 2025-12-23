@@ -34,9 +34,10 @@ const SECTIONS: Section[] = [
       { to: "/services", label: "🍽️ Servicios" },
 
       { to: "/usuarios", label: "👥 Usuarios" },
-      // { to: "/facturas", label: "🧾 Facturas (CFDI)" },
+      { to: "/facturas", label: "🧾 Facturas (CFDI)" },
       // { to: "/propinas", label: "💳 Propinas" },
       { to: "/hour_cut", label: "⏰ Parámetros fiscales" },
+      { to: "/folio_series", label: "- Folios Series" },
       // { to: "/admin/cuentas", label: "💵 Cuentas (histórico / auditoría)" },
     ],
   },

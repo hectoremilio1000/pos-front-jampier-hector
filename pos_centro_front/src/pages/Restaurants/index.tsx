@@ -21,6 +21,8 @@ import RestaurantFormModal, {
 } from "@/pages/Restaurants/RestaurantFormModal";
 import FacturapiLinkModal from "@/components/Facturapi/FacturapiLinkModal";
 import FacturapiStatusModal from "@/components/Facturapi/FacturapiStatusModal";
+import FacturapiOrgPickerModal from "@/components/Facturapi/FacturapiOrgPickerModal";
+
 import {
   registerLiveSecret,
   renewLiveSecret,
@@ -284,9 +286,21 @@ export default function Restaurants() {
   >({});
 
   // estado:
-  const [openLink, setOpenLink] = useState(false);
+
+  const [openLink, setOpenLink] = useState(false); // crear org (ya existente)
+  const [openPicker, setOpenPicker] = useState(false); // seleccionar org existente
   const [openStatus, setOpenStatus] = useState(false);
   const [rowFx, setRowFx] = useState<Restaurant | null>(null);
+
+  const openFacturapiPicker = (row: Restaurant) => {
+    setRowFx(row);
+    setOpenPicker(true);
+  };
+
+  const openFacturapiCreate = (row: Restaurant) => {
+    setRowFx(row);
+    setOpenLink(true);
+  };
 
   // Estado modal live secret
   const [liveModalOpen, setLiveModalOpen] = useState(false);
@@ -322,10 +336,6 @@ export default function Restaurants() {
     }
   };
 
-  const openFacturapiLink = (row: Restaurant) => {
-    setRowFx(row);
-    setOpenLink(true);
-  };
   const openFacturapiStatus = (row: Restaurant) => {
     setRowFx(row);
     setOpenStatus(true);
@@ -536,12 +546,42 @@ export default function Restaurants() {
                   >
                     Generar nueva Live API Key
                   </Button>
+                  <Button
+                    size="small"
+                    danger
+                    onClick={() => {
+                      Modal.confirm({
+                        title: "Desconectar Facturapi",
+                        content:
+                          "Esto desligará la organización y limpiará los campos Facturapi del restaurante. ¿Continuar?",
+                        okText: "Sí, desconectar",
+                        okButtonProps: { danger: true },
+                        cancelText: "Cancelar",
+                        onOk: async () => {
+                          try {
+                            await apiAuth.delete(
+                              `/restaurants/${row.id}/facturapi/link`
+                            );
+                            message.success("Desconectado");
+                            fetchList();
+                          } catch (e: any) {
+                            message.error(
+                              e?.response?.data?.error ||
+                                "No se pudo desconectar"
+                            );
+                          }
+                        },
+                      });
+                    }}
+                  >
+                    Desconectar
+                  </Button>
                 </>
               ) : (
                 <Button
                   type="primary"
                   size="small"
-                  onClick={() => openFacturapiLink(row)}
+                  onClick={() => openFacturapiPicker(row)}
                 >
                   Conectar
                 </Button>
@@ -672,6 +712,19 @@ export default function Restaurants() {
         restaurant={rowFx}
         onLinked={fetchList}
       />
+      <FacturapiOrgPickerModal
+        open={openPicker}
+        restaurantId={rowFx?.id ?? null}
+        restaurantName={rowFx?.name}
+        onClose={() => setOpenPicker(false)}
+        onLinked={fetchList}
+        onCreateNew={() => {
+          // cierra picker y abre modal de crear org (tu flujo actual)
+          setOpenPicker(false);
+          if (rowFx) openFacturapiCreate(rowFx);
+        }}
+      />
+
       <FacturapiStatusModal
         open={openStatus}
         onClose={() => setOpenStatus(false)}
