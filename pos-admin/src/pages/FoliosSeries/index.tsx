@@ -262,7 +262,7 @@ function AssignStationsModal({
   folio: FolioSeries | null;
 }) {
   const [stations, setStations] = useState<CashStation[]>([]);
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  // const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [selected, setSelected] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState(false);
 
@@ -276,7 +276,7 @@ function AssignStationsModal({
       ]);
 
       setStations(stRes.data);
-      setAssignments(asRes.data);
+      // setAssignments(asRes.data);
 
       const map: Record<number, boolean> = {};
       for (const a of asRes.data as Assignment[]) map[a.stationId] = true;
