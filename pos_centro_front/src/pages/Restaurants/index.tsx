@@ -42,6 +42,7 @@ type RestaurantApi = {
   // snake_case
   legal_name?: string | null;
   address_line1?: string | null;
+  localBaseUrl?: string | null;
   logo_url?: string | null;
   created_at?: string;
   updated_at?: string;
@@ -83,6 +84,7 @@ type Restaurant = {
   slug?: string | null;
   legalName?: string | null;
   addressLine1?: string | null;
+  localBaseUrl?: string | null;
   city?: string | null;
   state?: string | null;
   phone?: string | null;
@@ -133,6 +135,7 @@ const fromApi = (row: RestaurantApi): Restaurant => ({
   slug: row.slug ?? null,
   legalName: row.legal_name ?? row.legalName ?? null,
   addressLine1: row.address_line1 ?? row.addressLine1 ?? null,
+  localBaseUrl: row.localBaseUrl ?? row.localBaseUrl ?? null,
   city: row.city ?? null,
   state: row.state ?? null,
   phone: row.phone ?? null,
@@ -171,6 +174,7 @@ const toApi = (v: RestaurantFormValues): RestaurantUpsertApi => ({
   slug: v.slug ?? null,
   legal_name: v.legalName ?? null,
   address_line1: v.addressLine1 ?? null,
+  localBaseUrl: v.localBaseUrl ?? null,
   city: v.city ?? null,
   state: v.state ?? null,
   phone: v.phone ?? null,
@@ -404,6 +408,7 @@ export default function Restaurants() {
       slug: row.slug ?? undefined,
       legalName: row.legalName ?? undefined,
       addressLine1: row.addressLine1 ?? undefined,
+      localBaseUrl: row.localBaseUrl ?? undefined,
       city: row.city ?? undefined,
       state: row.state ?? undefined,
       phone: row.phone ?? undefined,

@@ -6,6 +6,7 @@ export type RestaurantFormValues = {
   name: string;
   slug?: string;
   legalName?: string;
+  localBaseUrl?: string;
   addressLine1?: string;
   city?: string;
   state?: string;
@@ -73,6 +74,7 @@ export default function RestaurantFormModal({
 
   // Set defaults al abrir
   useEffect(() => {
+    console.log(form.getFieldsValue());
     if (open) {
       setSlugTouched(false);
       form.resetFields();
@@ -155,6 +157,9 @@ export default function RestaurantFormModal({
 
         <Form.Item name="state" label="Estado">
           <Input placeholder="Ej. Ciudad de México" />
+        </Form.Item>
+        <Form.Item name="localBaseUrl" label="Base Url">
+          <Input placeholder="Url local restaurant: https://192.168.100.xx" />
         </Form.Item>
 
         <Form.Item
