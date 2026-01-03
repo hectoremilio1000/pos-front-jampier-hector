@@ -13,6 +13,9 @@ import {
   Typography,
   message,
 } from "antd";
+import { InfoCircleOutlined } from "@ant-design/icons";
+import { Tooltip } from "antd";
+
 import { PlusOutlined } from "@ant-design/icons";
 import apiOrder from "@/components/apis/apiOrder";
 
@@ -26,6 +29,7 @@ export default function ModifierModal({
   open,
   editing,
   groupId,
+  groupName,
   existingModifierIds,
   onCancel,
   onSaved,
@@ -39,6 +43,7 @@ export default function ModifierModal({
     isEnabled: boolean;
   } | null;
   groupId?: number;
+  groupName?: string;
   existingModifierIds: number[];
   onCancel: () => void;
   onSaved: () => Promise<void> | void;
@@ -259,30 +264,44 @@ export default function ModifierModal({
         >
           <Select
             placeholder="Elige un grupo"
-            // cargamos los grupos al abrir la página (vienen del padre vía /modifier-groups)
-            // Para no duplicar, el padre fija el groupId y aquí solo permitimos cambiar si llega vacío.
             options={
-              groupId ? [{ value: groupId, label: `#${groupId}` }] : [] // si quieres listar grupos aquí, tráelos como prop
+              groupId
+                ? [
+                    {
+                      value: groupId,
+                      label: groupName
+                        ? `${groupName} (#${groupId})`
+                        : `#${groupId}`,
+                    },
+                  ]
+                : []
             }
             disabled={!!groupId}
           />
         </Form.Item>
 
         <Form.Item
-          label="Producto (modificador)"
+          label={
+            <span className="inline-flex items-center gap-2">
+              Opción (usa un producto del catálogo)
+              <Tooltip title="Estas opciones se guardan como productos para poder reutilizarlas en varios productos (ej: ‘Hawaiana’, ‘Americana’).">
+                <InfoCircleOutlined />
+              </Tooltip>
+            </span>
+          }
           name="modifierId"
-          rules={[{ required: true, message: "Elige un producto" }]}
+          rules={[{ required: true, message: "Elige una opción" }]}
           normalize={(v) => (v === null ? null : Number(v))}
+          extra="Tip: si no existe la opción, créala aquí y quedará disponible para futuros productos."
         >
           <Select
-            placeholder="Buscar producto"
+            placeholder="Buscar opción…"
             showSearch
             optionFilterProp="label"
             options={filteredProducts.map((p) => ({
               value: p.id,
               label: `${p.code} ${p.name}`,
             }))}
-            // 👇 evita glitches de popup en modales
             getPopupContainer={(trigger) => trigger.parentElement!}
           />
         </Form.Item>
@@ -293,7 +312,7 @@ export default function ModifierModal({
             icon={<PlusOutlined />}
             onClick={() => setQuickOpen(true)}
           >
-            Crear producto rápido
+            Crear opción nueva
           </Button>
         </div>
 

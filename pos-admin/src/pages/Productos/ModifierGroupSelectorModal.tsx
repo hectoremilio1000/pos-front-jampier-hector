@@ -204,6 +204,14 @@ export default function ModifierGroupSelectorModal({
                     configurar cantidades incluidas, máximo, si es obligatorio,
                     etc., en el producto.
                   </div>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {(g.modifiers ?? []).slice(0, 4).map((m) => (
+                      <Tag key={m.id}>{m.modifier?.name ?? "Opción"}</Tag>
+                    ))}
+                    {(g.modifiers ?? []).length > 4 && (
+                      <Tag>+{g.modifiers.length - 4}</Tag>
+                    )}
+                  </div>
                 </Space>
               </List.Item>
             );

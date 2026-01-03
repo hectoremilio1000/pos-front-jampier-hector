@@ -3,16 +3,19 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Button,
   Card,
+  Drawer,
   Empty,
   Input,
   message,
   Popconfirm,
   Space,
+  Steps,
   Table,
   Tag,
   Tooltip,
   Typography,
 } from "antd";
+
 import { InfoCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import apiOrder from "@/components/apis/apiOrder";
 import GroupModal from "./partials/GroupModal";
@@ -38,6 +41,7 @@ export default function ModificadoresPage() {
   // datos
   const [groups, setGroups] = useState<ModifierGroup[]>([]);
   const [loading, setLoading] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   // selección
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
@@ -182,7 +186,7 @@ export default function ModificadoresPage() {
 
   const colsMods = [
     {
-      title: "Producto",
+      title: "Producto (modificador)",
       render: (_: any, r: ModifierItem) =>
         `${r.modifier?.code ?? ""} ${r.modifier?.name ?? ""}`,
     },
@@ -229,6 +233,13 @@ export default function ModificadoresPage() {
           Grupos de modificadores y líneas
         </Typography.Title>
         <Space>
+          <Button onClick={() => setHelpOpen(true)}>Asistente</Button>
+        </Space>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+        {/* Columna izquierda: grupos */}
+        <div>
           <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -236,79 +247,81 @@ export default function ModificadoresPage() {
           >
             Nuevo grupo
           </Button>
-          <Tooltip title="Crea una línea (producto como extra) dentro del grupo seleccionado">
-            <Button onClick={openCreateModifier}>Nuevo modificador</Button>
-          </Tooltip>
-        </Space>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-        {/* Columna izquierda: grupos */}
-        <Card
-          title={
-            <Space>
-              <Typography.Text strong>Grupos</Typography.Text>
-              <Tooltip title="Grupos/familias de extras. Luego enlazas estos grupos a productos en el módulo de Productos.">
-                <InfoCircleOutlined />
-              </Tooltip>
-            </Space>
-          }
-          extra={
-            <Input
-              placeholder="Buscar nombre o código"
-              value={searchGroup}
-              onChange={(e) => setSearchGroup(e.target.value)}
-              style={{ width: 240 }}
+          <Card
+            title={
+              <Space>
+                <Typography.Text strong>Grupos</Typography.Text>
+                <Tooltip title="Grupos/familias de extras. Luego enlazas estos grupos a productos en el módulo de Productos.">
+                  <InfoCircleOutlined />
+                </Tooltip>
+              </Space>
+            }
+            extra={
+              <Input
+                placeholder="Buscar nombre o código"
+                value={searchGroup}
+                onChange={(e) => setSearchGroup(e.target.value)}
+                style={{ width: 240 }}
+              />
+            }
+          >
+            <Table
+              size="small"
+              rowKey={(r: ModifierGroup) => `g-${r.id}`}
+              columns={colsGroups as any}
+              dataSource={filteredGroups}
+              loading={loading}
+              pagination={{ pageSize: 8 }}
+              onRow={(row) => ({
+                onClick: () => setSelectedGroupId(row.id),
+                className: selectedGroupId === row.id ? "bg-gray-50" : "",
+              })}
             />
-          }
-        >
-          <Table
-            size="small"
-            rowKey={(r: ModifierGroup) => `g-${r.id}`}
-            columns={colsGroups as any}
-            dataSource={filteredGroups}
-            loading={loading}
-            pagination={{ pageSize: 8 }}
-            onRow={(row) => ({
-              onClick: () => setSelectedGroupId(row.id),
-              className: selectedGroupId === row.id ? "bg-gray-50" : "",
-            })}
-          />
-        </Card>
-
+          </Card>
+        </div>
         {/* Columna derecha: modifiers del grupo seleccionado */}
-        <Card
-          title={
-            <Space>
-              <Typography.Text strong>Modificadores del grupo</Typography.Text>
-              {selectedGroup ? (
-                <Tag>{selectedGroup.name}</Tag>
-              ) : (
-                <Tag color="default">Sin grupo</Tag>
-              )}
-            </Space>
-          }
-          extra={
-            <Input
-              placeholder="Buscar producto..."
-              value={searchMod}
-              onChange={(e) => setSearchMod(e.target.value)}
-              style={{ width: 240 }}
+        <div>
+          <Tooltip title="Agrega opciones dentro del grupo seleccionado">
+            <Button onClick={openCreateModifier}>Nueva opción</Button>
+          </Tooltip>
+          <Card
+            title={
+              <Space>
+                <Typography.Text strong>
+                  Modificadores del grupo
+                </Typography.Text>
+                {selectedGroup ? (
+                  <Tag>{selectedGroup.name}</Tag>
+                ) : (
+                  <Tag color="default">Sin grupo</Tag>
+                )}
+              </Space>
+            }
+            extra={
+              <Input
+                placeholder="Buscar producto..."
+                value={searchMod}
+                onChange={(e) => setSearchMod(e.target.value)}
+                style={{ width: 240 }}
+              />
+            }
+          >
+            <Table
+              size="small"
+              locale={{
+                emptyText: (
+                  <Empty description="Elige un grupo de la izquierda" />
+                ),
+              }}
+              rowKey={(r: ModifierItem) => `m-${r.id}`}
+              columns={colsMods as any}
+              dataSource={allModsOfSelected}
+              loading={loading}
+              pagination={{ pageSize: 10 }}
             />
-          }
-        >
-          <Table
-            size="small"
-            locale={{
-              emptyText: <Empty description="Elige un grupo de la izquierda" />,
-            }}
-            rowKey={(r: ModifierItem) => `m-${r.id}`}
-            columns={colsMods as any}
-            dataSource={allModsOfSelected}
-            loading={loading}
-            pagination={{ pageSize: 10 }}
-          />
-        </Card>
+          </Card>
+        </div>
       </div>
 
       {/* Modales */}
@@ -330,6 +343,7 @@ export default function ModificadoresPage() {
         open={modModalOpen}
         editing={modModalEditing}
         groupId={selectedGroupId ?? undefined}
+        groupName={selectedGroup?.name}
         existingModifierIds={
           selectedGroup?.modifiers?.map((m) => m.modifierId) ?? []
         }
@@ -343,6 +357,44 @@ export default function ModificadoresPage() {
           await fetchGroups();
         }}
       />
+      <Drawer
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        title="Asistente de Modificadores (en 3 pasos)"
+        width={520}
+      >
+        <Steps
+          direction="vertical"
+          current={0}
+          items={[
+            {
+              title: "Crea el Grupo",
+              description:
+                "Ej: Grupo = “Sabores”. Este grupo es la ‘pregunta’ que aparecerá al capturar la orden.",
+            },
+            {
+              title: "Agrega Opciones al Grupo",
+              description:
+                "Ej: “Hawaiana”, “Americana”. Cada opción se guarda como producto para reutilizarla.",
+            },
+            {
+              title: "Asigna el Grupo a un Producto",
+              description:
+                "En /Productos edita “Pizza especial” y agrega el grupo “Sabores”. Configura incluidas, máximo, obligatorio y prioridad.",
+            },
+          ]}
+        />
+
+        <div className="mt-4">
+          <Typography.Text strong>
+            Ejemplo rápido (Pizza mitad y mitad)
+          </Typography.Text>
+          <div className="text-sm text-gray-600 mt-1">
+            Grupo: “Sabores” → Opciones: Hawaiana / Americana → En Pizza
+            especial: máximo 2, obligatorio, prioridad 1.
+          </div>
+        </div>
+      </Drawer>
     </div>
   );
 }

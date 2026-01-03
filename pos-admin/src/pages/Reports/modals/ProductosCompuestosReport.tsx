@@ -141,13 +141,7 @@ function buildCompositeReportHtml(
             GRUPOS DE MODIFICADORES
           </td>
         </tr>
-        <tr style="background:#d0d0d0;">
-          <td style="padding:4px;border:1px solid #555;font-weight:bold;width:60px;">CLAVE</td>
-          <td style="padding:4px;border:1px solid #555;font-weight:bold;">MODIFICADOR</td>
-          <td style="padding:4px;border:1px solid #555;font-weight:bold;width:80px;">INCLUIDOS</td>
-          <td style="padding:4px;border:1px solid #555;font-weight:bold;width:80px;">PRIORIDAD</td>
-          <td style="padding:4px;border:1px solid #555;font-weight:bold;width:90px;">FORZAR CAPTURA</td>
-        </tr>
+      
     `;
 
     pmgs.forEach((pmg) => {
@@ -160,6 +154,13 @@ function buildCompositeReportHtml(
 
       // fila del grupo
       body += `
+        <tr style="background:#d0d0d0;">
+          <td style="padding:4px;border:1px solid #555;font-weight:bold;width:60px;">CLAVE</td>
+          <td style="padding:4px;border:1px solid #555;font-weight:bold;">MODIFICADOR</td>
+          <td style="padding:4px;border:1px solid #555;font-weight:bold;width:80px;">INCLUIDOS</td>
+          <td style="padding:4px;border:1px solid #555;font-weight:bold;width:80px;">PRIORIDAD</td>
+          <td style="padding:4px;border:1px solid #555;font-weight:bold;width:90px;">FORZAR CAPTURA</td>
+        </tr>
         <tr>
           <td style="padding:4px;border-bottom:1px solid #ddd;">${mgCode}</td>
           <td style="padding:4px;border-bottom:1px solid #ddd;">${mgName}</td>
@@ -294,12 +295,12 @@ export default function ProductosCompuestosReport({ onClose }: Props) {
 
   return (
     <div style={{ padding: 8, width: "100%", maxWidth: 1000 }}>
-      <h2>Productos compuestos</h2>
+      <h1 className="text-2xl font-bold">Productos compuestos</h1>
 
       <Space direction="vertical" size="large" style={{ width: "100%" }}>
         {/* Selector de grupos de modificadores */}
         <div>
-          <strong>Grupos de modificadores:</strong>
+          <strong>Selecciona grupo de modificadores para filtrar:</strong>
           <Select
             mode="multiple"
             allowClear

@@ -1,5 +1,16 @@
-import React, { useState } from "react";
-import { Modal, Button, Steps, message, Input, InputNumber, Tag } from "antd";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  Modal,
+  Button,
+  Steps,
+  message,
+  Input,
+  InputNumber,
+  Tag,
+  Select,
+  Spin,
+} from "antd";
+
 import apiOrder from "@/components/apis/apiOrder";
 import TecladoVirtual from "./TecladoVirtual";
 
@@ -15,6 +26,16 @@ interface Service {
   name: string;
   sortOrder: number;
 }
+
+type TableRow = {
+  id: number;
+  name?: string | null;
+  code?: string | null;
+  number?: string | null;
+  label?: string | null;
+  [k: string]: any;
+};
+
 // (Solo si este tipo ya existe globalmente, puedes borrar estas interfaces locales)
 type Producto = any;
 
@@ -49,6 +70,7 @@ type Props = {
   onRegistrar: (cheque: {
     shiftId: number | null;
     id: number;
+    tableId?: number | null; // ✅ NUEVO (opcional)
     tableName: string;
     persons: number;
     area_id: number | null;
@@ -83,6 +105,25 @@ const RegistroChequeModal: React.FC<Props> = ({
   const [cuenta, setCuenta] = useState("");
   const [personas, setPersonas] = useState("");
 
+  // ✅ Mesas por área (tableId puede ser null)
+  const [tables, setTables] = useState<TableRow[]>([]);
+  const [tablesLoading, setTablesLoading] = useState(false);
+  const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
+
+  const hasTables = tables.length > 0;
+
+  const getTableLabel = (t: TableRow) => {
+    return (
+      String(t?.name ?? t?.label ?? t?.code ?? t?.number ?? "").trim() ||
+      `Mesa #${t.id}`
+    );
+  };
+
+  const selectedTable = useMemo(
+    () => tables.find((t) => Number(t.id) === Number(selectedTableId)),
+    [tables, selectedTableId]
+  );
+
   // Área/Servicio siempre vienen de arriba. Si faltan, tomamos el primero disponible.
   const areaId =
     typeof defaultAreaId === "number"
@@ -99,6 +140,51 @@ const RegistroChequeModal: React.FC<Props> = ({
 
   const areaName = areas.find((a) => a.id === areaId)?.name ?? "—";
   const serviceName = services.find((s) => s.id === serviceId)?.name ?? "—";
+  // ✅ Cargar mesas por área cuando abre el modal o cambia el área
+  useEffect(() => {
+    if (!visible) return;
+    if (!areaId) {
+      setTables([]);
+      setSelectedTableId(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setTablesLoading(true);
+        const res = await apiOrder.get("/commander/tables", {
+          params: { areaId, status: "free" },
+        });
+
+        const raw = res?.data;
+        const list: TableRow[] = Array.isArray(raw)
+          ? raw
+          : Array.isArray(raw?.data)
+            ? raw.data
+            : [];
+
+        if (!cancelled) {
+          setTables(list);
+          // Si el área tiene mesas, dejamos default "Sin mesa" (null) hasta que el usuario elija
+          setSelectedTableId(null);
+        }
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) {
+          setTables([]);
+          setSelectedTableId(null);
+        }
+      } finally {
+        if (!cancelled) setTablesLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, areaId]);
 
   const avanzar = () => setStep((s) => Math.min(s + 1, 2));
   const retroceder = () => setStep((s) => Math.max(s - 1, 0));
@@ -106,6 +192,7 @@ const RegistroChequeModal: React.FC<Props> = ({
   const limpiar = () => {
     setCuenta("");
     setPersonas("");
+    setSelectedTableId(null);
     setStep(0);
   };
 
@@ -147,6 +234,7 @@ const RegistroChequeModal: React.FC<Props> = ({
 
     try {
       const { data } = await apiOrder.post("/orders", {
+        tableId: selectedTableId ?? null, // ✅ NUEVO
         tableName: cuenta.trim(),
         persons: Number(personas),
         areaId: areaId,
@@ -159,6 +247,7 @@ const RegistroChequeModal: React.FC<Props> = ({
         onRegistrar({
           shiftId: data.shiftId,
           id: data.id,
+          tableId: data.tableId ?? selectedTableId ?? null, // ✅ NUEVO
           tableName: data.tableName,
           persons: data.persons,
           area_id: data.areaId ?? null,
@@ -167,6 +256,7 @@ const RegistroChequeModal: React.FC<Props> = ({
           service: data.service,
           items: [],
         });
+
         onClose();
         limpiar();
         message.success("Mesa registrada");
@@ -214,6 +304,44 @@ const RegistroChequeModal: React.FC<Props> = ({
     <div className="grid gap-4">
       {/* Editables en línea */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* ✅ Mesa física (opcional) - solo si hay mesas en esta área */}
+        <div className="p-3 rounded border bg-white">
+          <div className="text-xs text-gray-500 mb-1">Mesa (opcional)</div>
+
+          {tablesLoading ? (
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <Spin size="small" /> Cargando mesas…
+            </div>
+          ) : hasTables ? (
+            <Select
+              size="large"
+              className="w-full"
+              value={
+                selectedTableId === null ? "none" : String(selectedTableId)
+              }
+              onChange={(v) => {
+                if (v === "none") {
+                  setSelectedTableId(null);
+                  return;
+                }
+                const id = Number(v);
+                setSelectedTableId(Number.isFinite(id) ? id : null);
+              }}
+              options={[
+                { value: "none", label: "Sin mesa de area asignada" },
+                ...tables.map((t) => ({
+                  value: String(t.id),
+                  label: getTableLabel(t),
+                })),
+              ]}
+            />
+          ) : (
+            <div className="text-sm text-gray-500">
+              No hay mesas registradas para esta área.
+            </div>
+          )}
+        </div>
+
         <div className="p-3 rounded border bg-white">
           <div className="text-xs text-gray-500 mb-1">Nombre de la mesa</div>
           <Input
@@ -240,7 +368,11 @@ const RegistroChequeModal: React.FC<Props> = ({
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <Tag color="blue">Área: {areaName}</Tag>
           <Tag color="geekblue">Servicio: {serviceName}</Tag>
-          <Tag color="cyan">Mesa: {cuenta || "—"}</Tag>
+          <Tag color="volcano">
+            Mesa física:{" "}
+            {selectedTable ? getTableLabel(selectedTable) : "Sin mesa"}
+          </Tag>
+          <Tag color="cyan">Nombre/alias: {cuenta || "—"}</Tag>
           <Tag color="purple">Personas: {personas || "—"}</Tag>
         </div>
 

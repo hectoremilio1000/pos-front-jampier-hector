@@ -6,6 +6,7 @@ import ProductosCompuestosReport from "./modals/ProductosCompuestosReport";
 import SalesTotalsModal from "./modals/SalesTotalsModal";
 import VentasMeserosReportModal from "./modals/VentasMeserosReportModal";
 import ProductosVendidosReportModal from "./modals/ProductosVendidosReportModal";
+import ProductPrepTimesReportModal from "./modals/ProductPrepTimesReportModal";
 
 interface Props {
   modalId: string | null;
@@ -19,6 +20,7 @@ const modalMap: Record<string, React.FC<{ onClose: () => void }>> = {
   SalesTotalsModal,
   VentasMeserosReportModal,
   ProductosVendidosReportModal,
+  ProductPrepTimesReportModal,
 };
 
 export const ReportModalDispatcher: React.FC<Props> = ({

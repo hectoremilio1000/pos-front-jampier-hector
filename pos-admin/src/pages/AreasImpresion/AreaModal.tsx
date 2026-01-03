@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Modal, Form, Input, Steps, message, Select, Spin } from "antd";
 import { createArea, updateArea } from "./areasImpresion.api";
+import { useAuth } from "@/components/Auth/AuthContext";
 
 // 🔹 Estructura que viene de NPrint
 type NPrintPrinter = {
@@ -51,6 +52,7 @@ export default function AreaModal({
 }) {
   const [form] = Form.useForm<AreaUpsert>();
   const [submitting, setSubmitting] = useState(false);
+  const { user } = useAuth();
 
   const [printers, setPrinters] = useState<NPrintPrinter[]>([]);
   const [loadingPrinters, setLoadingPrinters] = useState(false);
@@ -62,7 +64,9 @@ export default function AreaModal({
     const fetchPrinters = async () => {
       setLoadingPrinters(true);
       try {
-        const res = await fetch("https://172.27.106.19/nprint/printers");
+        const res = await fetch(
+          `${user?.restaurant?.localBaseUrl}/nprint/printers`
+        );
         const data = (await res.json()) as { printers: NPrintPrinter[] };
 
         // Si quieres solo compartidas:

@@ -3,6 +3,7 @@ import { Card, InputNumber, Switch, Button, Tag, Divider } from "antd";
 import { useState } from "react";
 import type { ProductMod } from "./ProductSelectorModal";
 import ProductSelectorModal from "./ProductSelectorModal";
+import { Typography } from "antd";
 
 export interface ModifierLine {
   modifierGroupId: number;
@@ -116,6 +117,25 @@ export default function ModifierGroupCard({
             onChange={(v) => cfg("priority", v ?? 0)}
             className="w-full"
           />
+        </div>
+      </div>
+      <div className="bg-gray-50 rounded p-3 mb-3">
+        <Typography.Text strong>
+          Vista previa (cómo se verá en captura)
+        </Typography.Text>
+        <div className="text-sm text-gray-600 mt-1">
+          {group.isForced ? "Obligatorio elegir" : "Opcional"} · Incluidas:{" "}
+          {group.includedQty} · Máximo: {group.maxQty} · Prioridad:{" "}
+          {group.priority}
+        </div>
+
+        <div className="mt-2 flex flex-wrap gap-2">
+          {(group.modifiers ?? []).slice(0, 6).map((m, idx) => (
+            <Tag key={idx}>{m.modifier?.name ?? "Opción"}</Tag>
+          ))}
+          {(group.modifiers ?? []).length > 6 && (
+            <Tag>+{(group.modifiers ?? []).length - 6} más</Tag>
+          )}
         </div>
       </div>
 

@@ -24,7 +24,7 @@ export const reportTree: ReportNode[] = [
       {
         id: "tiempo_produccion",
         name: "Tiempo de producción",
-        modal: "TiempoProduccionReport",
+        modal: "ProductPrepTimesReportModal",
       },
     ],
   },

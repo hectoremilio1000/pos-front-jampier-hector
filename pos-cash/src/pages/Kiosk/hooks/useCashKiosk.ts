@@ -65,6 +65,7 @@ export type Restaurant = {
   phone: string;
   rfc: string;
   address_line1: string;
+  localBaseUrl: string;
 };
 
 export type CashOrder = {

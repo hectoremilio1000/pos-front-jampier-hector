@@ -9,6 +9,8 @@ interface Restaurant {
   id: number;
   name: string;
   address?: string | null;
+  currency?: string | null;
+  localBaseUrl?: string | null;
 }
 
 interface User {
@@ -210,7 +212,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     sessionStorage.clear();
     navigate("/login");
   };
-
   return (
     <AuthContext.Provider value={{ user, token, login, logout, loading }}>
       {children}

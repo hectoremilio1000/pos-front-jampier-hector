@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Card, Typography, message, Table } from "antd";
+import { Button, Card, Typography, message, Table, Tag } from "antd";
+
 import type { ColumnsType } from "antd/es/table";
 import { useShift } from "@/context/ShiftContext";
 import apiOrder from "@/components/apis/apiOrder";
@@ -27,7 +28,8 @@ type OrderItem = {
   isModifier?: boolean | null;
   isCompositeProductMain?: boolean | null;
   compositeProductId?: number | null;
-  createdAt?: string; // si tu API usa created_at, cambia el cálculo de minutos
+  createdAt?: string;
+  created_at?: string; // ✅ fallback si tu API manda snake_case
 };
 
 type Order = {
@@ -68,6 +70,15 @@ export function ControlMonitor() {
   const token = sessionStorage.getItem("kiosk_token");
   const [selectedMainId, setSelectedMainId] = useState<number | null>(null);
   const navigate = useNavigate();
+
+  const [minuteTick, setMinuteTick] = useState(0);
+
+  // ✅ Hace que "Minutos" se recalcule cada 60s aunque no cambien las órdenes
+  useEffect(() => {
+    const id = setInterval(() => setMinuteTick((x) => x + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   function cerrarSesion() {
     kioskLogoutOperator(); // borra solo kiosk_jwt y exp
     message.success("Sesión cerrada");
@@ -95,11 +106,11 @@ export function ControlMonitor() {
   }
   // Opcional: tipa la respuesta si quieres
   type OrdersResponse = { orders: Order[] };
-  async function fetchOrdersByShift(id: number) {
+
+  const fetchOrdersByShift = useCallback(async (id: number) => {
     try {
       const { data } = await apiOrder.get<OrdersResponse>("/monitor/orders", {
         params: { shiftId: id },
-        // timeout: 10000, // opcional
       });
       setOrders(data?.orders ?? []);
     } catch (err: any) {
@@ -109,9 +120,9 @@ export function ControlMonitor() {
         "No se pudieron cargar órdenes";
       throw new Error(msg);
     }
-  }
+  }, []);
 
-  async function loadAll() {
+  const loadAll = useCallback(async () => {
     try {
       setLoading(true);
       const id = shiftId ?? (await fetchCurrentShiftId());
@@ -122,7 +133,7 @@ export function ControlMonitor() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [shiftId, fetchOrdersByShift]);
 
   // Refresco manual con botón (si quieres automático, agrega useEffect con setInterval)
   useEffect(() => {
@@ -138,53 +149,48 @@ export function ControlMonitor() {
   const onOrdersEvent = useCallback(
     async (msg: any) => {
       if (!msg || typeof msg !== "object") return;
+
       if (msg.type === "order_changed") {
         try {
-          // Igual: traemos la foto completa desde la API
-          await fetchOrdersByShift(shiftId ?? 0);
+          await loadAll(); // ✅ usa shiftId real o lo vuelve a pedir
         } catch (e) {
           console.error("Error al refrescar órdenes (order_changed):", e);
         }
         return;
       }
+
       if (msg.type === "order_closed") {
         const id = Number(msg.orderId);
         if (!Number.isFinite(id)) return;
 
-        // 1) quita de la UI inmediatamente
         setOrders((prev) => prev.filter((c) => c.id !== id));
 
-        // 2) (opcional) re-sincroniza desde API para quedar 100% consistente
         try {
-          await fetchOrdersByShift(shiftId ?? 0);
+          await loadAll(); // ✅ re-sync completo
         } catch {}
       }
-
-      // (futuro) puedes manejar order_created / order_changed aquí
     },
-    [fetchOrdersByShift]
+    [loadAll]
   );
+
   useEffect(() => {
     if (!token) return;
 
-    // instancia única
     if (!transmitRef.current) {
       transmitRef.current = new Transmit({
         baseUrl: `${apiOrder.defaults.baseURL}/kiosk` || "/api/kiosk",
         beforeSubscribe: (request) => {
           const anyReq = request as any;
-          // Si es Request (tiene headers.set), muta en sitio
           if (anyReq.headers && typeof anyReq.headers.set === "function") {
             const token = sessionStorage.getItem("kiosk_token") || "";
             if (token) anyReq.headers.set("Authorization", `Bearer ${token}`);
           } else {
-            // Si es RequestInit, re-asigna headers
             const headers = new Headers((request as RequestInit).headers || {});
             const token = sessionStorage.getItem("kiosk_token") || "";
             if (token) headers.set("Authorization", `Bearer ${token}`);
+            // OJO: si tu Transmit espera return en RequestInit, aquí habría que retornarlo.
           }
         },
-
         maxReconnectAttempts: 10,
         onSubscribeFailed: (res) => {
           console.error("Transmit subscribe failed", res?.status);
@@ -195,13 +201,11 @@ export function ControlMonitor() {
     const rid = getRestaurantIdFromJwt();
     if (!rid) return;
 
-    // crea suscripción al canal del restaurante
     const sub = transmitRef.current.subscription(`restaurants/${rid}/orders`);
     const off = sub.onMessage(onOrdersEvent);
 
     sub.create().catch((e) => console.error("Transmit create error", e));
 
-    // cleanup en unmount
     subCleanupRef.current = () => {
       try {
         off && off();
@@ -216,8 +220,7 @@ export function ControlMonitor() {
         subCleanupRef.current();
       } catch {}
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, onOrdersEvent]);
 
   /**
    * Agrupa ítems por:
@@ -244,15 +247,17 @@ export function ControlMonitor() {
         const isMod = !!it.isModifier;
         const compositeId = it.compositeProductId ?? null;
 
+        // ✅ timestamp robusto (camelCase o snake_case)
+        const itemTs = it.createdAt ?? (it as any).created_at ?? it.created_at;
+
         if (isMain && compositeId) {
-          // buscar modificadores del mismo composite
           const modifiers = o.items.filter(
             (x) =>
               x.id !== it.id &&
               !!x.isModifier &&
               (x.compositeProductId ?? null) === compositeId
           );
-          // marcar consumidos (principal + mods)
+
           consumed.add(it.id);
           modifiers.forEach((m) => consumed.add(m.id));
 
@@ -272,7 +277,7 @@ export function ControlMonitor() {
             orderId: o.id,
             orderNumber: orderNum,
             tableName,
-            minutes: minutesSince(it.createdAt), // si usas created_at: (it as any).created_at
+            minutes: minutesSince(itemTs),
             qty: it.qty ?? 1,
             productDisplay,
             notes: it.notes ?? "",
@@ -281,17 +286,15 @@ export function ControlMonitor() {
             status: it.status,
           });
         } else if (isMod && compositeId) {
-          // lo pinta su principal, saltar
           continue;
         } else {
-          // item normal
           consumed.add(it.id);
           rows.push({
             key: `${o.id}-single-${it.id}`,
             orderId: o.id,
             orderNumber: orderNum,
             tableName,
-            minutes: minutesSince(it.createdAt),
+            minutes: minutesSince(itemTs),
             qty: it.qty ?? 1,
             productDisplay: it.product?.name ?? "(Producto)",
             notes: it.notes ?? "",
@@ -302,8 +305,9 @@ export function ControlMonitor() {
         }
       }
     }
+
     return rows;
-  }, [orders]);
+  }, [orders, minuteTick]); // ✅ importante
 
   const columns: ColumnsType<Row> = [
     {
@@ -321,6 +325,39 @@ export function ControlMonitor() {
       width: 120,
       ellipsis: true,
     },
+    {
+      title: "Estado",
+      dataIndex: "status",
+      key: "status",
+      width: 130,
+      align: "center",
+      render: (s?: Row["status"]) => {
+        const status = (s || "pending") as string;
+
+        const labelMap: Record<string, string> = {
+          pending: "Pendiente",
+          sent: "Enviado",
+          fire: "🔥 FIRE",
+          prepared: "Listo",
+          cancelled: "Cancelado",
+        };
+
+        const colorMap: Record<string, any> = {
+          pending: "default",
+          sent: "processing",
+          fire: "error",
+          prepared: "success",
+          cancelled: "default",
+        };
+
+        return (
+          <Tag color={colorMap[status] ?? "default"}>
+            {labelMap[status] ?? status}
+          </Tag>
+        );
+      },
+    },
+
     {
       title: "Minutos",
       dataIndex: "minutes",
@@ -387,84 +424,121 @@ export function ControlMonitor() {
     );
     return () => clearInterval(id);
   }, []);
+
   return (
-    <div className="w-full">
-      <div className="flex items-start justify-between mb-6 p-3 bg-gray-100">
-        <div className="w-full">
-          <Title level={2} style={{ margin: 0, color: "#ff6b00" }}>
-            GrowthSuite
-          </Title>
-          <Title level={3} style={{ margin: 0, color: "#0b63ff" }}>
-            Monitor de Producción
-          </Title>
-        </div>
-        <div className="flex items-start gap-3">
-          <Button size="small" onClick={cerrarSesion}>
-            Cerrar sesión
-          </Button>
-          <HeaderStatus
-            now={now}
-            pairState={"paired"}
-            deviceLabel={stationCode ?? ""}
-          />
-        </div>
-      </div>
-      <div className="p-4 grid grid-cols-1 lg:grid-cols-5 gap-4">
-        {/* Tabla de items (agrupados) */}
-        <div className="lg:col-span-3">
-          <Card loading={loading}>
-            <div className="flex items-baseline justify-between mb-3">
-              <Title level={4} style={{ margin: 0 }}>
-                Items del turno {shiftId ?? "—"}
-              </Title>
-              <Button onClick={loadAll}>Actualizar</Button>
-            </div>
+    <>
+      <style>{`
+  /* 🔥 FIRE: rojo y parpadeo */
+  .row-fire td {
+    background-color: rgba(255, 59, 48, 0.18) !important;
+    animation: fireBlinkBg 1s ease-in-out infinite;
+  }
+  @keyframes fireBlinkBg {
+    0%, 100% { background-color: rgba(255, 59, 48, 0.12); }
+    50% { background-color: rgba(255, 59, 48, 0.30); }
+  }
 
-            <Table<Row>
-              size="middle"
-              rowKey="key"
-              columns={columns}
-              dataSource={data}
-              pagination={false}
-              rowClassName={(record) =>
-                record.mainItemId === selectedMainId ? "bg-blue-50" : ""
-              }
-              onRow={(record) => ({
-                onClick: () => setSelectedMainId(record.mainItemId),
-                style: { cursor: "pointer" },
-              })}
-            />
-          </Card>
-        </div>
-
-        {/* Acciones */}
-        <div className="lg:col-span-2">
-          <Card>
-            <Title level={4} style={{ marginTop: 0 }}>
-              Acciones
+  /* ⏱️ Tarde: amarillo fijo (sin parpadeo) */
+  .row-overdue td {
+    background-color: rgba(255, 193, 7, 0.22) !important;
+  }
+`}</style>
+      <div className="w-full">
+        <div className="flex items-start justify-between mb-6 p-3 bg-gray-100">
+          <div className="w-full">
+            <Title level={2} style={{ margin: 0, color: "#ff6b00" }}>
+              GrowthSuite
             </Title>
-            {selectedRow ? (
-              <>
+            <Title level={3} style={{ margin: 0, color: "#0b63ff" }}>
+              Monitor de Producción
+            </Title>
+          </div>
+          <div className="flex items-start gap-3">
+            <Button size="small" onClick={cerrarSesion}>
+              Cerrar sesión
+            </Button>
+            <HeaderStatus
+              now={now}
+              pairState={"paired"}
+              deviceLabel={stationCode ?? ""}
+            />
+          </div>
+        </div>
+        <div className="p-4 grid grid-cols-1 lg:grid-cols-5 gap-4">
+          {/* Tabla de items (agrupados) */}
+          <div className="lg:col-span-3">
+            <Card loading={loading}>
+              <div className="flex items-baseline justify-between mb-3">
+                <Title level={4} style={{ margin: 0 }}>
+                  Items del turno {shiftId ?? "—"}
+                </Title>
+                <Button onClick={loadAll}>Actualizar</Button>
+              </div>
+
+              <Table<Row>
+                size="middle"
+                rowKey="key"
+                columns={columns}
+                dataSource={data}
+                pagination={false}
+                rowClassName={(record) => {
+                  const cls: string[] = [];
+
+                  // selección (mantén tu highlight)
+                  if (record.mainItemId === selectedMainId)
+                    cls.push("bg-blue-50");
+
+                  // 🔥 FIRE: rojo + parpadeo
+                  if (record.status === "fire") {
+                    cls.push("row-fire");
+                  } else {
+                    // ⏱️ +10 min: amarillo fijo (solo si no está listo/cancelado)
+                    const s = record.status;
+                    const isDone = s === "prepared" || s === "cancelled";
+                    if (!isDone && record.minutes > 10) cls.push("row-overdue");
+                  }
+
+                  return cls.join(" ");
+                }}
+                onRow={(record) => ({
+                  onClick: () => setSelectedMainId(record.mainItemId),
+                  style: { cursor: "pointer" },
+                })}
+              />
+            </Card>
+          </div>
+
+          {/* Acciones */}
+          <div className="lg:col-span-2">
+            <Card>
+              <Title level={4} style={{ marginTop: 0 }}>
+                Acciones
+              </Title>
+              {selectedRow ? (
+                <>
+                  <Paragraph>
+                    Item seleccionado: #{selectedRow.mainItemId}
+                    {selectedRow.allItemIds.length > 1 &&
+                      ` (compuesto: ${selectedRow.allItemIds.join(", ")})`}
+                  </Paragraph>
+                  <div className="flex gap-2">
+                    <Button
+                      type="primary"
+                      onClick={() => finalizeProductForRow(selectedRow)}
+                    >
+                      Finalizar producto
+                    </Button>
+                  </div>
+                </>
+              ) : (
                 <Paragraph>
-                  Item seleccionado: #{selectedRow.mainItemId}
-                  {selectedRow.allItemIds.length > 1 &&
-                    ` (compuesto: ${selectedRow.allItemIds.join(", ")})`}
+                  Selecciona un item de la lista para operar.
                 </Paragraph>
-                <div className="flex gap-2">
-                  <Button
-                    type="primary"
-                    onClick={() => finalizeProductForRow(selectedRow)}
-                  >
-                    Finalizar producto
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <Paragraph>Selecciona un item de la lista para operar.</Paragraph>
-            )}
-          </Card>
+              )}
+            </Card>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

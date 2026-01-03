@@ -33,7 +33,6 @@ const money = (n: number) =>
 type DiscountType = "percent" | "fixed";
 
 // ====== Config nprint (impresión por API) ======
-const NPRINT_URL = "https://172.27.106.19/nprint/printers/print";
 
 const NPRINT_TEMPLATE_ID = "2";
 
@@ -76,7 +75,7 @@ type NPrintJob = {
 export default function OrderDetail() {
   const {
     selectedOrder,
-    // orders,
+    orders,
     restaurantId,
     stationId,
     setOrders,
@@ -458,8 +457,8 @@ export default function OrderDetail() {
     }, [items, selectedOrder]);
 
   // ====== Helpers ticket ======
-  // const orderIndex =
-  //   (orders?.findIndex((o: any) => o.id === selectedOrder?.id) ?? -1) + 1;
+  const orderIndex =
+    (orders?.findIndex((o: any) => o.id === selectedOrder?.id) ?? -1) + 1;
 
   function lineAmount(x: CashOrderItem): number {
     const qty = Number(x.qty ?? 0);
@@ -522,12 +521,12 @@ export default function OrderDetail() {
     return rows;
   }
 
-  // function escapeHtml(s: string) {
-  //   return String(s)
-  //     .replace("&", "&amp;")
-  //     .replace("<", "&lt;")
-  //     .replace(">", "&gt;");
-  // }
+  function escapeHtml(s: string) {
+    return String(s)
+      .replace("&", "&amp;")
+      .replace("<", "&lt;")
+      .replace(">", "&gt;");
+  }
 
   function formatDate(d: Date | string | number) {
     const dt = new Date(d);
@@ -537,113 +536,113 @@ export default function OrderDetail() {
     )} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
   }
 
-  //   function buildTicketHtml() {
-  //     const rows = buildTicketRows(items);
-  //     const createdAt =
-  //       (selectedOrder as any)?.createdAt ||
-  //       (selectedOrder as any)?.created_at ||
-  //       new Date();
+  function buildTicketHtml() {
+    const rows = buildTicketRows(items);
+    const createdAt =
+      (selectedOrder as any)?.createdAt ||
+      (selectedOrder as any)?.created_at ||
+      new Date();
 
-  //     const startStr = formatDate(createdAt);
-  //     const endStr = formatDate(Date.now());
+    const startStr = formatDate(createdAt);
+    const endStr = formatDate(Date.now());
 
-  //     const restaurantName =
-  //       selectedOrder?.restaurant?.name ?? "Cantina La Llorona";
-  //     const restaurantAddress =
-  //       selectedOrder?.restaurant?.address_line1 ?? "Dirección del restaurante";
-  //     const restaurantRfc = selectedOrder?.restaurant?.rfc ?? "RFC: —";
-  //     const restaurantPhone = selectedOrder?.restaurant?.phone ?? "Tel: —";
-  //     const waiterName =
-  //       (selectedOrder?.waiter as any)?.fullName ??
-  //       (selectedOrder?.waiter as any)?.name ??
-  //       "-";
+    const restaurantName =
+      selectedOrder?.restaurant?.name ?? "Cantina La Llorona";
+    const restaurantAddress =
+      selectedOrder?.restaurant?.address_line1 ?? "Dirección del restaurante";
+    const restaurantRfc = selectedOrder?.restaurant?.rfc ?? "RFC: —";
+    const restaurantPhone = selectedOrder?.restaurant?.phone ?? "Tel: —";
+    const waiterName =
+      (selectedOrder?.waiter as any)?.fullName ??
+      (selectedOrder?.waiter as any)?.name ??
+      "-";
 
-  //     return `
-  // <!doctype html>
-  // <html>
-  // <head>
-  // <meta charset="utf-8">
-  // <title>Ticket Orden #${selectedOrder?.id ?? "-"}</title>
-  // <style>
-  //   @page { size: 80mm auto; margin: 1mm; }
-  //   * { box-sizing: border-box; }
-  //   body { font-family: "Courier New"; font-size: 14px; margin: 0; padding: 0; width: 78mm; line-heigh: 1.5 }
-  //   .ticket { width: 100%; padding: 2mm 0.5mm; }
-  //   .center { text-align: center; }
-  //   .bold { font-weight: 700; }
-  //   .sep { margin: 4px 0; border-top: 1px dashed #000; }
-  //   .row { display: flex; gap: 4px; }
-  //   .row .qty { width: 12mm; text-align: left; }
-  //   .row .desc { flex: 1; white-space: pre-wrap; }
-  //   .row .amt { width: 22mm; text-align: right; }
-  //   .mb2 { margin-bottom: 2px; }
-  //   .small { font-size: 14px; }
-  // </style>
-  // </head>
-  // <body>
-  //   <div class="ticket">
-  //     <div class="center bold">${escapeHtml(restaurantName)}</div>
-  //     <div class="center small">${escapeHtml(restaurantAddress)}</div>
-  //     <div class="center small">${escapeHtml(restaurantRfc)} · ${escapeHtml(restaurantPhone)}</div>
+    return `
+  <!doctype html>
+  <html>
+  <head>
+  <meta charset="utf-8">
+  <title>Ticket Orden #${selectedOrder?.id ?? "-"}</title>
+  <style>
+    @page { size: 80mm auto; margin: 1mm; }
+    * { box-sizing: border-box; }
+    body { font-family: "Courier New"; font-size: 14px; margin: 0; padding: 0; width: 78mm; line-heigh: 1.5 }
+    .ticket { width: 100%; padding: 2mm 0.5mm; }
+    .center { text-align: center; }
+    .bold { font-weight: 700; }
+    .sep { margin: 4px 0; border-top: 1px dashed #000; }
+    .row { display: flex; gap: 4px; }
+    .row .qty { width: 12mm; text-align: left; }
+    .row .desc { flex: 1; white-space: pre-wrap; }
+    .row .amt { width: 22mm; text-align: right; }
+    .mb2 { margin-bottom: 2px; }
+    .small { font-size: 14px; }
+  </style>
+  </head>
+  <body>
+    <div class="ticket">
+      <div class="center bold">${escapeHtml(restaurantName)}</div>
+      <div class="center small">${escapeHtml(restaurantAddress)}</div>
+      <div class="center small">${escapeHtml(restaurantRfc)} · ${escapeHtml(restaurantPhone)}</div>
 
-  //     <div class="sep"></div>
+      <div class="sep"></div>
 
-  //     <div class="small">
-  //       Mesa: <span class="bold">${escapeHtml(String(selectedOrder?.tableName ?? "-"))}</span><br/>
-  //       Mesero: <span class="bold">${escapeHtml(String(waiterName))}</span><br/>
-  //       Personas: <span class="bold">${escapeHtml(String(selectedOrder?.persons ?? "-"))}</span><br/>
-  //       Orden: <span className="bold">${orderIndex > 0 ? orderIndex : "-"}</span> / ${orders?.length ?? "-"}<br/>
-  //       Inicio: <span class="bold">${startStr}</span><br/>
-  //       Fin: <span class="bold">${endStr}</span>
-  //     </div>
+      <div class="small">
+        Mesa: <span class="bold">${escapeHtml(String(selectedOrder?.tableName ?? "-"))}</span><br/>
+        Mesero: <span class="bold">${escapeHtml(String(waiterName))}</span><br/>
+        Personas: <span class="bold">${escapeHtml(String(selectedOrder?.persons ?? "-"))}</span><br/>
+        Orden: <span className="bold">${orderIndex > 0 ? orderIndex : "-"}</span> / ${orders?.length ?? "-"}<br/>
+        Inicio: <span class="bold">${startStr}</span><br/>
+        Fin: <span class="bold">${endStr}</span>
+      </div>
 
-  //     <div class="sep"></div>
+      <div class="sep"></div>
 
-  //     <div class="row bold mb2">
-  //       <div class="qty">Cant</div>
-  //       <div class="desc">Descripción</div>
-  //       <div class="amt">Importe</div>
-  //     </div>
+      <div class="row bold mb2">
+        <div class="qty">Cant</div>
+        <div class="desc">Descripción</div>
+        <div class="amt">Importe</div>
+      </div>
 
-  //     ${rows
-  //       .map(
-  //         (r) => `
-  //       <div class="row">
-  //         <div class="qty">${r.qty}</div>
-  //         <div class="desc">${escapeHtml(r.desc)}</div>
-  //         <div class="amt">${money(r.amount)}</div>
-  //       </div>`
-  //       )
-  //       .join("")}
+      ${rows
+        .map(
+          (r) => `
+        <div class="row">
+          <div class="qty">${r.qty}</div>
+          <div class="desc">${escapeHtml(r.desc)}</div>
+          <div class="amt">${money(r.amount)}</div>
+        </div>`
+        )
+        .join("")}
 
-  //     <div class="sep"></div>
+      <div class="sep"></div>
 
-  //     <div class="row">
-  //       <div class="desc bold">Subtotal (base)</div>
-  //       <div class="amt">${money(baseSubtotal)}</div>
-  //     </div>
-  //     <div class="row">
-  //       <div class="desc bold">Impuestos</div>
-  //       <div class="amt">${money(taxTotal)}</div>
-  //     </div>
-  //     <div class="row">
-  //       <div class="desc bold">Total</div>
-  //       <div class="amt">${money(grandTotal)}</div>
-  //     </div>
+      <div class="row">
+        <div class="desc bold">Subtotal (base)</div>
+        <div class="amt">${money(baseSubtotal)}</div>
+      </div>
+      <div class="row">
+        <div class="desc bold">Impuestos</div>
+        <div class="amt">${money(taxTotal)}</div>
+      </div>
+      <div class="row">
+        <div class="desc bold">Total</div>
+        <div class="amt">${money(grandTotal)}</div>
+      </div>
 
-  //     <div class="sep"></div>
-  //     <div class="center small">Gracias por su visita</div>
-  //   </div>
-  //   <script>
-  //     window.onload = () => {
-  //       window.print();
-  //       setTimeout(() => window.close(), 300);
-  //     };
-  //   </script>
-  // </body>
-  // </html>
-  // `.trim();
-  //   }
+      <div class="sep"></div>
+      <div class="center small">Gracias por su visita</div>
+    </div>
+    <script>
+      window.onload = () => {
+        window.print();
+        setTimeout(() => window.close(), 300);
+      };
+    </script>
+  </body>
+  </html>
+  `.trim();
+  }
 
   // 👉 NUEVO: construir payload para nprint usando los mismos datos de la cuenta
   function buildNPrintJobPayload(opts?: {
@@ -716,66 +715,75 @@ export default function OrderDetail() {
     folioSeries?: string;
     folioNumber?: number;
   }) {
-    const payload = buildNPrintJobPayload(opts);
+    if (selectedOrder.restaurant.localBaseUrl) {
+      const payload = buildNPrintJobPayload(opts);
 
-    const res = await fetch(NPRINT_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) {
-      let detail = "";
-      try {
-        detail = await res.text();
-      } catch {
-        // ignorar
-      }
-      throw new Error(
-        `Error al enviar a impresora (${res.status})${
-          detail ? `: ${detail}` : ""
-        }`
+      const res = await fetch(
+        `${selectedOrder.restaurant.localBaseUrl}/nprint/printers/print`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        }
       );
-    }
 
-    // si tu API responde algo útil, lo puedes usar
-    try {
-      return await res.json();
-    } catch {
-      return null;
+      if (!res.ok) {
+        let detail = "";
+        try {
+          detail = await res.text();
+        } catch (e) {
+          console.log(e);
+        }
+        throw new Error(
+          `Error al enviar a impresora (${res.status})${
+            detail ? `: ${detail}` : ""
+          }`
+        );
+      }
+
+      // si tu API responde algo útil, lo puedes usar
+      try {
+        return await res.json();
+      } catch {
+        return null;
+      }
+    } else {
+      message.warning(
+        "No se pudo imprimir porque no existe tu servidor local de impresion"
+      );
     }
   }
 
   // ⛔ Opcional: si ya NO quieres imprimir en navegador, puedes dejar estos helpers,
   // pero SIN usarlos más abajo. Si quieres, luego los eliminamos.
-  // function printViaIframe(html: string) {
-  //   const iframe = document.createElement("iframe");
-  //   iframe.style.position = "fixed";
-  //   iframe.style.right = "0";
-  //   iframe.style.bottom = "0";
-  //   iframe.style.width = "0";
-  //   iframe.style.height = "0";
-  //   iframe.style.border = "0";
-  //   document.body.appendChild(iframe);
-  //   const doc = iframe.contentWindow?.document;
-  //   if (doc) {
-  //     doc.open();
-  //     doc.write(html);
-  //     doc.close();
-  //     setTimeout(() => {
-  //       document.body.removeChild(iframe);
-  //     }, 1200);
-  //   } else {
-  //     document.body.removeChild(iframe);
-  //   }
-  // }
+  function printViaIframe(html: string) {
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(html);
+      doc.close();
+      setTimeout(() => {
+        document.body.removeChild(iframe);
+      }, 1200);
+    } else {
+      document.body.removeChild(iframe);
+    }
+  }
 
-  // function handlePrintPreview() {
-  //   const html = buildTicketHtml();
-  //   printViaIframe(html);
-  // }
+  function handlePrintPreview() {
+    const html = buildTicketHtml();
+    printViaIframe(html);
+  }
 
   // ====== Aprobaciones (pos-auth) ======
   async function requestApprovalToken(
@@ -885,19 +893,19 @@ export default function OrderDetail() {
   // ====== Imprimir ======
   // ====== Imprimir ======
   // Primera impresión (sin contraseña, otro endpoint)
-  async function doInitialPrintOnOrderApi() {
-    const res = await apiOrderKiosk.post(
-      // 👇 ajusta a tu ruta real si es distinta
-      `/orders/${selectedOrder?.id}/firstPrint`,
-      {},
-      { validateStatus: () => true }
-    );
-    if (!res || res.status < 200 || res.status >= 300) {
-      const err = (res?.data && res.data.error) || "Impresión (primera) falló";
-      throw new Error(err);
-    }
-    return res.data as { folioSeries: string; folioNumber: number };
-  }
+  // async function doInitialPrintOnOrderApi() {
+  //   const res = await apiOrderKiosk.post(
+  //     // 👇 ajusta a tu ruta real si es distinta
+  //     `/orders/${selectedOrder?.id}/firstPrint`,
+  //     {},
+  //     { validateStatus: () => true }
+  //   );
+  //   if (!res || res.status < 200 || res.status >= 300) {
+  //     const err = (res?.data && res.data.error) || "Impresión (primera) falló";
+  //     throw new Error(err);
+  //   }
+  //   return res.data as { folioSeries: string; folioNumber: number };
+  // }
 
   // Reimpresiones (con contraseña / approvals)
   async function doPrintOnOrderApi(approvalToken: string) {
@@ -916,48 +924,48 @@ export default function OrderDetail() {
     return res.data as { folioSeries: string; folioNumber: number };
   }
 
-  const openPrintFlow = () => {
-    setPrintManagerPassword("");
-    setPrintApprovalVisible(true);
-  };
+  // const openPrintFlow = () => {
+  //   setPrintManagerPassword("");
+  //   setPrintApprovalVisible(true);
+  // };
 
   // Click en botón "Imprimir Cuenta"
-  const handlePrintClick = async () => {
-    if (!selectedOrder) return;
+  // const handlePrintClick = async () => {
+  //   if (!selectedOrder) return;
 
-    // Si ya se imprimió al menos una vez → reimpresión, pide contraseña
-    if (printCount > 0) {
-      openPrintFlow();
-      return;
-    }
+  //   // Si ya se imprimió al menos una vez → reimpresión, pide contraseña
+  //   if (printCount > 0) {
+  //     openPrintFlow();
+  //     return;
+  //   }
 
-    // Primera impresión → sin contraseña
-    setPrintSubmitting(true);
-    try {
-      const r = await doInitialPrintOnOrderApi();
-      message.success(`Folio asignado: ${r.folioSeries}-${r.folioNumber}`);
+  //   // Primera impresión → sin contraseña
+  //   setPrintSubmitting(true);
+  //   try {
+  //     const r = await doInitialPrintOnOrderApi();
+  //     message.success(`Folio asignado: ${r.folioSeries}-${r.folioNumber}`);
 
-      if (typeof fetchOrderById === "function") {
-        try {
-          await fetchOrderById(selectedOrder.id);
-        } catch {}
-      }
+  //     if (typeof fetchOrderById === "function") {
+  //       try {
+  //         await fetchOrderById(selectedOrder.id);
+  //       } catch {}
+  //     }
 
-      // 👉 ENVÍA la cuenta a la API de impresión nprint
-      await sendTicketToPrintProxy({
-        folioSeries: r.folioSeries,
-        folioNumber: r.folioNumber,
-      });
+  //     // 👉 ENVÍA la cuenta a la API de impresión nprint
+  //     await sendTicketToPrintProxy({
+  //       folioSeries: r.folioSeries,
+  //       folioNumber: r.folioNumber,
+  //     });
 
-      message.success("Cuenta enviada a la impresora");
-    } catch (e: any) {
-      message.error(
-        String(e?.message || "Error al imprimir/enviar a impresora")
-      );
-    } finally {
-      setPrintSubmitting(false);
-    }
-  };
+  //     message.success("Cuenta enviada a la impresora");
+  //   } catch (e: any) {
+  //     message.error(
+  //       String(e?.message || "Error al imprimir/enviar a impresora")
+  //     );
+  //   } finally {
+  //     setPrintSubmitting(false);
+  //   }
+  // };
 
   const handlePrintApprovalConfirm = async () => {
     if (!printManagerPassword) {
@@ -1170,7 +1178,7 @@ export default function OrderDetail() {
           <div className="flex gap-2">
             {selectedOrder && (
               <>
-                <Button onClick={handlePrintClick} disabled={!canPrint}>
+                <Button onClick={handlePrintPreview} disabled={!canPrint}>
                   🖨️ Imprimir Cuenta
                 </Button>
 

@@ -85,7 +85,9 @@ export default function CashStations() {
   async function loadPrinters() {
     setLoadingPrinters(true);
     try {
-      const res = await fetch("https://172.27.106.19/nprint/printers");
+      const res = await fetch(
+        `${user?.restaurant?.localBaseUrl}/nprint/printers`
+      );
       const data = (await res.json()) as { printers: NPrintPrinter[] };
       const shared = data.printers.filter((p) => p.shared === "TRUE");
       setPrinters(shared.length ? shared : data.printers);
