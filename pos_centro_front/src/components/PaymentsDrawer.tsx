@@ -54,6 +54,21 @@ export default function PaymentsDrawer({
     return Math.max(0, +(due - Number(paidTotal)).toFixed(2));
   }, [invoice, paidTotal]);
 
+  const invoiceStatusLabel = (status?: string | null) => {
+    switch (status) {
+      case "paid":
+        return "Pagada";
+      case "pending":
+        return "Pendiente";
+      case "past_due":
+        return "Vencida";
+      case "void":
+        return "Anulada";
+      default:
+        return status ?? "—";
+    }
+  };
+
   const fetchPayments = async () => {
     if (!invoice) return;
     setLoading(true);
@@ -153,7 +168,7 @@ export default function PaymentsDrawer({
                   : "secondary"
             }
           >
-            Estado: {invoice?.status}
+            Estado: {invoiceStatusLabel(invoice?.status)}
           </Text>
         </div>
 
@@ -173,7 +188,18 @@ export default function PaymentsDrawer({
               title: "Método",
               dataIndex: "method",
               width: 130,
-              render: (m: PaymentRow["method"]) => <Tagify text={m} />,
+              render: (m: PaymentRow["method"]) => (
+                <Tagify
+                  text={m}
+                  labels={{
+                    cash: "Efectivo",
+                    card_tpv: "Tarjeta (TPV)",
+                    transfer: "Transferencia",
+                    stripe: "Stripe",
+                    mercadopago: "Mercado Pago",
+                  }}
+                />
+              ),
             },
             {
               title: "Importe",
@@ -182,7 +208,7 @@ export default function PaymentsDrawer({
               width: 120,
             },
             {
-              title: "Fee",
+              title: "Comisión",
               dataIndex: "fee",
               render: (v: number) => `$${v.toFixed(2)}`,
               width: 100,
@@ -195,12 +221,19 @@ export default function PaymentsDrawer({
             },
             { title: "Notas", dataIndex: "notes", ellipsis: true },
             {
-              title: "Estatus",
+              title: "Estado",
               dataIndex: "status",
               width: 120,
               render: (s: PaymentRow["status"]) => (
                 <Tagify
                   text={s}
+                  labels={{
+                    succeeded: "Pagado",
+                    pending: "Pendiente",
+                    failed: "Fallido",
+                    reversed: "Revertido",
+                    voided: "Anulado",
+                  }}
                   map={{
                     succeeded: "green",
                     pending: "orange",
@@ -258,10 +291,19 @@ export default function PaymentsDrawer({
   );
 }
 
-function Tagify({ text, map }: { text: string; map?: Record<string, string> }) {
+function Tagify({
+  text,
+  map,
+  labels,
+}: {
+  text: string;
+  map?: Record<string, string>;
+  labels?: Record<string, string>;
+}) {
   const color =
     map?.[text] ??
     (text === "cash" ? "green" : text === "transfer" ? "blue" : "purple");
 
-  return <span className={`ant-tag ant-tag-${color}`}>{text}</span>;
+  const label = labels?.[text] ?? text;
+  return <span className={`ant-tag ant-tag-${color}`}>{label}</span>;
 }

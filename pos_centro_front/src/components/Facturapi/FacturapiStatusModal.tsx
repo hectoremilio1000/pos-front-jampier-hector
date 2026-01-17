@@ -225,7 +225,7 @@ export default function FacturapiStatusModal({
 
             <Form.Item
               name="password"
-              label="Password"
+              label="Contraseña"
               rules={[{ required: true }]}
             >
               <Input.Password />

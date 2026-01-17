@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useMemo, useState } from "react";
-import { Button, Card, Modal, Select, Space, message } from "antd";
+import { Button, Card, Modal, Select, Space, Typography, message } from "antd";
 import dayjs, { Dayjs } from "dayjs";
 import apiCenter from "@/components/apis/apiCenter";
 import apiAuth from "@/components/apis/apiAuth";
@@ -50,6 +50,8 @@ export default function Invoices() {
   const [paymentsInvoice, setPaymentsInvoice] = useState<InvoiceRow | null>(
     null
   );
+  const [printOpen, setPrintOpen] = useState(false);
+  const [printRow, setPrintRow] = useState<InvoiceRow | null>(null);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -113,6 +115,126 @@ export default function Invoices() {
     setDueAt(row.dueAt ? dayjs(row.dueAt) : null);
     setDueNotes(row.notes ?? "");
     setDueOpen(true);
+  };
+  const openPrint = (row: InvoiceRow) => {
+    setPrintRow(row);
+    setPrintOpen(true);
+  };
+
+  const statusLabel = (value?: string | null) => {
+    const map: Record<string, string> = {
+      pending: "Pendiente",
+      paid: "Pagada",
+      past_due: "Vencida",
+      void: "Anulada",
+    };
+    return map[value || ""] ?? value ?? "-";
+  };
+
+  const renderNote = (row: InvoiceRow) => (
+    <div style={{ padding: 24 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          borderBottom: "1px solid #eee",
+          paddingBottom: 8,
+          marginBottom: 16,
+        }}
+      >
+        <div style={{ fontSize: 18, fontWeight: 600 }}>
+          <span style={{ color: "#1677ff" }}>GrowthSuite</span> POS Centro
+        </div>
+      </div>
+
+      <Typography.Title level={3} style={{ marginBottom: 4 }}>
+        Nota por cobrar
+      </Typography.Title>
+      <Typography.Text type="secondary">Nota #{row.id}</Typography.Text>
+
+      <div style={{ marginTop: 16, marginBottom: 16 }}>
+        <div>
+          <strong>Restaurante:</strong>{" "}
+          {row.restaurantName ||
+            restaurantsMap.get(row.restaurantId) ||
+            row.restaurantId}
+        </div>
+        <div>
+          <strong>Suscripcion:</strong> #{row.subscriptionId}
+        </div>
+        <div>
+          <strong>Estado:</strong> {statusLabel(row.status)}
+        </div>
+        <div>
+          <strong>Vence:</strong>{" "}
+          {row.dueAt ? new Date(row.dueAt).toLocaleString("es-MX") : "-"}
+        </div>
+        {row.paidAt && (
+          <div>
+            <strong>Pagada:</strong>{" "}
+            {new Date(row.paidAt).toLocaleString("es-MX")}
+          </div>
+        )}
+        {row.createdAt && (
+          <div>
+            <strong>Creada:</strong>{" "}
+            {new Date(row.createdAt).toLocaleString("es-MX")}
+          </div>
+        )}
+      </div>
+
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign: "left", padding: 8, borderBottom: "1px solid #ddd" }}>
+              Concepto
+            </th>
+            <th style={{ textAlign: "right", padding: 8, borderBottom: "1px solid #ddd" }}>
+              Monto
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style={{ padding: 8 }}>Base</td>
+            <td style={{ padding: 8, textAlign: "right" }}>
+              ${Number(row.amountBase).toFixed(2)} {row.currency}
+            </td>
+          </tr>
+          <tr>
+            <td style={{ padding: 8 }}>Descuento</td>
+            <td style={{ padding: 8, textAlign: "right" }}>
+              -${Number(row.discount).toFixed(2)} {row.currency}
+            </td>
+          </tr>
+          <tr>
+            <td style={{ padding: 8 }}>Ajustes</td>
+            <td style={{ padding: 8, textAlign: "right" }}>
+              ${Number(row.adjustments).toFixed(2)} {row.currency}
+            </td>
+          </tr>
+          <tr>
+            <td style={{ padding: 8, fontWeight: "bold" }}>Total</td>
+            <td style={{ padding: 8, textAlign: "right", fontWeight: "bold" }}>
+              ${Number(row.amountDue).toFixed(2)} {row.currency}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      {row.notes && (
+        <div style={{ marginTop: 16 }}>
+          <strong>Notas:</strong>
+          <div style={{ whiteSpace: "pre-wrap" }}>{row.notes}</div>
+        </div>
+      )}
+    </div>
+  );
+
+  const handlePrint = () => {
+    if (!printRow) return;
+    setTimeout(() => window.print(), 0);
   };
 
   const submitAdjust = async (v: AdjustFormValues) => {
@@ -189,81 +311,122 @@ export default function Invoices() {
   }, [restaurants]);
 
   return (
-    <Card title="Facturas">
-      <Space style={{ marginBottom: 12 }}>
-        <Select<InvoiceStatus>
-          allowClear
-          placeholder="Filtrar status"
-          value={status}
-          onChange={(v) => setStatusFilter(v)}
-          options={[
-            { value: "pending", label: "pending" },
-            { value: "paid", label: "paid" },
-            { value: "past_due", label: "past_due" },
-            { value: "void", label: "void" },
-          ]}
-          style={{ width: 180 }}
-        />
-        <Select<number>
-          allowClear
-          placeholder="Restaurante"
-          value={restaurantId}
-          onChange={(v) => setRestaurantId(v)}
-          showSearch
-          optionFilterProp="label"
-          options={restaurants.map((r) => ({ value: r.id, label: r.name }))}
-          style={{ width: 260 }}
-        />
-        <Button onClick={fetchAll}>Refrescar</Button>
-      </Space>
+    <>
+      <style>{`
+        @media print {
+          .note-no-print { display: none !important; }
+          body * { visibility: hidden !important; }
+          .note-print-only, .note-print-only * { visibility: visible !important; }
+          .note-print-only {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            display: block !important;
+          }
+        }
+      `}</style>
 
-      <InvoicesTable
-        rows={rows}
-        restaurantsMap={restaurantsMap}
-        loading={loading}
-        onOpenPay={openPay}
-        onOpenAdjust={openAdjust}
-        onOpenEditDue={openEditDue}
-        onOpenPayments={openPayments} // puedes quitarlo si aún no usas el Drawer
-        onVoid={voidInvoice}
-      />
+      <div className="note-no-print">
+        <Card title="Notas">
+          <Space style={{ marginBottom: 12 }}>
+            <Select<InvoiceStatus>
+              allowClear
+              placeholder="Filtrar estado"
+              value={status}
+              onChange={(v) => setStatusFilter(v)}
+              options={[
+                { value: "pending", label: "Pendiente" },
+                { value: "paid", label: "Pagada" },
+                { value: "past_due", label: "Vencida" },
+                { value: "void", label: "Anulada" },
+              ]}
+              style={{ width: 180 }}
+            />
+            <Select<number>
+              allowClear
+              placeholder="Restaurante"
+              value={restaurantId}
+              onChange={(v) => setRestaurantId(v)}
+              showSearch
+              optionFilterProp="label"
+              options={restaurants.map((r) => ({ value: r.id, label: r.name }))}
+              style={{ width: 260 }}
+            />
+            <Button onClick={fetchAll}>Refrescar</Button>
+          </Space>
 
-      {/* Ajuste / Descuento */}
-      <InvoiceAdjustModal
-        open={adjustOpen}
-        loading={adjustLoading}
-        initialValues={adjustInitial}
-        onCancel={() => setAdjustOpen(false)}
-        onSubmit={submitAdjust}
-      />
+          <InvoicesTable
+            rows={rows}
+            restaurantsMap={restaurantsMap}
+            loading={loading}
+            onOpenPay={openPay}
+            onOpenAdjust={openAdjust}
+            onOpenEditDue={openEditDue}
+            onOpenPrint={openPrint}
+            onOpenPayments={openPayments} // puedes quitarlo si aún no usas el Drawer
+            onVoid={voidInvoice}
+          />
 
-      {/* Vencimiento */}
-      <InvoiceDueModal
-        open={dueOpen}
-        loading={dueLoading}
-        value={dueAt}
-        notes={dueNotes}
-        onChangeDate={setDueAt}
-        onChangeNotes={setDueNotes}
-        onCancel={() => setDueOpen(false)}
-        onSubmit={saveDue}
-      />
+          {/* Ajuste / Descuento */}
+          <InvoiceAdjustModal
+            open={adjustOpen}
+            loading={adjustLoading}
+            initialValues={adjustInitial}
+            onCancel={() => setAdjustOpen(false)}
+            onSubmit={submitAdjust}
+          />
 
-      {/* Cobrar */}
-      <PayModal
-        open={payOpen}
-        invoice={payInvoice}
-        onClose={() => setPayOpen(false)}
-        onPaid={fetchAll}
-      />
+          {/* Vencimiento */}
+          <InvoiceDueModal
+            open={dueOpen}
+            loading={dueLoading}
+            value={dueAt}
+            notes={dueNotes}
+            onChangeDate={setDueAt}
+            onChangeNotes={setDueNotes}
+            onCancel={() => setDueOpen(false)}
+            onSubmit={saveDue}
+          />
 
-      {/* Pagos… (historial) */}
-      <PaymentsDrawer
-        open={paymentsOpen}
-        invoice={paymentsInvoice}
-        onClose={() => setPaymentsOpen(false)}
-        onChanged={fetchAll}
-      />
-    </Card>
+          {/* Cobrar */}
+          <PayModal
+            open={payOpen}
+            invoice={payInvoice}
+            onClose={() => setPayOpen(false)}
+            onPaid={fetchAll}
+          />
+
+          {/* Pagos… (historial) */}
+          <PaymentsDrawer
+            open={paymentsOpen}
+            invoice={paymentsInvoice}
+            onClose={() => setPaymentsOpen(false)}
+            onChanged={fetchAll}
+          />
+        </Card>
+
+        <Modal
+          title={`Imprimir nota #${printRow?.id ?? ""}`}
+          open={printOpen}
+          onCancel={() => setPrintOpen(false)}
+          footer={
+            <Space>
+              <Button onClick={() => setPrintOpen(false)}>Cerrar</Button>
+              <Button type="primary" disabled={!printRow} onClick={handlePrint}>
+                Imprimir
+              </Button>
+            </Space>
+          }
+          width={720}
+        >
+          {printRow ? renderNote(printRow) : null}
+        </Modal>
+      </div>
+
+      <div className="note-print-only" style={{ display: "none" }}>
+        {printRow ? renderNote(printRow) : null}
+      </div>
+    </>
   );
 }

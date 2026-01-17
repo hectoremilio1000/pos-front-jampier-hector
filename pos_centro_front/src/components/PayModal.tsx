@@ -111,10 +111,10 @@ export default function PayModal({ open, invoice, onClose, onPaid }: Props) {
       const url: string | undefined = data?.url;
       if (!url) throw new Error("No se recibió URL de checkout");
       setCheckoutUrl(url);
-      message.success("Link de pago creado");
+      message.success("Enlace de pago creado");
     } catch (e) {
       console.error(e);
-      message.error("No se pudo crear el link de pago");
+      message.error("No se pudo crear el enlace de pago");
     } finally {
       setCreatingLink(false);
     }
@@ -210,13 +210,13 @@ export default function PayModal({ open, invoice, onClose, onPaid }: Props) {
               loading={creatingLink}
               onClick={() => createCheckout("stripe")}
             >
-              Link Stripe
+              Enlace Stripe
             </Button>
             <Button
               loading={creatingLink}
               onClick={() => createCheckout("mercadopago")}
             >
-              Link Mercado Pago
+              Enlace Mercado Pago
             </Button>
           </Space>
 
@@ -225,19 +225,19 @@ export default function PayModal({ open, invoice, onClose, onPaid }: Props) {
               <Input value={checkoutUrl} readOnly />
               <Space wrap>
                 <Button type="primary" href={checkoutUrl} target="_blank">
-                  Abrir link
+                  Abrir enlace
                 </Button>
                 <Button
                   onClick={async () => {
                     await navigator.clipboard.writeText(checkoutUrl);
-                    message.success("Link copiado");
+                    message.success("Enlace copiado");
                   }}
                 >
-                  Copiar link
+                  Copiar enlace
                 </Button>
               </Space>
               <Text type="secondary">
-                La factura se marcará como <b>paid</b> cuando recibamos la
+                La factura se marcará como <b>pagada</b> cuando recibamos la
                 confirmación del proveedor (webhook).
               </Text>
             </Space>

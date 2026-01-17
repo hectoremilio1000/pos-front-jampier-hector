@@ -16,6 +16,8 @@ export type InvoiceRow = {
   currency: string;
   status: InvoiceStatus;
   dueAt: string;
+  paidAt?: string | null;
+  createdAt?: string | null;
   notes?: string | null;
 };
 
@@ -26,6 +28,7 @@ type Props = {
   onOpenPay: (row: InvoiceRow) => void;
   onOpenAdjust: (id: number) => void;
   onOpenEditDue: (row: InvoiceRow) => void;
+  onOpenPrint: (row: InvoiceRow) => void;
   onOpenPayments?: (row: InvoiceRow) => void; // opcional
   onVoid: (id: number) => void;
 };
@@ -37,6 +40,7 @@ export default function InvoicesTable({
   onOpenPay,
   onOpenAdjust,
   onOpenEditDue,
+  onOpenPrint,
   onOpenPayments,
   onVoid,
 }: Props) {
@@ -80,18 +84,18 @@ export default function InvoicesTable({
       render: (v?: string) => (v ? new Date(v).toLocaleString("es-MX") : "—"),
     },
     {
-      title: "Status",
+      title: "Estado",
       dataIndex: "status",
       width: 120,
       render: (s: InvoiceStatus) =>
         s === "paid" ? (
-          <Tag color="green">paid</Tag>
+          <Tag color="green">Pagada</Tag>
         ) : s === "pending" ? (
-          <Tag color="blue">pending</Tag>
+          <Tag color="blue">Pendiente</Tag>
         ) : s === "past_due" ? (
-          <Tag color="red">past_due</Tag>
+          <Tag color="red">Vencida</Tag>
         ) : (
-          <Tag>void</Tag>
+          <Tag>Anulada</Tag>
         ),
     },
     {
@@ -131,6 +135,13 @@ export default function InvoicesTable({
               onClick={() => onOpenPay(row)}
             >
               Pagar
+            </Button>
+
+            <Button
+              size="small"
+              onClick={() => onOpenPrint(row)}
+            >
+              Imprimir PDF
             </Button>
 
             <Dropdown menu={{ items: menuItems }} trigger={["click"]}>

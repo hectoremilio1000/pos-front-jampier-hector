@@ -3,8 +3,10 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Button,
   Card,
+  Form,
   Input,
   Modal,
+  Select,
   Space,
   Switch,
   Table,
@@ -16,6 +18,7 @@ import apiAuth, {
   getPairingCode,
   rotatePairingCode,
 } from "@/components/apis/apiAuth";
+import apiCash from "@/components/apis/apiCash";
 import RestaurantFormModal, {
   type RestaurantFormValues,
 } from "@/pages/Restaurants/RestaurantFormModal";
@@ -296,6 +299,20 @@ export default function Restaurants() {
   const [openStatus, setOpenStatus] = useState(false);
   const [rowFx, setRowFx] = useState<Restaurant | null>(null);
 
+  type PrintMode = "local" | "cloud" | "hybrid";
+  type ReceiptDelivery = "qr" | "email" | "whatsapp" | "none";
+  type PrintSettings = {
+    printMode: PrintMode;
+    confirmPrint: boolean;
+    receiptDelivery: ReceiptDelivery;
+  };
+
+  const [printOpen, setPrintOpen] = useState(false);
+  const [printLoading, setPrintLoading] = useState(false);
+  const [printSaving, setPrintSaving] = useState(false);
+  const [printRow, setPrintRow] = useState<Restaurant | null>(null);
+  const [printForm] = Form.useForm<PrintSettings>();
+
   const openFacturapiPicker = (row: Restaurant) => {
     setRowFx(row);
     setOpenPicker(true);
@@ -321,22 +338,68 @@ export default function Restaurants() {
   const submitLiveSecret = async () => {
     if (!liveModalRow?.id) return;
     if (!liveSecretInput || !liveSecretInput.startsWith("sk_live_")) {
-      message.error("La Live Secret debe iniciar con sk_live_");
+      message.error("El secreto de producción debe iniciar con sk_live_");
       return;
     }
     try {
       setSubmittingLive(true);
       await registerLiveSecret(liveModalRow.id, liveSecretInput.trim());
-      message.success("Live Secret registrada");
+      message.success("Secreto de producción registrado");
       setLiveModalOpen(false);
       setLiveSecretInput("");
       fetchList();
     } catch (e: any) {
       message.error(
-        e?.response?.data?.error || "No se pudo registrar la Live Secret"
+        e?.response?.data?.error || "No se pudo registrar el secreto de producción"
       );
     } finally {
       setSubmittingLive(false);
+    }
+  };
+
+  const openPrintSettings = async (row: Restaurant) => {
+    setPrintRow(row);
+    setPrintOpen(true);
+    setPrintLoading(true);
+    try {
+      const res = await apiCash.get(`/settings/${row.id}`);
+      const data = res.data || {};
+      printForm.setFieldsValue({
+        printMode: data.printMode ?? "hybrid",
+        confirmPrint: data.confirmPrint ?? true,
+        receiptDelivery: data.receiptDelivery ?? "qr",
+      });
+    } catch (e) {
+      console.error(e);
+      message.error("No se pudo cargar configuración de impresión");
+      printForm.setFieldsValue({
+        printMode: "hybrid",
+        confirmPrint: true,
+        receiptDelivery: "qr",
+      });
+    } finally {
+      setPrintLoading(false);
+    }
+  };
+
+  const savePrintSettings = async () => {
+    if (!printRow?.id) return;
+    try {
+      setPrintSaving(true);
+      const values = await printForm.validateFields();
+      await apiCash.post("/settings", {
+        restaurantId: Number(printRow.id),
+        printMode: values.printMode,
+        confirmPrint: values.confirmPrint,
+        receiptDelivery: values.receiptDelivery,
+      });
+      message.success("Configuración de impresión guardada");
+      setPrintOpen(false);
+    } catch (e) {
+      console.error(e);
+      message.error("No se pudo guardar configuración de impresión");
+    } finally {
+      setPrintSaving(false);
     }
   };
 
@@ -471,18 +534,26 @@ export default function Restaurants() {
         dataIndex: "plan",
         key: "plan",
         width: 120,
-        render: (v) => <span>{v ?? "—"}</span>,
+        render: (v) => {
+          const map: Record<string, string> = {
+            free: "Gratis",
+            basic: "Básico",
+            standard: "Estándar",
+            pro: "Pro",
+          };
+          return <span>{v ? map[v] || v : "—"}</span>;
+        },
       },
       {
-        title: "Status",
+        title: "Estado",
         dataIndex: "status",
         key: "status",
         width: 120,
         render: (v: RestaurantStatus) =>
           v === "inactive" ? (
-            <Tag color="red">inactive</Tag>
+            <Tag color="red">Inactivo</Tag>
           ) : (
-            <Tag color="green">{v ?? "active"}</Tag>
+            <Tag color="green">{v === "active" || !v ? "Activo" : v}</Tag>
           ),
       },
       {
@@ -510,14 +581,14 @@ export default function Restaurants() {
                   </Button>
 
                   {row.facturapiLiveSecret ? (
-                    <Tag color="blue">Live Secret registrada</Tag>
+                    <Tag color="blue">Secreto de producción registrado</Tag>
                   ) : (
                     <Button
                       size="small"
                       type="dashed"
                       onClick={() => openLiveSecretModal(row)}
                     >
-                      Registrar Live Secret
+                      Registrar secreto de producción
                     </Button>
                   )}
 
@@ -535,13 +606,13 @@ export default function Restaurants() {
                         setRenewingId(row.id);
                         await renewLiveSecret(row.id);
                         message.success(
-                          "Nueva Live API Key generada y guardada"
+                          "Nueva API Key de producción generada y guardada"
                         );
                         fetchList();
                       } catch (e: any) {
                         message.error(
                           e?.response?.data?.error ||
-                            "No se pudo generar la Live API Key"
+                            "No se pudo generar la API Key de producción"
                         );
                       } finally {
                         setRenewingId(null);
@@ -549,7 +620,7 @@ export default function Restaurants() {
                     }}
                     disabled={!canRenew}
                   >
-                    Generar nueva Live API Key
+                    Generar nueva API Key de producción
                   </Button>
                   <Button
                     size="small"
@@ -610,13 +681,13 @@ export default function Restaurants() {
             : !row.facturapiReady
               ? "La organización no está lista para producción"
               : !row.facturapiLiveSecret
-                ? "Registra una Live Secret (sk_live_)"
+                ? "Registra un secreto de producción (sk_live_)"
                 : undefined;
 
           return (
             <Space wrap>
               <Tag color={row.facturapiMode === "live" ? "green" : "default"}>
-                {row.facturapiMode?.toUpperCase()}
+                {row.facturapiMode === "live" ? "PRODUCCIÓN" : "PRUEBAS"}
               </Tag>
               <Switch
                 checked={row.facturapiMode === "live"}
@@ -624,7 +695,9 @@ export default function Restaurants() {
                   try {
                     const target = val ? "live" : "test";
                     await setRestaurantMode(row.id, target as any);
-                    message.success(`Modo ${target.toUpperCase()} establecido`);
+                    message.success(
+                      `Modo ${target === "live" ? "PRODUCCIÓN" : "PRUEBAS"} establecido`
+                    );
                     fetchList();
                   } catch (e: any) {
                     message.error(
@@ -632,8 +705,8 @@ export default function Restaurants() {
                     );
                   }
                 }}
-                checkedChildren="Live"
-                unCheckedChildren="Test"
+                checkedChildren="Producción"
+                unCheckedChildren="Pruebas"
                 disabled={!canLive}
               />
               {disabledReason ? (
@@ -654,6 +727,9 @@ export default function Restaurants() {
           <Space>
             <Button size="small" onClick={() => openEdit(row)}>
               Editar
+            </Button>
+            <Button size="small" onClick={() => openPrintSettings(row)}>
+              Impresión
             </Button>
             <PairingCodeButton restaurantId={Number(row.id)} />
             <Button size="small" danger onClick={() => handleDelete(row)}>
@@ -702,6 +778,68 @@ export default function Restaurants() {
           },
         }}
       />
+      <Modal
+        title={
+          printRow ? `Impresión: ${printRow.name}` : "Configuración de impresión"
+        }
+        open={printOpen}
+        onCancel={() => setPrintOpen(false)}
+        confirmLoading={printSaving}
+        onOk={savePrintSettings}
+        okText="Guardar"
+        cancelText="Cancelar"
+      >
+        <Form
+          form={printForm}
+          layout="vertical"
+          initialValues={{
+            printMode: "hybrid",
+            confirmPrint: true,
+            receiptDelivery: "qr",
+          }}
+        >
+          <Form.Item
+            name="printMode"
+            label="Modo de impresión"
+            rules={[{ required: true, message: "Selecciona un modo" }]}
+          >
+            <Select
+              disabled={printLoading}
+              options={[
+                { value: "local", label: "Local (impresora)" },
+                { value: "cloud", label: "Nube (sin impresoras)" },
+                { value: "hybrid", label: "Híbrido (KDS + impresora)" },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            name="confirmPrint"
+            label="Confirmar antes de imprimir"
+            valuePropName="checked"
+          >
+            <Switch disabled={printLoading} />
+          </Form.Item>
+          <Form.Item
+            name="receiptDelivery"
+            label="Entrega de recibo al cliente"
+            rules={[{ required: true, message: "Selecciona una opción" }]}
+          >
+            <Select
+              disabled={printLoading}
+              options={[
+                { value: "qr", label: "Mostrar QR" },
+                { value: "email", label: "Enviar por email" },
+                { value: "whatsapp", label: "Enviar por WhatsApp" },
+                { value: "none", label: "No entregar recibo" },
+              ]}
+            />
+          </Form.Item>
+        </Form>
+        <div style={{ fontSize: 12, color: "#777" }}>
+          Si eliges Nube, no se usará impresora local. Híbrido manda a KDS y
+          también a la impresora.
+        </div>
+      </Modal>
       <RestaurantFormModal
         open={openModal}
         loading={saving}
@@ -738,9 +876,9 @@ export default function Restaurants() {
       />
       <Modal
         open={liveModalOpen}
-        title={`Registrar Live Secret ${liveModalRow ? `– ${liveModalRow.name}` : ""}`}
+        title={`Registrar secreto de producción ${liveModalRow ? `– ${liveModalRow.name}` : ""}`}
         onCancel={() => setLiveModalOpen(false)}
-        okText="Guardar Live Secret"
+        okText="Guardar secreto de producción"
         confirmLoading={submittingLive}
         onOk={submitLiveSecret}
       >

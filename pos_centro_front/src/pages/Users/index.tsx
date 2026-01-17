@@ -246,7 +246,7 @@ export default function Users(): React.ReactElement {
         key: "fullName",
         render: (v: string) => <strong>{v}</strong>,
       },
-      { title: "Email", dataIndex: "email", key: "email" },
+      { title: "Correo", dataIndex: "email", key: "email" },
       {
         title: "Rol",
         key: "role",
@@ -262,15 +262,15 @@ export default function Users(): React.ReactElement {
         render: (_: unknown, row) => row.restaurant?.name ?? "—",
       },
       {
-        title: "Status",
+        title: "Estado",
         dataIndex: "status",
         key: "status",
         width: 120,
         render: (v: UserStatus) =>
           v === "inactive" ? (
-            <Tag color="red">inactive</Tag>
+            <Tag color="red">Inactivo</Tag>
           ) : (
-            <Tag color="green">{v ?? "active"}</Tag>
+            <Tag color="green">{v === "active" || !v ? "Activo" : v}</Tag>
           ),
       },
       {
@@ -317,7 +317,7 @@ export default function Users(): React.ReactElement {
         <Space>
           <Input.Search
             allowClear
-            placeholder="Buscar por nombre o email…"
+            placeholder="Buscar por nombre o correo…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onSearch={onSearch}

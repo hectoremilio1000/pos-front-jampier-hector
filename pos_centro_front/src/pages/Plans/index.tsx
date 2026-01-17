@@ -205,7 +205,7 @@ export default function Plans() {
   };
 
   const columns: ColumnsType<Plan> = [
-    { title: "Code", dataIndex: "code", key: "code" },
+    { title: "Código", dataIndex: "code", key: "code" },
     { title: "Nombre", dataIndex: "name", key: "name" },
     {
       title: "Precios",
@@ -219,7 +219,7 @@ export default function Plans() {
               <b>
                 ${Number(pr.amount).toFixed(2)} {pr.currency}
               </b>{" "}
-              {pr.isDefault ? <Tag color="green">default</Tag> : null}
+              {pr.isDefault ? <Tag color="green">predeterminado</Tag> : null}
               <Space size="small" style={{ marginLeft: 8 }}>
                 <Button size="small" onClick={() => openEditPrice(row, pr)}>
                   Editar

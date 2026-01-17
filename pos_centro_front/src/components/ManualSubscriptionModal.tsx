@@ -1,14 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  Modal,
-  Form,
-  Select,
-  InputNumber,
-  DatePicker,
-  Switch,
-  Space,
-  message,
-} from "antd";
+import { Modal, Form, Select, InputNumber, DatePicker, Switch, Space, message } from "antd";
 import dayjs from "dayjs";
 import apiAuth from "./apis/apiAuth";
 import apiCenter from "./apis/apiCenter";
@@ -30,27 +21,31 @@ type Props = {
   onCreated: () => Promise<void> | void;
 };
 
-export default function ManualSubscriptionModal({
-  open,
-  onClose,
-  onCreated,
-}: Props) {
+export default function ManualSubscriptionModal({ open, onClose, onCreated }: Props) {
   const [form] = Form.useForm();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(false);
 
   const planId = Form.useWatch("planId", form) as number | undefined;
-  const plan = useMemo(
-    () => plans.find((p) => p.id === planId),
-    [plans, planId]
-  );
+  const plan = useMemo(() => plans.find((p) => p.id === planId), [plans, planId]);
 
   const priceId = Form.useWatch("planPriceId", form) as number | undefined;
   const selectedPrice = useMemo(
     () => plan?.prices.find((pr) => pr.id === priceId),
     [plan, priceId]
   );
+
+  const formatInterval = (interval: PlanPrice["interval"], count: number) => {
+    const map: Record<string, { s: string; p: string }> = {
+      day: { s: "día", p: "días" },
+      week: { s: "semana", p: "semanas" },
+      month: { s: "mes", p: "meses" },
+      year: { s: "año", p: "años" },
+    };
+    const unit = map[interval] ?? { s: interval, p: `${interval}s` };
+    return count === 1 ? unit.s : `${count} ${unit.p}`;
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -93,8 +88,7 @@ export default function ManualSubscriptionModal({
         paymentStatus: v.paymentStatus,
         providerPaymentId: v.providerPaymentId || null,
         providerSessionId: v.providerSessionId || null,
-        amountOverride:
-          v.amountOverride != null ? Number(v.amountOverride) : null,
+        amountOverride: v.amountOverride != null ? Number(v.amountOverride) : null,
       });
       message.success("Suscripción creada");
       await onCreated();
@@ -117,11 +111,7 @@ export default function ManualSubscriptionModal({
       destroyOnClose
     >
       <Form form={form} layout="vertical">
-        <Form.Item
-          name="restaurantId"
-          label="Restaurante"
-          rules={[{ required: true }]}
-        >
+        <Form.Item name="restaurantId" label="Restaurante" rules={[{ required: true }]}>
           <Select
             showSearch
             optionFilterProp="label"
@@ -140,16 +130,12 @@ export default function ManualSubscriptionModal({
           />
         </Form.Item>
 
-        <Form.Item
-          name="planPriceId"
-          label="Precio del plan"
-          rules={[{ required: true }]}
-        >
+        <Form.Item name="planPriceId" label="Precio del plan" rules={[{ required: true }]}>
           <Select
             disabled={!plan}
             options={(plan?.prices ?? []).map((pr) => ({
               value: pr.id,
-              label: `${pr.interval}/${pr.intervalCount} — $${Number(pr.amount).toFixed(2)} ${pr.currency}${pr.isDefault ? " (default)" : ""}`,
+              label: `${formatInterval(pr.interval, pr.intervalCount)} — $${Number(pr.amount).toFixed(2)} ${pr.currency}${pr.isDefault ? " (predeterminado)" : ""}`,
             }))}
             placeholder="Selecciona intervalo y precio"
           />
@@ -167,11 +153,11 @@ export default function ManualSubscriptionModal({
         >
           <Select
             options={[
-              { value: "active", label: "active" },
-              { value: "trialing", label: "trialing" },
-              { value: "paused", label: "paused" },
-              { value: "canceled", label: "canceled" },
-              { value: "expired", label: "expired" },
+              { value: "active", label: "Activa" },
+              { value: "trialing", label: "En prueba" },
+              { value: "paused", label: "Pausada" },
+              { value: "canceled", label: "Cancelada" },
+              { value: "expired", label: "Expirada" },
             ]}
           />
         </Form.Item>
@@ -196,17 +182,13 @@ export default function ManualSubscriptionModal({
               ]}
             />
           </Form.Item>
-          <Form.Item
-            name="paymentStatus"
-            label="Estado de pago"
-            style={{ width: "50%" }}
-          >
+          <Form.Item name="paymentStatus" label="Estado de pago" style={{ width: "50%" }}>
             <Select
               options={[
-                { value: "succeeded", label: "succeeded" },
-                { value: "pending", label: "pending" },
-                { value: "failed", label: "failed" },
-                { value: "refunded", label: "refunded" },
+                { value: "succeeded", label: "Pagado" },
+                { value: "pending", label: "Pendiente" },
+                { value: "failed", label: "Fallido" },
+                { value: "refunded", label: "Reembolsado" },
               ]}
             />
           </Form.Item>
@@ -221,11 +203,7 @@ export default function ManualSubscriptionModal({
           >
             <InputNumber style={{ width: "100%" }} min={0} step={10} />
           </Form.Item>
-          <Form.Item
-            name="providerPaymentId"
-            label="Ref. pago (opcional)"
-            style={{ width: "50%" }}
-          >
+          <Form.Item name="providerPaymentId" label="Ref. pago (opcional)" style={{ width: "50%" }}>
             <InputNumber style={{ width: "100%" }} />
           </Form.Item>
         </Space.Compact>

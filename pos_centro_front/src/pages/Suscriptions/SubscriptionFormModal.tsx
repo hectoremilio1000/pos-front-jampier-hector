@@ -101,7 +101,7 @@ export default function SubscriptionFormModal({
           />
         </Form.Item>
 
-        <Form.Item name="priceOverridePesos" label="Precio override (MXN)">
+        <Form.Item name="priceOverridePesos" label="Precio manual (MXN)">
           <InputNumber<number>
             style={{ width: "100%" }}
             min={0}

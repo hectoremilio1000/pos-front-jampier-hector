@@ -64,7 +64,7 @@ export default function PlanFormModal({
         <Form.Item name="name" label="Nombre" rules={[{ required: true }]}>
           <Input placeholder="Plan Pro" />
         </Form.Item>
-        <Form.Item name="code" label="Code" rules={[{ required: true }]}>
+        <Form.Item name="code" label="Código" rules={[{ required: true }]}>
           <Input placeholder="PRO" disabled={disableCode} />
         </Form.Item>
         <Form.Item name="description" label="Descripción">

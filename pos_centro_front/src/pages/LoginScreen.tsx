@@ -19,7 +19,7 @@ const LoginScreen: React.FC = () => {
   const handleLogin = async () => {
     if (email === "" || password === "") {
       message.warning(
-        "EL Email y el password deben estar llenos para continuar"
+        "El correo y la contraseña deben estar llenos para continuar"
       );
     }
     try {
@@ -60,7 +60,7 @@ const LoginScreen: React.FC = () => {
             className="w-full text-start font-bold text-white"
             htmlFor="Username"
           >
-            Username Email
+            Correo electrónico
           </label>
           <input
             type="email"
@@ -74,7 +74,7 @@ const LoginScreen: React.FC = () => {
             className="w-full text-start font-bold text-white"
             htmlFor="Password"
           >
-            Password
+            Contraseña
           </label>
           <input
             type="password"

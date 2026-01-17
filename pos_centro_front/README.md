@@ -1,7 +1,23 @@
-#mi usuario
+### super admin
 
 email: hectoremilio1000@gmail.com
 contraseña: admin20251
+
+### cafe tacuba
+
+email: cafetacuba@r0.pos
+contraseña: secret123
+
+cafe tacuba
+cajero
+hector cajero
+456789
+
+juantio mesero
+987867
+
+Código maestro del restaurante
+544005
 
 ### pasos a hacer
 

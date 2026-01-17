@@ -12,9 +12,10 @@ import {
   DashboardOutlined,
   ShopOutlined,
   UserOutlined,
-  ToolOutlined,
-  DollarOutlined,
-  WarningOutlined,
+  AppstoreOutlined,
+  ProfileOutlined,
+  FileTextOutlined,
+  SafetyCertificateOutlined,
   LogoutOutlined,
 } from "@ant-design/icons";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -37,13 +38,14 @@ export default function PrivateLayout() {
     if (p.startsWith("/plans")) return ["/plans"];
     if (p.startsWith("/subscriptions")) return ["/subscriptions"];
     if (p.startsWith("/invoices")) return ["/invoices"];
+    if (p.startsWith("/saas-invoices")) return ["/saas-invoices"];
     return ["/dashboard"];
   }, [location.pathname]);
 
   // menú principal (sin <Link>, navegamos con onClick)
   const items: MenuProps["items"] = useMemo(
     () => [
-      { key: "/dashboard", icon: <DashboardOutlined />, label: "Dashboard" },
+      { key: "/dashboard", icon: <DashboardOutlined />, label: "Panel" },
       {
         type: "group",
         label: "Clientes",
@@ -53,16 +55,16 @@ export default function PrivateLayout() {
             icon: <ShopOutlined />,
             label: "Restaurantes",
           },
-          { key: "/users", icon: <UserOutlined />, label: "Owners / Usuarios" },
+          { key: "/users", icon: <UserOutlined />, label: "Dueños / Usuarios" },
         ],
       },
       {
         type: "group",
-        label: "Billing",
+        label: "Facturación",
         children: [
           {
             key: "/plans",
-            icon: <DollarOutlined />,
+            icon: <AppstoreOutlined />,
             label: (
               <span>
                 Planes{" "}
@@ -76,7 +78,7 @@ export default function PrivateLayout() {
           },
           {
             key: "/subscriptions",
-            icon: <DollarOutlined />,
+            icon: <ProfileOutlined />,
             label: (
               <span>
                 Suscripciones{" "}
@@ -90,10 +92,10 @@ export default function PrivateLayout() {
           },
           {
             key: "/invoices",
-            icon: <WarningOutlined />,
+            icon: <FileTextOutlined />,
             label: (
               <span>
-                Facturas{" "}
+                Notas{" "}
                 <Badge
                   count="v0"
                   style={{ backgroundColor: token.colorWarning }}
@@ -102,13 +104,20 @@ export default function PrivateLayout() {
               </span>
             ),
           },
-        ],
-      },
-      {
-        type: "group",
-        label: "Sistema",
-        children: [
-          { key: "/settings", icon: <ToolOutlined />, label: "Configuración" },
+          {
+            key: "/saas-invoices",
+            icon: <SafetyCertificateOutlined />,
+            label: (
+              <span>
+                Facturas CFDI (SAT){" "}
+                <Badge
+                  count="v0"
+                  style={{ backgroundColor: token.colorWarning }}
+                  offset={[8, -2]}
+                />
+              </span>
+            ),
+          },
         ],
       },
     ],
@@ -171,7 +180,7 @@ export default function PrivateLayout() {
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <Typography.Title level={5} style={{ margin: 0 }}>
               Centro de Control —{" "}
-              <span style={{ color: token.colorPrimary }}>Super Admin</span>
+              <span style={{ color: token.colorPrimary }}>Superadmin</span>
             </Typography.Title>
           </div>
 

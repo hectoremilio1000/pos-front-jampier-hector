@@ -7,6 +7,7 @@ import {
   Drawer,
   Form,
   Input,
+  Modal,
   Select,
   Space,
   Table,
@@ -19,6 +20,7 @@ import apiCenter from "@/components/apis/apiCenter";
 import ManualSubscriptionModal from "@/components/ManualSubscriptionModal";
 import SubscriptionEditModal from "@/components/SubscriptionEditModal";
 import PaymentFormModal from "@/components/PaymentFormModal";
+import GenerateNoteModal from "@/components/GenerateNoteModal";
 import type { SubscriptionRow } from "@/types/billing";
 
 type PayRow = {
@@ -32,11 +34,38 @@ type PayRow = {
   providerPaymentId?: string | null;
   providerSessionId?: string | null;
   status: "succeeded" | "pending" | "failed" | "refunded";
+  periodStart?: string | null;
+  periodEnd?: string | null;
   paidAt?: string | null;
   createdAt: string;
 };
 
 const { RangePicker } = DatePicker;
+
+const formatInterval = (interval?: string | null, count?: number | null) => {
+  if (!interval) return "-";
+  const n = Number(count || 1);
+  const map: Record<string, { s: string; p: string }> = {
+    day: { s: "día", p: "días" },
+    week: { s: "semana", p: "semanas" },
+    month: { s: "mes", p: "meses" },
+    year: { s: "año", p: "años" },
+  };
+  const unit = map[interval] ?? { s: interval, p: `${interval}s` };
+  return n === 1 ? unit.s : `${n} ${unit.p}`;
+};
+
+const subscriptionStatusLabel = (value: string) => {
+  const map: Record<string, string> = {
+    active: "Activa",
+    trialing: "En prueba",
+    past_due: "Vencida",
+    paused: "Pausada",
+    canceled: "Cancelada",
+    expired: "Expirada",
+  };
+  return map[value] ?? value;
+};
 
 export default function Subscriptions() {
   const [rows, setRows] = useState<SubscriptionRow[]>([]);
@@ -55,6 +84,18 @@ export default function Subscriptions() {
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [payments, setPayments] = useState<PayRow[]>([]);
   const [activeSub, setActiveSub] = useState<SubscriptionRow | null>(null);
+  const [cfdiLoading, setCfdiLoading] = useState(false);
+  const [noteModalOpen, setNoteModalOpen] = useState(false);
+  const periodLabel = (start?: string | null, end?: string | null) => {
+    if (!start || !end) return "—";
+    const fmt = new Intl.DateTimeFormat("es-MX", {
+      month: "short",
+      year: "numeric",
+    });
+    const startLabel = fmt.format(new Date(start));
+    const endLabel = fmt.format(new Date(end));
+    return startLabel === endLabel ? startLabel : `${startLabel} → ${endLabel}`;
+  };
   // modal editar suscripción
   const [editOpen, setEditOpen] = useState(false);
   const [editingSub, setEditingSub] = useState<SubscriptionRow | null>(null);
@@ -110,6 +151,73 @@ export default function Subscriptions() {
     }
   };
 
+  const getSubscriptionAmount = (sub: SubscriptionRow) => {
+    if (sub.priceOverride != null && Number(sub.priceOverride) > 0) {
+      return Number(sub.priceOverride);
+    }
+    if (sub.planPrice?.amount != null) return Number(sub.planPrice.amount);
+    return null;
+  };
+
+  const getSubscriptionCurrency = (sub: SubscriptionRow) =>
+    sub.planPrice?.currency ?? "MXN";
+
+  const handleGenerateNote = () => {
+    if (!activeSub) return;
+    setNoteModalOpen(true);
+  };
+
+  const handleEmitCfdi = () => {
+    if (!activeSub) return;
+    const amount = getSubscriptionAmount(activeSub);
+    if (!activeSub.currentPeriodStart || !activeSub.currentPeriodEnd) {
+      message.error("La suscripción no tiene periodo vigente.");
+      return;
+    }
+    if (!amount || amount <= 0) {
+      message.error("La suscripción no tiene monto válido.");
+      return;
+    }
+
+    const latestSucceededPayment = [...payments]
+      .filter((p) => p.status === "succeeded")
+      .sort((a, b) => {
+        const ta = a.paidAt ? new Date(a.paidAt).getTime() : 0;
+        const tb = b.paidAt ? new Date(b.paidAt).getTime() : 0;
+        return tb - ta;
+      })[0];
+
+    Modal.confirm({
+      title: "Emitir factura CFDI",
+      content:
+        "Se emitirá una factura CFDI con el periodo y monto de la suscripción.",
+      okText: "Emitir CFDI",
+      cancelText: "Cancelar",
+      async onOk() {
+        try {
+          setCfdiLoading(true);
+          await apiCenter.post("/saas/invoices/issue", {
+            restaurantId: activeSub.restaurantId,
+            subscriptionId: activeSub.id,
+            subscriptionPaymentId: latestSucceededPayment?.id,
+            periodStart: activeSub.currentPeriodStart,
+            periodEnd: activeSub.currentPeriodEnd,
+            amount,
+            currency: getSubscriptionCurrency(activeSub),
+          });
+          message.success("Factura CFDI emitida");
+        } catch (e: any) {
+          console.error(e);
+          const msg =
+            e?.response?.data?.error || "No se pudo emitir la factura CFDI";
+          message.error(msg);
+        } finally {
+          setCfdiLoading(false);
+        }
+      },
+    });
+  };
+
   const columns: ColumnsType<SubscriptionRow> = [
     { title: "ID", dataIndex: "id", key: "id", width: 80 },
     {
@@ -126,7 +234,7 @@ export default function Subscriptions() {
       key: "period",
       render: (_, r) =>
         r.planPrice ? (
-          <Tag>{`${r.planPrice.interval}/${r.planPrice.intervalCount}`}</Tag>
+          <Tag>{formatInterval(r.planPrice.interval, r.planPrice.intervalCount)}</Tag>
         ) : (
           "-"
         ),
@@ -172,7 +280,7 @@ export default function Subscriptions() {
                       : "default"
             }
           >
-            {v} {nearing ? `· vence en ${leftDays}d` : ""}
+            {subscriptionStatusLabel(v)} {nearing ? `· vence en ${leftDays}d` : ""}
           </Tag>
         );
       },
@@ -223,11 +331,11 @@ export default function Subscriptions() {
             allowClear
             style={{ width: 180 }}
             options={[
-              { value: "active", label: "active" },
-              { value: "trialing", label: "trialing" },
-              { value: "paused", label: "paused" },
-              { value: "canceled", label: "canceled" },
-              { value: "expired", label: "expired" },
+              { value: "active", label: "Activa" },
+              { value: "trialing", label: "En prueba" },
+              { value: "paused", label: "Pausada" },
+              { value: "canceled", label: "Cancelada" },
+              { value: "expired", label: "Expirada" },
             ]}
             placeholder="—"
           />
@@ -278,9 +386,9 @@ export default function Subscriptions() {
         }
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        width={600}
+        width="80vw"
       >
-        {/* <Space style={{ marginBottom: 12 }}>
+        <Space style={{ marginBottom: 12 }} wrap>
           <Button
             type="primary"
             onClick={() => {
@@ -291,7 +399,20 @@ export default function Subscriptions() {
           >
             Agregar pago
           </Button>
-        </Space> */}
+          <Button
+            onClick={handleGenerateNote}
+            disabled={!activeSub}
+          >
+            Generar nota
+          </Button>
+          <Button
+            onClick={handleEmitCfdi}
+            loading={cfdiLoading}
+            disabled={!activeSub}
+          >
+            Emitir factura CFDI
+          </Button>
+        </Space>
         <Table<PayRow>
           rowKey="id"
           loading={drawerLoading}
@@ -299,10 +420,28 @@ export default function Subscriptions() {
           columns={[
             { title: "ID", dataIndex: "id" },
             {
+              title: "Periodo",
+              render: (_, r) =>
+                periodLabel(r.periodStart, r.periodEnd),
+            },
+            {
               title: "Importe",
               render: (_, r) => `$${Number(r.amount).toFixed(2)} ${r.currency}`,
             },
-            { title: "Proveedor", dataIndex: "provider" },
+            {
+              title: "Proveedor",
+              dataIndex: "provider",
+              render: (v) => {
+                const map: Record<string, string> = {
+                  cash: "Efectivo",
+                  transfer: "Transferencia",
+                  stripe: "Stripe",
+                  mp: "Mercado Pago",
+                  mercadopago: "Mercado Pago",
+                };
+                return map[v] ?? v;
+              },
+            },
             { title: "Ref", dataIndex: "providerPaymentId" },
             {
               title: "Estado",
@@ -319,7 +458,12 @@ export default function Subscriptions() {
                           : "default"
                   }
                 >
-                  {v}
+                  {{
+                    succeeded: "Pagado",
+                    pending: "Pendiente",
+                    failed: "Fallido",
+                    refunded: "Reembolsado",
+                  }[v] ?? v}
                 </Tag>
               ),
             },
@@ -369,6 +513,15 @@ export default function Subscriptions() {
         mode={editingPay ? "edit" : "create"}
         restaurantId={activeSub?.restaurantId ?? 0}
         subscriptionId={activeSub?.id ?? null}
+        defaultPeriodStart={activeSub?.currentPeriodStart ?? null}
+        defaultPeriodEnd={activeSub?.currentPeriodEnd ?? null}
+        defaultAmount={
+          activeSub?.priceOverride != null && Number(activeSub.priceOverride) > 0
+            ? Number(activeSub.priceOverride)
+            : activeSub?.planPrice?.amount != null
+              ? Number(activeSub.planPrice.amount)
+              : undefined
+        }
         row={editingPay ?? undefined}
         onClose={() => setPayModalOpen(false)}
         onSaved={async () => {
@@ -377,6 +530,16 @@ export default function Subscriptions() {
           if (activeSub) {
             await openPayments(activeSub);
           }
+        }}
+      />
+
+      <GenerateNoteModal
+        open={noteModalOpen}
+        subscriptions={rows}
+        defaultSubscriptionId={activeSub?.id ?? null}
+        onClose={() => setNoteModalOpen(false)}
+        onCreated={() => {
+          // Si luego quieres refrescar algo, lo dejamos listo.
         }}
       />
     </Card>

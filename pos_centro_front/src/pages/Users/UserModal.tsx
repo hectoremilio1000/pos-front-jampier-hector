@@ -233,13 +233,13 @@ export default function UserModal({
         <Form.Item
           label={
             manualEmail(roleCode)
-              ? "Email (manual)"
-              : "Email (autogenerado por nombre + restaurante)"
+              ? "Correo (manual)"
+              : "Correo (autogenerado por nombre + restaurante)"
           }
           name="email"
           rules={[
-            { required: true, message: "Ingresa el email" },
-            { type: "email", message: "Formato de email inválido" },
+            { required: true, message: "Ingresa el correo" },
+            { type: "email", message: "Formato de correo inválido" },
           ]}
         >
           <Input
@@ -270,8 +270,8 @@ export default function UserModal({
         >
           <Select
             options={[
-              { value: "active", label: "active" },
-              { value: "inactive", label: "inactive" },
+              { value: "active", label: "Activo" },
+              { value: "inactive", label: "Inactivo" },
             ]}
           />
         </Form.Item>

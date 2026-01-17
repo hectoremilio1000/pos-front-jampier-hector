@@ -69,6 +69,8 @@ export type PaymentRow = {
   providerPaymentId?: string | null;
   providerSessionId?: string | null;
   status: "succeeded" | "pending" | "failed" | "refunded";
+  periodStart?: string | null;
+  periodEnd?: string | null;
   paidAt?: string | null;
   refundedAt?: string | null;
   notes?: string | null;

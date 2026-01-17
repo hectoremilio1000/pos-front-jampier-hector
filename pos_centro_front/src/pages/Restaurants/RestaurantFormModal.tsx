@@ -158,8 +158,8 @@ export default function RestaurantFormModal({
         <Form.Item name="state" label="Estado">
           <Input placeholder="Ej. Ciudad de México" />
         </Form.Item>
-        <Form.Item name="localBaseUrl" label="Base Url">
-          <Input placeholder="Url local restaurant: https://192.168.100.xx" />
+        <Form.Item name="localBaseUrl" label="URL base">
+          <Input placeholder="URL local del restaurante: https://192.168.100.xx" />
         </Form.Item>
 
         <Form.Item
@@ -177,8 +177,8 @@ export default function RestaurantFormModal({
 
         <Form.Item
           name="email"
-          label="Email"
-          rules={[{ type: "email", message: "Email inválido" }]}
+          label="Correo"
+          rules={[{ type: "email", message: "Correo inválido" }]}
         >
           <Input placeholder="reservas@ejemplo.com" />
         </Form.Item>
@@ -210,18 +210,18 @@ export default function RestaurantFormModal({
         <Form.Item name="plan" label="Plan" initialValue="free">
           <Select
             options={[
-              { value: "free", label: "Free" },
-              { value: "basic", label: "Basic" },
+              { value: "free", label: "Gratis" },
+              { value: "basic", label: "Básico" },
               { value: "pro", label: "Pro" },
             ]}
           />
         </Form.Item>
 
-        <Form.Item name="status" label="Status" initialValue="active">
+        <Form.Item name="status" label="Estado" initialValue="active">
           <Select
             options={[
-              { value: "active", label: "Active" },
-              { value: "inactive", label: "Inactive" },
+              { value: "active", label: "Activo" },
+              { value: "inactive", label: "Inactivo" },
             ]}
           />
         </Form.Item>

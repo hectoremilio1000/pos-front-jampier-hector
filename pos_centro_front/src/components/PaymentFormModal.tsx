@@ -19,6 +19,9 @@ export default function PaymentFormModal({
   mode,
   restaurantId,
   subscriptionId,
+  defaultPeriodStart,
+  defaultPeriodEnd,
+  defaultAmount,
   row,
   onClose,
   onSaved,
@@ -27,6 +30,9 @@ export default function PaymentFormModal({
   mode: "create" | "edit";
   restaurantId: number;
   subscriptionId: number | null;
+  defaultPeriodStart?: string | null;
+  defaultPeriodEnd?: string | null;
+  defaultAmount?: number | null;
   row?: PaymentRow;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
@@ -40,11 +46,14 @@ export default function PaymentFormModal({
     providerPaymentId?: string;
     providerSessionId?: string;
     paidAt?: Dayjs; // ← aquí está la clave
+    period?: [Dayjs, Dayjs];
     notes?: string;
   };
 
   const [form] = Form.useForm<PaymentFormValues>();
   const isEdit = mode === "edit";
+  const minPeriod = defaultPeriodStart ? dayjs(defaultPeriodStart).startOf("day") : null;
+  const maxPeriod = defaultPeriodEnd ? dayjs(defaultPeriodEnd).endOf("day") : null;
 
   useEffect(() => {
     if (!open) return;
@@ -57,6 +66,10 @@ export default function PaymentFormModal({
         providerSessionId: row.providerSessionId || undefined,
         status: row.status,
         paidAt: row.paidAt ? dayjs(row.paidAt) : undefined,
+        period:
+          row.periodStart && row.periodEnd
+            ? [dayjs(row.periodStart), dayjs(row.periodEnd)]
+            : undefined,
         notes: row.notes || undefined,
       });
     } else {
@@ -65,6 +78,11 @@ export default function PaymentFormModal({
         currency: "MXN",
         status: "succeeded",
         provider: "cash",
+        amount: defaultAmount != null && Number(defaultAmount) > 0 ? Number(defaultAmount) : undefined,
+        period:
+          defaultPeriodStart && defaultPeriodEnd
+            ? [dayjs(defaultPeriodStart), dayjs(defaultPeriodEnd)]
+            : undefined,
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -85,6 +103,10 @@ export default function PaymentFormModal({
         };
         // ✅ convertir Dayjs → ISO string solo en el payload
         if (v.paidAt) payload.paidAt = v.paidAt.toISOString();
+        if (v.period?.length === 2) {
+          payload.periodStart = v.period[0].format("YYYY-MM-DD");
+          payload.periodEnd = v.period[1].format("YYYY-MM-DD");
+        }
         await apiCenter.patch(`/subscription-payments/${row.id}`, payload);
         message.success("Pago actualizado");
       } else {
@@ -100,6 +122,10 @@ export default function PaymentFormModal({
           // paidAt lo inferirá el server si status === 'succeeded'
           notes: v.notes || null,
         };
+        if (v.period?.length === 2) {
+          payload.periodStart = v.period[0].format("YYYY-MM-DD");
+          payload.periodEnd = v.period[1].format("YYYY-MM-DD");
+        }
         await apiCenter.post(`/subscription-payments/register`, payload);
         message.success("Pago registrado");
       }
@@ -138,28 +164,45 @@ export default function PaymentFormModal({
           <Select
             showSearch
             options={[
-              { value: "cash", label: "cash" },
-              { value: "transfer", label: "transfer" },
-              { value: "stripe", label: "stripe" },
-              { value: "mp", label: "mercadopago" },
+              { value: "cash", label: "Efectivo" },
+              { value: "transfer", label: "Transferencia" },
+              { value: "stripe", label: "Stripe" },
+              { value: "mp", label: "Mercado Pago" },
             ]}
           />
         </Form.Item>
         <Form.Item name="status" label="Estado" rules={[{ required: true }]}>
           <Select
             options={[
-              { value: "succeeded", label: "succeeded" },
-              { value: "pending", label: "pending" },
-              { value: "failed", label: "failed" },
-              { value: "refunded", label: "refunded" },
+              { value: "succeeded", label: "Pagado" },
+              { value: "pending", label: "Pendiente" },
+              { value: "failed", label: "Fallido" },
+              { value: "refunded", label: "Reembolsado" },
             ]}
           />
         </Form.Item>
         <Form.Item name="providerPaymentId" label="Referencia (opcional)">
           <Input placeholder="Folio / Intent ID / Transferencia" />
         </Form.Item>
-        <Form.Item name="providerSessionId" label="Session ID (opcional)">
-          <Input placeholder="Checkout / Session ID" />
+        <Form.Item name="providerSessionId" label="ID de sesión (opcional)">
+          <Input placeholder="Checkout / ID de sesión" />
+        </Form.Item>
+        <Form.Item
+          name="period"
+          label="Periodo"
+          rules={
+            isEdit
+              ? []
+              : [{ required: true, message: "Selecciona el periodo" }]
+          }
+        >
+          <DatePicker.RangePicker
+            style={{ width: "100%" }}
+            disabledDate={(current) => {
+              if (!current || isEdit || !minPeriod || !maxPeriod) return false;
+              return current.isBefore(minPeriod, "day") || current.isAfter(maxPeriod, "day");
+            }}
+          />
         </Form.Item>
         <Form.Item name="paidAt" label="Fecha de pago (opcional)">
           <DatePicker showTime />

@@ -181,7 +181,7 @@ export default function PlanPriceFormModal({
           <Select options={[{ value: "MXN", label: "MXN" }]} />
         </Form.Item>
 
-        <Form.Item name="isDefault" label="Default" valuePropName="checked">
+        <Form.Item name="isDefault" label="Predeterminado" valuePropName="checked">
           <Switch />
         </Form.Item>
       </Form>

@@ -38,11 +38,26 @@ export default function SubscriptionEditModal({
   const [saving, setSaving] = useState(false);
   const [planPrices, setPlanPrices] = useState<PlanPrice[]>([]);
 
+  const formatInterval = (interval?: string | null, count?: number | null) => {
+    const n = Number(count || 1);
+    const map: Record<string, { s: string; p: string }> = {
+      day: { s: "día", p: "días" },
+      week: { s: "semana", p: "semanas" },
+      month: { s: "mes", p: "meses" },
+      year: { s: "año", p: "años" },
+    };
+    const m = map[String(interval)] ?? { s: String(interval), p: `${interval}s` };
+    return n === 1 ? m.s : `${n} ${m.p}`;
+  };
+
   const options = useMemo(
     () =>
       planPrices.map((pp) => ({
         value: pp.id,
-        label: `#${pp.id} · Plan ${pp.planId} · ${pp.interval}/${pp.intervalCount} · $${pp.amount} ${pp.currency}`,
+        label: `#${pp.id} · Plan ${pp.planId} · ${formatInterval(
+          pp.interval,
+          pp.intervalCount
+        )} · $${pp.amount} ${pp.currency}`,
       })),
     [planPrices]
   );
@@ -124,12 +139,12 @@ export default function SubscriptionEditModal({
         <Form.Item label="Estado" name="status" rules={[{ required: true }]}>
           <Select
             options={[
-              { value: "active", label: "active" },
-              { value: "trialing", label: "trialing" },
-              { value: "past_due", label: "past_due" },
-              { value: "paused", label: "paused" },
-              { value: "canceled", label: "canceled" },
-              { value: "expired", label: "expired" },
+              { value: "active", label: "Activa" },
+              { value: "trialing", label: "En prueba" },
+              { value: "past_due", label: "Vencida" },
+              { value: "paused", label: "Pausada" },
+              { value: "canceled", label: "Cancelada" },
+              { value: "expired", label: "Expirada" },
             ]}
           />
         </Form.Item>
@@ -172,7 +187,7 @@ export default function SubscriptionEditModal({
           <Form.Item label="Pagado en" name="paidAt">
             <DatePicker showTime />
           </Form.Item>
-          <Form.Item label="Stripe Payment ID" name="stripePaymentId">
+          <Form.Item label="ID de pago Stripe" name="stripePaymentId">
             <Select
               showSearch
               allowClear
@@ -192,7 +207,10 @@ export default function SubscriptionEditModal({
           </Form.Item>
         </Space>
 
-        <Form.Item label="PlanPrice (corrección avanzada)" name="planPriceId">
+        <Form.Item
+          label="Precio del plan (corrección avanzada)"
+          name="planPriceId"
+        >
           <Select
             allowClear
             placeholder="Dejar vacío para no cambiar"

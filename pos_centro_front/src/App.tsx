@@ -12,6 +12,8 @@ import Restaurants from "./pages/Restaurants";
 import Users from "./pages/Users";
 import Plans from "./pages/Plans";
 import Subscriptions from "./pages/Suscriptions";
+import SaasInvoices from "./pages/SaasInvoices/SaasInvoices";
+import NotePrint from "./pages/Notes/NotePrint";
 
 function App() {
   return (
@@ -40,10 +42,20 @@ function App() {
           <Route path="/plans" element={<Plans />} />
           <Route path="/subscriptions" element={<Subscriptions />} />
           <Route path="/invoices" element={<Invoices />} />
+          <Route path="/saas-invoices" element={<SaasInvoices />} />
 
           {/* (opcional) Sistema */}
           {/* <Route path="/settings" element={<Settings />} /> */}
         </Route>
+
+        <Route
+          path="/notes/:id/print"
+          element={
+            <ProtectedRoute>
+              <NotePrint />
+            </ProtectedRoute>
+          }
+        />
 
         {/* comodín: redirige al login */}
         <Route path="*" element={<Navigate to="/login" replace />} />
