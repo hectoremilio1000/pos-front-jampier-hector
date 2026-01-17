@@ -1,0 +1,226 @@
+{
+  "answers_json": {
+    "q1": {
+      "question": "Cuéntame de la última vez que dos personas del equipo discutieron fuerte. ¿Qué hiciste tú para resolverlo?”",
+      "answer": "P1 respuesta 1"
+    },
+    "q2": {
+      "question": "Describe cómo manejas a alguien que constantemente genera problemas, chismes o mala actitud.”",
+      "answer": "P1 respuesta 2"
+    },
+    "q3": {
+      "question": "“Si cocina y piso están peleando por tiempos o errores, ¿qué haces para que vuelvan a trabajar como equipo?”",
+      "answer": "P1 respuesta 3"
+    },
+    "q4": {
+      "question": "¿Qué haces si ves que un conflicto está afectando el servicio en vivo?”",
+      "answer": "P1 respuesta 4"
+    },
+    "q5": {
+      "question": "“¿Cómo hablas con alguien que se pone a la defensiva cada vez que le das retroalimentación?”",
+      "answer": "P1 respuesta 5"
+    },
+    "q6": {
+      "question": "“Cuéntame de la situación más estresante que has vivido en el trabajo. ¿Qué pasó y cómo la manejaste tú personalmente?”",
+      "answer": "P1 respuesta 6"
+    },
+    "q7": {
+      "question": "“Cuando tienes muchos pendientes al mismo tiempo y todo urge, ¿cómo decides por dónde empezar?”",
+      "answer": "P1 respuesta 7"
+    },
+    "q8": {
+      "question": "“¿Qué haces cuando sientes que ya te estás saturando o poniendo de malas en medio del servicio?",
+      "answer": "P1 respuesta 8"
+    },
+    "q9": {
+      "question": "“Describe un día en el que todo salió mal (clientes, equipo, proveedores). ¿Cómo te organizaste para no perder el control?”",
+      "answer": "P1 respuesta 9"
+    },
+    "q10": {
+      "question": "“¿Qué haces para mantenerte enfocado cuando hay presión externa (dueño, clientes, fallas, etc.)?”",
+      "answer": "P1 respuesta 10"
+    },
+    "q11": {
+      "question": "“¿Qué opinas de tener estándares estrictos (tiempos, calidad, porciones)? ¿Te motivan o te frustran?”",
+      "answer": "P2 respuesta 1"
+    },
+    "q12": {
+      "question": "“Cuando tienes que repetir una tarea muchas veces (limpiar, revisar, ordenar) ¿cómo lo haces sin perder energía?”",
+      "answer": "P2 respuesta 2"
+    },
+    "q13": {
+      "question": "“¿Qué haces si un día estás cansado o de malas pero tienes que dar servicio de excelencia?”",
+      "answer": "P2 respuesta 3"
+    },
+    "q14": {
+      "question": "“¿Qué prefieres: libertad total o reglas claras? ¿Por qué?”",
+      "answer": "P2 respuesta 4"
+    },
+    "q15": {
+      "question": "“¿Qué harías si un compañero se está ‘haciendo menso’ y no trabaja al ritmo?”",
+      "answer": "P2 respuesta 5"
+    },
+    "q16": {
+      "question": "“¿Cómo reaccionas cuando te cambian el plan de último minuto?”",
+      "answer": "P2 respuesta 6"
+    },
+    "q17": {
+      "question": "“¿Qué haces cuando un superior te corrige enfrente de otros?”",
+      "answer": "P2 respuesta 7"
+    },
+    "q18": {
+      "question": "“¿Cómo describirías tu estilo de comunicación con clientes?”",
+      "answer": "P2 respuesta 8"
+    },
+    "q19": {
+      "question": "“¿Qué haces cuando un cliente te trata con poca educación?”",
+      "answer": "P2 respuesta 9"
+    },
+    "q20": {
+      "question": "“¿Cómo decides cuándo insistir en una venta y cuándo no?”",
+      "answer": "P2 respuesta 10"
+    },
+    "q21": {
+      "question": "“¿Qué tan cómodo te sientes recomendando productos más caros? ¿Por qué?”",
+      "answer": "P3 respuesta 1"
+    },
+    "q22": {
+      "question": "“¿Qué haces si cometes un error con una cuenta?”",
+      "answer": "P3 respuesta 2"
+    },
+    "q23": {
+      "question": "“¿Qué haces si un cliente dice que no pidió algo que aparece en la cuenta?”",
+      "answer": "P3 respuesta 3"
+    },
+    "q24": {
+      "question": "“¿Cómo te organizas mentalmente para atender 4–6 mesas al mismo tiempo?”",
+      "answer": "P3 respuesta 4"
+    },
+    "q25": {
+      "question": "“¿Te consideras rápido aprendiendo? Dame un ejemplo.”",
+      "answer": "P3 respuesta 5"
+    },
+    "q26": {
+      "question": "“¿Qué haces cuando no entiendes una instrucción?”",
+      "answer": "P3 respuesta 6"
+    },
+    "q27": {
+      "question": "“¿Cómo te gusta recibir feedback?”",
+      "answer": "P3 respuesta 7"
+    },
+    "q28": {
+      "question": "“¿Qué te molesta más en un equipo de trabajo?”",
+      "answer": "P3 respuesta 8"
+    },
+    "q29": {
+      "question": "“¿Qué valoras más: velocidad o perfección?”",
+      "answer": "P3 respuesta 9"
+    },
+    "q30": {
+      "question": "“¿Qué haces si un compañero nuevo comete errores que te afectan?”",
+      "answer": "P3 respuesta 10"
+    },
+    "q31": {
+      "question": "“¿Qué tan importante es para ti la puntualidad?”",
+      "answer": "P4 respuesta 1"
+    },
+    "q32": {
+      "question": "“¿Qué haces si llegas y ves que nadie ha montado tu estación?”",
+      "answer": "P4 respuesta 2"
+    },
+    "q33": {
+      "question": "“¿Qué te hace sentir orgulloso en un trabajo?”",
+      "answer": "P4 respuesta 3"
+    },
+    "q34": {
+      "question": "“¿Qué te haría renunciar a un trabajo?”",
+      "answer": "P4 respuesta 4"
+    },
+    "q35": {
+      "question": "“¿Cómo manejas el rechazo (cliente dice no)?”",
+      "answer": "P4 respuesta 5"
+    },
+    "q36": {
+      "question": "“¿Qué haces si estás en desacuerdo con una regla?”",
+      "answer": "P4 respuesta 6"
+    },
+    "q37": {
+      "question": "“¿Qué tan importante es para ti seguir procesos?”",
+      "answer": "P4 respuesta 7"
+    },
+    "q38": {
+      "question": "“¿Qué opinas de trabajar fines de semana y noches?”",
+      "answer": "P4 respuesta 8"
+    },
+    "q39": {
+      "question": "“¿Qué haces para mantener buena actitud cuando estás cansado?”",
+      "answer": "P4 respuesta 9"
+    },
+    "q40": {
+      "question": "“¿Qué haces si ves a alguien robando?”",
+      "answer": "P4 respuesta 10"
+    },
+    "q41": {
+      "question": "“¿Cómo reaccionas cuando te dan una tarea que no te gusta?”",
+      "answer": "P5 respuesta 1"
+    },
+    "q42": {
+      "question": "“¿Qué tan competitivo eres?”",
+      "answer": "P5 respuesta 2"
+    },
+    "q43": {
+      "question": "“¿Cómo te adaptas a cambios de menú?”",
+      "answer": "P5 respuesta 3"
+    },
+    "q44": {
+      "question": "“¿Qué haces si un cliente pide algo fuera de menú?”",
+      "answer": "P5 respuesta 4"
+    },
+    "q45": {
+      "question": "“¿Cómo manejas propinas y justicia entre equipo?”",
+      "answer": "P5 respuesta 5"
+    },
+    "q46": {
+      "question": "“¿Qué haces si alguien no comparte propinas correctamente?”",
+      "answer": "P5 respuesta 6"
+    },
+    "q47": {
+      "question": "“¿Qué haces para mantenerte en control cuando hay caos?”",
+      "answer": "P5 respuesta 7"
+    },
+    "q48": {
+      "question": "“¿Cómo manejas tu estrés fuera del trabajo?”",
+      "answer": "P5 respuesta 8"
+    },
+    "q49": {
+      "question": "“¿Qué haces si un cliente te graba o te insulta?”",
+      "answer": "P5 respuesta 9"
+    },
+    "q50": {
+      "question": "“¿Qué haces cuando el jefe te pide algo urgente?”",
+      "answer": "P5 respuesta 10"
+    },
+    "q51": {
+      "question": "“¿Qué haces cuando hay ruido y presión?”",
+      "answer": "P6 respuesta 1"
+    },
+    "q52": {
+      "question": "“¿Qué harías si te ofrecen un atajo (no seguir proceso)?”",
+      "answer": "P6 respuesta 2"
+    }
+  },
+  "ai_report_json": {
+    "score": 8,
+    "summary": "El candidato demuestra habilidades sólidas en la resolución de conflictos y manejo del estrés, lo que es crucial en un entorno de restaurante. Sus respuestas indican una buena capacidad para trabajar en equipo y mantener la calma bajo presión.",
+    "strengths": [
+      "Habilidad para resolver conflictos",
+      "Capacidad de trabajar bajo presión",
+      "Buena comunicación con el equipo"
+    ],
+    "risks": [
+      "Puede necesitar mejorar en la gestión de tareas repetitivas",
+      "Posible dificultad para adaptarse a cambios inesperados"
+    ],
+    "recommendation": "Se recomienda avanzar a la siguiente etapa del proceso de selección, ya que el candidato muestra un perfil adecuado para el trabajo en un restaurante."
+  }
+}

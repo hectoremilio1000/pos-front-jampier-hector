@@ -1,0 +1,169 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e4]:
+    - complementary [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]: Impulso Admin
+        - menu [ref=e8]:
+          - menuitem "database Traspasos" [ref=e9] [cursor=pointer]:
+            - img "database" [ref=e10]:
+              - img [ref=e11]
+            - link "Traspasos" [ref=e14]:
+              - /url: /admin/traspasos
+          - menuitem "read Blog" [ref=e15] [cursor=pointer]:
+            - img "read" [ref=e16]:
+              - img [ref=e17]
+            - link "Blog" [ref=e20]:
+              - /url: /admin/blog
+          - menuitem "idcard CVs" [ref=e21] [cursor=pointer]:
+            - img "idcard" [ref=e22]:
+              - img [ref=e23]
+            - link "CVs" [ref=e26]:
+              - /url: /admin/candidates
+          - menuitem "shop Restaurantes" [ref=e27] [cursor=pointer]:
+            - img "shop" [ref=e28]:
+              - img [ref=e29]
+            - link "Restaurantes" [ref=e32]:
+              - /url: /admin/restaurantes
+    - generic [ref=e33]:
+      - banner [ref=e34]
+      - main [ref=e35]:
+        - generic [ref=e36]:
+          - heading "Inventario – Cantina La Llorona" [level=3] [ref=e37]
+          - generic [ref=e38]:
+            - tablist [ref=e39]:
+              - generic [ref=e41]:
+                - tab "Insumos" [ref=e43] [cursor=pointer]
+                - tab "Presentaciones" [ref=e45] [cursor=pointer]
+                - tab "Compras" [selected] [ref=e47] [cursor=pointer]
+                - tab "Almacenes" [ref=e49] [cursor=pointer]
+                - tab "Proveedores" [ref=e51] [cursor=pointer]
+                - tab "Conteos físicos" [ref=e53] [cursor=pointer]
+                - tab "Diferencias" [ref=e55] [cursor=pointer]
+                - tab "BOM" [ref=e57] [cursor=pointer]
+            - generic:
+              - generic:
+                - tabpanel "Compras"
+          - generic [ref=e58]:
+            - button "Nuevo surtido" [ref=e61] [cursor=pointer]:
+              - generic [ref=e62]: Nuevo surtido
+            - generic [ref=e63]:
+              - tablist [ref=e64]:
+                - generic [ref=e66]:
+                  - tab "Órdenes a proveedor" [ref=e68] [cursor=pointer]
+                  - tab "Viajes de compra/comisariato" [selected] [ref=e70] [cursor=pointer]
+              - generic:
+                - generic:
+                  - tabpanel "Viajes de compra/comisariato"
+            - generic [ref=e71]:
+              - generic [ref=e72]:
+                - generic [ref=e74]:
+                  - generic [ref=e75]: RUN-2026-01-08-12 — Run comisariato 1767935046191
+                  - generic [ref=e77]:
+                    - generic [ref=e79]: draft
+                    - button "Volver" [ref=e81] [cursor=pointer]:
+                      - generic [ref=e82]: Volver
+                    - button "Agregar lista" [ref=e84] [cursor=pointer]:
+                      - generic [ref=e85]: Agregar lista
+                    - button "Cerrar viaje" [ref=e87] [cursor=pointer]:
+                      - generic [ref=e88]: Cerrar viaje
+                - generic [ref=e92]: "Fecha: 2026-01-08 23:04"
+              - table [ref=e99]:
+                - rowgroup [ref=e110]:
+                  - row "# Status Origen Proveedor Almacén Fecha de entrega Recibido Referencia Acciones" [ref=e111]:
+                    - columnheader "#" [ref=e112]
+                    - columnheader "Status" [ref=e113]
+                    - columnheader "Origen" [ref=e114]
+                    - columnheader "Proveedor" [ref=e115]
+                    - columnheader "Almacén" [ref=e116]
+                    - columnheader "Fecha de entrega" [ref=e117]
+                    - columnheader "Recibido" [ref=e118]
+                    - columnheader "Referencia" [ref=e119]
+                    - columnheader "Acciones" [ref=e120]
+                - rowgroup [ref=e121]:
+                  - row "No hay datos No hay datos" [ref=e122]:
+                    - cell "No hay datos No hay datos" [ref=e123]:
+                      - generic [ref=e124]:
+                        - img "No hay datos" [ref=e126]
+                        - generic [ref=e132]: No hay datos
+              - heading "Pedidos al almacén" [level=5] [ref=e133]
+              - table [ref=e140]:
+                - rowgroup [ref=e149]:
+                  - row "# Status Área Almacén Solicitado Notas Acciones" [ref=e150]:
+                    - columnheader "#" [ref=e151]
+                    - columnheader "Status" [ref=e152]
+                    - columnheader "Área" [ref=e153]
+                    - columnheader "Almacén" [ref=e154]
+                    - columnheader "Solicitado" [ref=e155]
+                    - columnheader "Notas" [ref=e156]
+                    - columnheader "Acciones" [ref=e157]
+                - rowgroup [ref=e158]:
+                  - row "No hay datos No hay datos" [ref=e159]:
+                    - cell "No hay datos No hay datos" [ref=e160]:
+                      - generic [ref=e161]:
+                        - img "No hay datos" [ref=e163]
+                        - generic [ref=e169]: No hay datos
+  - generic:
+    - generic: "* * *"
+  - dialog [ref=e171]:
+    - generic [ref=e173]:
+      - button "Cerrar" [ref=e174] [cursor=pointer]:
+        - img "close" [ref=e175]:
+          - img [ref=e176]
+      - generic [ref=e178]: Nuevo pedido al almacén
+    - generic [ref=e179]:
+      - generic [ref=e180]:
+        - generic [ref=e182]:
+          - generic "Área solicitante" [ref=e184]: "* Área solicitante"
+          - generic [ref=e188] [cursor=pointer]:
+            - combobox "* Área solicitante" [expanded] [active] [ref=e192]:
+              - listbox:
+                - option "Cocina"
+                - option "Barra"
+            - generic:
+              - img:
+                - img
+        - generic [ref=e195]:
+          - generic "Almacén destino" [ref=e197]: "* Almacén destino"
+          - generic [ref=e201] [cursor=pointer]:
+            - generic [ref=e203]:
+              - combobox "* Almacén destino" [ref=e205]
+              - generic "General" [ref=e206]
+            - generic:
+              - img:
+                - img
+        - generic [ref=e208]:
+          - generic "Fecha/Hora solicitada" [ref=e210]: "* Fecha/Hora solicitada"
+          - generic [ref=e215]:
+            - textbox "* Fecha/Hora solicitada" [ref=e216]:
+              - /placeholder: Seleccionar fecha
+              - text: 2026-01-08 23:04:08
+            - generic:
+              - img "calendar":
+                - img
+            - button "close-circle" [ref=e217] [cursor=pointer]:
+              - img "close-circle" [ref=e218]:
+                - img [ref=e219]
+        - generic [ref=e222]:
+          - generic "Notas" [ref=e224]
+          - textbox [ref=e228]
+      - generic [ref=e229]: "* Siguiente paso: agregar líneas (presentación + cantidad) y luego registrar la salida."
+      - generic [ref=e230]:
+        - button "Cancelar" [ref=e231] [cursor=pointer]:
+          - generic [ref=e232]: Cancelar
+        - button "Guardar" [ref=e233] [cursor=pointer]:
+          - generic [ref=e234]: Guardar
+        - button "Guardar y agregar productos" [ref=e235] [cursor=pointer]:
+          - generic [ref=e236]: Guardar y agregar productos
+  - generic [ref=e242]:
+    - generic "Cocina" [ref=e243] [cursor=pointer]:
+      - generic [ref=e244]: Cocina
+    - generic "Barra" [ref=e245] [cursor=pointer]:
+      - generic [ref=e246]: Barra
+    - generic "Piso" [ref=e247] [cursor=pointer]:
+      - generic [ref=e248]: Piso
+    - generic "Otro" [ref=e249] [cursor=pointer]:
+      - generic [ref=e250]: Otro
+```
