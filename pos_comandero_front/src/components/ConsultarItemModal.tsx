@@ -9,7 +9,18 @@ const { Text } = Typography;
 
 type Grupo = { id: number; name: string };
 type AreaImpresion = { id: number; restaurantId: number; name: string };
-
+interface Area {
+  id: number | null;
+  restaurantId: number;
+  name: string;
+  sortOrder: number;
+}
+interface Service {
+  id: number | null;
+  restaurantId: number;
+  name: string;
+  sortOrder: number;
+}
 type Producto = {
   id: number;
   name: string;
@@ -55,12 +66,27 @@ type OrderItem = {
   createdAt?: string;
 };
 
+type OrderSummary = {
+  shiftId: number | null;
+  id: number;
+  tableName: string;
+  persons: number;
+  area_id: number | null;
+  service_id: number | null;
+  area: Area | null;
+  service: Service | null;
+  items: OrderItem[];
+  restaurant?: { localBaseUrl?: string | null; id?: number } | null;
+  restaurantId?: number | null;
+  status?: string | null;
+};
+
 type Props = {
   visible: boolean;
   onClose: () => void;
   mesa: number | string;
   detalle_cheque: OrderItem[];
-  orderCurrent?: any[] | null;
+  orderCurrent?: OrderSummary | null;
 };
 
 type Row = {
@@ -110,10 +136,7 @@ const ConsultarItemModal: React.FC<Props> = ({
   const [loading, setLoading] = useState(false);
   const [qrVisible, setQrVisible] = useState(false);
 
-  const order = useMemo(() => {
-    if (Array.isArray(orderCurrent)) return orderCurrent[0] ?? null;
-    return orderCurrent ?? null;
-  }, [orderCurrent]);
+  const order = orderCurrent ?? null;
 
   const canViewQr = String(order?.status ?? "").toLowerCase() === "printed";
   const restaurantId = order?.restaurantId;
@@ -138,7 +161,7 @@ const ConsultarItemModal: React.FC<Props> = ({
   const totals = useMemo(() => {
     const sumTotal = items.reduce(
       (acc, it) => acc + (Number(it.total) || 0),
-      0
+      0,
     );
 
     const sumBase = items.reduce((acc, it) => {
@@ -181,7 +204,7 @@ const ConsultarItemModal: React.FC<Props> = ({
           (x) =>
             getSafeId(x) !== safeId &&
             !!x.isModifier &&
-            (x.compositeProductId ?? null) === compositeId
+            (x.compositeProductId ?? null) === compositeId,
         );
 
         consumed.add(safeId);
@@ -314,8 +337,8 @@ const ConsultarItemModal: React.FC<Props> = ({
               canFire
                 ? "Enviar a FIRE"
                 : course <= 1
-                ? "FIRE solo aplica a tiempos > 1"
-                : "Solo disponible cuando el estado es 'sent'"
+                  ? "FIRE solo aplica a tiempos > 1"
+                  : "Solo disponible cuando el estado es 'sent'"
             }
           >
             <Button
@@ -348,8 +371,8 @@ const ConsultarItemModal: React.FC<Props> = ({
         prev.map((it) =>
           it.id && row.allItemIds.includes(it.id)
             ? { ...it, status: "fire" }
-            : it
-        )
+            : it,
+        ),
       );
       message.success("Producto enviado a FIRE");
     } catch (err: any) {

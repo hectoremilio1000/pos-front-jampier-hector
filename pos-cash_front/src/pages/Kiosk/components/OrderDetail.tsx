@@ -162,7 +162,7 @@ export default function OrderDetail() {
   function openGeneralDiscountModal() {
     if (!selectedOrder) return;
     setGeneralDiscountType(
-      (selectedOrder.discountType as DiscountType) || "percent"
+      (selectedOrder.discountType as DiscountType) || "percent",
     );
     setGeneralDiscountValue(Number(selectedOrder.discountValue ?? 0));
     setGeneralDiscountReason(selectedOrder.discountReason ?? "");
@@ -218,7 +218,7 @@ export default function OrderDetail() {
           discountAmount,
           discountReason: generalDiscountReason?.trim() || null,
         },
-        { validateStatus: () => true }
+        { validateStatus: () => true },
       );
 
       if (!res || res.status < 200 || res.status >= 300) {
@@ -276,7 +276,7 @@ export default function OrderDetail() {
           discountAmount,
           discountReason: itemDiscountReason?.trim() || null,
         },
-        { validateStatus: () => true }
+        { validateStatus: () => true },
       );
 
       if (!res || res.status < 200 || res.status >= 300) {
@@ -393,12 +393,12 @@ export default function OrderDetail() {
       const approval = await requestApprovalToken(
         "order.delete",
         deleteManagerPassword,
-        selectedOrder?.id ?? 0
+        selectedOrder?.id ?? 0,
       );
       await doDeleteOrderOnApi(approval);
       message.success("Orden borrada");
       setOrders((prev: any[]) =>
-        prev.filter((o) => o.id !== (selectedOrder?.id ?? -1))
+        prev.filter((o) => o.id !== (selectedOrder?.id ?? -1)),
       );
       setSelectedOrderId(null);
       await fetchKPIs();
@@ -502,7 +502,7 @@ export default function OrderDetail() {
           (m) =>
             m.id !== it.id &&
             !!m.isModifier &&
-            (m.compositeProductId ?? null) === compId
+            (m.compositeProductId ?? null) === compId,
         );
 
         consumed.add(it.id);
@@ -546,7 +546,7 @@ export default function OrderDetail() {
     const dt = new Date(d);
     const pad = (n: number) => String(n).padStart(2, "0");
     return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(
-      dt.getDate()
+      dt.getDate(),
     )} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
   }
 
@@ -625,7 +625,7 @@ export default function OrderDetail() {
           <div class="qty">${r.qty}</div>
           <div class="desc">${escapeHtml(r.desc)}</div>
           <div class="amt">${money(r.amount)}</div>
-        </div>`
+        </div>`,
         )
         .join("")}
 
@@ -731,17 +731,17 @@ export default function OrderDetail() {
   }) {
     if (selectedOrder.restaurant.localBaseUrl) {
       const payload = buildNPrintJobPayload(opts);
-
-      const res = await fetch(
-        `${selectedOrder.restaurant.localBaseUrl}/nprint/printers/print`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        }
+      const cleanBase = selectedOrder.restaurant.localBaseUrl.replace(
+        /\/$/,
+        "",
       );
+      const res = await fetch(`${cleanBase}/nprint/printers/print`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
 
       if (!res.ok) {
         let detail = "";
@@ -753,7 +753,7 @@ export default function OrderDetail() {
         throw new Error(
           `Error al enviar a impresora (${res.status})${
             detail ? `: ${detail}` : ""
-          }`
+          }`,
         );
       }
 
@@ -765,7 +765,7 @@ export default function OrderDetail() {
       }
     } else {
       message.warning(
-        "No se pudo imprimir porque no existe tu servidor local de impresion"
+        "No se pudo imprimir porque no existe tu servidor local de impresion",
       );
     }
   }
@@ -856,7 +856,7 @@ export default function OrderDetail() {
   async function requestApprovalToken(
     action: string,
     password: string,
-    targetId: number
+    targetId: number,
   ) {
     const rid = Number(restaurantId ?? 0);
     const sid = stationId != null ? Number(stationId) : null;
@@ -871,7 +871,7 @@ export default function OrderDetail() {
         action,
         targetId,
       },
-      { validateStatus: () => true }
+      { validateStatus: () => true },
     );
     if (!res || res.status < 200 || res.status >= 300) {
       const err = (res?.data && res.data.error) || "Aprobación rechazada";
@@ -887,7 +887,7 @@ export default function OrderDetail() {
   const printCount = Number(
     (selectedOrder as any)?.printCount ??
       (selectedOrder as any)?.print_count ??
-      0
+      0,
   );
 
   const canPrint =
@@ -928,7 +928,7 @@ export default function OrderDetail() {
         data: { refunds: [], reason: reason || "cancel_by_manager" },
         headers: { "X-Approval": `Bearer ${approvalToken}` },
         validateStatus: () => true,
-      }
+      },
     );
     if (!res || res.status < 200 || res.status >= 300) {
       const err = (res?.data && res.data.error) || "Cancelación falló";
@@ -947,13 +947,13 @@ export default function OrderDetail() {
       const approval = await requestApprovalToken(
         "order.cancel",
         managerPassword,
-        selectedOrder?.id ?? 0
+        selectedOrder?.id ?? 0,
       );
       const result = await doCancelOnOrderApi(approval);
 
       message.success(`Orden cancelada (${result?.status ?? "OK"})`);
       setOrders((prev: any[]) =>
-        prev.filter((o) => o.id !== (selectedOrder?.id ?? -1))
+        prev.filter((o) => o.id !== (selectedOrder?.id ?? -1)),
       );
       setSelectedOrderId(null);
       await fetchKPIs();
@@ -975,7 +975,7 @@ export default function OrderDetail() {
     const res = await apiOrderKiosk.post(
       `/orders/${selectedOrder?.id}/firstPrint`,
       {},
-      { validateStatus: () => true }
+      { validateStatus: () => true },
     );
     if (!res || res.status < 200 || res.status >= 300) {
       const err =
@@ -994,7 +994,7 @@ export default function OrderDetail() {
       {
         headers: { "X-Approval": `Bearer ${approvalToken}` },
         validateStatus: () => true,
-      }
+      },
     );
     if (!res || res.status < 200 || res.status >= 300) {
       const err =
@@ -1079,7 +1079,7 @@ export default function OrderDetail() {
       const approval = await requestApprovalToken(
         "order.print",
         printManagerPassword,
-        selectedOrder?.id ?? 0
+        selectedOrder?.id ?? 0,
       );
       const r = await doPrintOnOrderApi(approval);
       message.success(`Folio asignado: ${r.folioSeries}-${r.folioNumber}`);
@@ -1123,7 +1123,7 @@ export default function OrderDetail() {
       {
         headers: { "X-Approval": `Bearer ${approvalToken}` },
         validateStatus: () => true,
-      }
+      },
     );
     if (!res || res.status < 200 || res.status >= 300) {
       const err = (res?.data && res.data.error) || "No se pudo reabrir";
@@ -1142,7 +1142,7 @@ export default function OrderDetail() {
       const approval = await requestApprovalToken(
         "order.reopen",
         reopenManagerPassword,
-        selectedOrder?.id ?? 0
+        selectedOrder?.id ?? 0,
       );
       await doReopenOnOrderApi(approval);
       message.success("Orden reabierta");
@@ -1190,7 +1190,7 @@ export default function OrderDetail() {
       {
         headers: { "X-Approval": `Bearer ${approvalToken}` },
         validateStatus: () => true,
-      }
+      },
     );
     if (!res || res.status < 200 || res.status >= 300) {
       const err =
@@ -1211,7 +1211,7 @@ export default function OrderDetail() {
       const approval = await requestApprovalToken(
         "order.items.void",
         voidManagerPassword,
-        selectedOrder?.id ?? 0
+        selectedOrder?.id ?? 0,
       );
       await doVoidItemsOnOrderApi(approval);
       message.success("Productos eliminados");
@@ -1362,7 +1362,7 @@ export default function OrderDetail() {
                     try {
                       await getInvoiceByOrder(selectedOrder.id);
                       message.info(
-                        "Esta orden ya tiene una factura local registrada."
+                        "Esta orden ya tiene una factura local registrada.",
                       );
                     } catch {
                       setInvoiceModalOpen(true);
@@ -1524,7 +1524,7 @@ export default function OrderDetail() {
                   message.info("Ya existía una factura para esta orden.");
                 } else if (res.data?.facturapiError) {
                   message.warning(
-                    `Factura local creada, pero NO timbró: ${res.data.facturapiError}`
+                    `Factura local creada, pero NO timbró: ${res.data.facturapiError}`,
                   );
                 } else {
                   message.success("Factura creada y timbrada");
@@ -1535,7 +1535,7 @@ export default function OrderDetail() {
               } catch (e: any) {
                 console.log(e);
                 message.error(
-                  e?.response?.data?.error || "No se pudo generar la factura"
+                  e?.response?.data?.error || "No se pudo generar la factura",
                 );
               } finally {
                 setInvoiceSubmitting(false);
@@ -1624,7 +1624,7 @@ export default function OrderDetail() {
                   <b>
                     {money(
                       Number(itemDiscountTarget.qty ?? 0) *
-                        Number(itemDiscountTarget.unitPrice ?? 0)
+                        Number(itemDiscountTarget.unitPrice ?? 0),
                     )}
                   </b>
                 </div>
@@ -1790,7 +1790,7 @@ export default function OrderDetail() {
                           setVoidItemIds((prev) =>
                             on
                               ? [...prev, it.id]
-                              : prev.filter((x) => x !== it.id)
+                              : prev.filter((x) => x !== it.id),
                           );
                         }}
                         disabled={!canVoidItems}

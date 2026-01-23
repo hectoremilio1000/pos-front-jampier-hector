@@ -97,6 +97,7 @@ export default function AreaModal({
     };
 
     if (open) {
+      console.log(open);
       fetchPrinters();
     }
   }, [open]);

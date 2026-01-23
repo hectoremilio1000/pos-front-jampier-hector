@@ -1,16 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Card, Input, Modal, Pagination, Tag, message } from "antd";
-import axios from "axios";
-import { FaPrint, FaTable } from "react-icons/fa";
+import { Button, Card, Input, Modal, Pagination, message } from "antd";
+import { FaPrint, FaQrcode, FaTable } from "react-icons/fa";
 import { QRCodeCanvas } from "qrcode.react";
 import CapturaComandaModal from "@/components/CapturaComandaModal";
 
-import {
-  MdAdsClick,
-  MdPointOfSale,
-  MdSearch,
-  MdTableBar,
-} from "react-icons/md";
+import { MdAdsClick, MdPointOfSale, MdTableBar } from "react-icons/md";
 import { GiForkKnifeSpoon } from "react-icons/gi";
 import RegistroChequeModal from "@/components/RegistroChequeModal";
 import apiOrder from "@/components/apis/apiOrder";
@@ -211,7 +205,22 @@ const ControlComandero: React.FC = () => {
   const { isJwtValid, shiftId, refreshShift } = useKioskAuth(); // 👈 del provider
   const [ready, setReady] = useState(false);
   const initRef = useRef(false);
-  const [orderCurrent, setOrderCurrent] = useState(null);
+  type OrderSummary = {
+    shiftId: number | null;
+    id: number;
+    tableName: string;
+    persons: number;
+    area_id: number | null;
+    service_id: number | null;
+    area: Area | null;
+    service: Service | null;
+    items: OrderItem[];
+    restaurant?: { localBaseUrl?: string | null } | null;
+    restaurantId?: number | null;
+    status?: string | null;
+  };
+
+  const [orderCurrent, setOrderCurrent] = useState<OrderSummary | null>(null);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [orderIdCurrent, setOrderIdCurrent] = useState<number | null>(null);
@@ -219,24 +228,10 @@ const ControlComandero: React.FC = () => {
   const [detalle_cheque_consulta, setDetalle_cheque_consulta] = useState<
     OrderItem[]
   >([]);
-  const [reopenApprovalVisible, setReopenApprovalVisible] = useState(false);
-  const [reopenSubmitting, setReopenSubmitting] = useState(false);
-  const [reopenManagerPassword, setReopenManagerPassword] = useState("");
-  const [cheques, setCheques] = useState<
-    {
-      shiftId: number | null;
-      id: number;
-      tableName: string;
-      persons: number;
-      area_id: number | null;
-      service_id: number | null;
-      area: Area | null;
-      service: Service | null;
-      items: OrderItem[];
-      restaurant?: { localBaseUrl?: string | null } | null;
-      status?: string | null;
-    }[]
-  >([]);
+  const [settingsImpresion, setSettingsImpresion] = useState<
+    "qr" | "impresion" | "hibrido" | null
+  >(null);
+  const [cheques, setCheques] = useState<OrderSummary[]>([]);
 
   const rid = getRestaurantIdFromJwt();
   const apiUrlAuth = import.meta.env.VITE_API_URL_AUTH;
@@ -244,7 +239,7 @@ const ControlComandero: React.FC = () => {
   // ---- NUEVO: helper para imprimir por área de impresión ----
   type NPrintJobPayload = {
     printerName: string;
-    templateId: string;
+    templateId: number;
     data: {
       orderId: number | null;
       tableName: string;
@@ -277,10 +272,10 @@ const ControlComandero: React.FC = () => {
 
   // Área / Servicio “pegajosos”
   const [selectedAreaId, setSelectedAreaId] = useState<number | null>(
-    getNum("kiosk_selected_area_id", null)
+    getNum("kiosk_selected_area_id", null),
   );
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(
-    getNum("kiosk_selected_service_id", null)
+    getNum("kiosk_selected_service_id", null),
   );
 
   // Filtro por nombre (para grid)
@@ -382,7 +377,7 @@ const ControlComandero: React.FC = () => {
     areaSeleccionadaNombre === "Todas"
       ? cheques
       : cheques.filter(
-          (c) => (c.area?.name ?? "Sin área") === areaSeleccionadaNombre
+          (c) => (c.area?.name ?? "Sin área") === areaSeleccionadaNombre,
         );
 
   const fetchCheques = async () => {
@@ -405,6 +400,18 @@ const ControlComandero: React.FC = () => {
     confirmPrint: true,
     receiptDelivery: "email",
   });
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      if (!cancelled) {
+        setSettingsImpresion("hibrido");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
   const [receiptEmail, setReceiptEmail] = useState("");
@@ -412,7 +419,7 @@ const ControlComandero: React.FC = () => {
   const fetchAreasImpresions = async () => {
     try {
       const res = await apiOrder.get(
-        `/commander/areasImpresion?restaurantId=${rid}`
+        `/commander/areasImpresion?restaurantId=${rid}`,
       );
       setAreasImpresions(res.data);
     } catch (e) {
@@ -441,13 +448,73 @@ const ControlComandero: React.FC = () => {
     }
   };
 
+  const groupItemsByArea = (items: OrderItem[]) => {
+    const areaMap = new Map<number, OrderItem[]>();
+    items.forEach((item) => {
+      const areaId =
+        (item as any).route_area_id ||
+        item.product?.areaImpresion?.id ||
+        item.product?.printArea;
+      if (!areaId) return;
+      if (!areaMap.has(areaId)) areaMap.set(areaId, []);
+      areaMap.get(areaId)!.push(item);
+    });
+    return areaMap;
+  };
+
+  const buildLocalPrintPayloads = ({
+    items,
+    orderId,
+    tableName,
+    templateId = 4,
+  }: {
+    items: OrderItem[];
+    orderId: number;
+    tableName: string;
+    templateId?: number;
+  }): NPrintJobPayload[] => {
+    const payloads: NPrintJobPayload[] = [];
+    groupItemsByArea(items).forEach((itemsArea) => {
+      const areaId =
+        itemsArea[0]?.route_area_id ||
+        itemsArea[0]?.product?.areaImpresion?.id ||
+        itemsArea[0]?.product?.printArea;
+      const areaCfg =
+        areaId != null
+          ? areasImpresions.find((a) => a.id === areaId)
+          : undefined;
+      const fallbackArea = itemsArea[0]?.product?.areaImpresion;
+      const printerName =
+        areaCfg?.printerName || fallbackArea?.printerName || undefined;
+      if (!printerName) return;
+
+      payloads.push({
+        printerName,
+        templateId,
+        data: {
+          orderId,
+          tableName,
+          areaName: areaCfg?.name ?? fallbackArea?.name ?? "",
+          items: itemsArea.map((it) => ({
+            name: it.product?.name ?? "",
+            qty: it.qty,
+            notes: it.notes,
+            course: it.course,
+          })),
+        },
+      });
+    });
+    return payloads;
+  };
+
   async function sendPrintJobToLocalPrinter(
-    payload: NPrintJobPayload[],
-    baseUrl?: string | null
+    payloads: NPrintJobPayload[],
+    baseUrl?: string | null,
   ) {
+    if (!payloads.length) return;
     if (!baseUrl) {
       message.warning(
-        "No se pudo imprimir porque no existe tu servidor local de impresion"
+        "No se pudo imprimir porque no existe tu servidor local de impresión",
       );
       return;
     }
@@ -456,47 +523,49 @@ const ControlComandero: React.FC = () => {
       const res = await fetch(`${cleanBase}/nprint/printers/print`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload), // 🔴 IMPORTANTE: objeto, NO array
+        body: JSON.stringify(payloads),
       });
-
+      const payloadResp = await res.json().catch(() => null);
       if (!res.ok) {
-        console.error("Error al imprimir", res.status);
+        const errMsg =
+          payloadResp?.message ||
+          payloadResp?.error ||
+          `Error ${res.status}: ${res.statusText}`;
+        throw new Error(errMsg);
       }
-    } catch (err) {
-      console.error("Error de red al imprimir", err);
+      return payloadResp;
+    } catch (error) {
+      console.error("Error de impresión local", error);
+      message.error("No se pudo realizar la impresión local");
+      throw error;
     }
   }
 
   const hasLocalPrinters = useMemo(
     () => areasImpresions.some((a) => !!a.printerName),
-    [areasImpresions]
+    [areasImpresions],
   );
-
-  const effectivePrintMode: PrintMode =
-    printSettings.printMode !== "qr" && !hasLocalPrinters
-      ? "qr"
-      : printSettings.printMode;
 
   const buildReceiptUrl = (orderId: number, restaurantId: number) => {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
     return `${origin}/${restaurantId}/qrscan/${orderId}`;
   };
 
-  const openReceiptModal = (orderId: number, restaurantId: number) => {
+  const openReceiptModal = (
+    orderId: number,
+    restaurantId: number,
+    mode?: ReceiptDelivery,
+  ) => {
     const url = buildReceiptUrl(orderId, restaurantId);
     setReceiptUrl(url);
     setReceiptEmail("");
+    setReceiptMode(mode ?? printSettings.receiptDelivery);
     setReceiptOpen(true);
   };
 
-  const copyReceiptUrl = async () => {
+  const openReceiptUrl = () => {
     if (!receiptUrl) return;
-    try {
-      await navigator.clipboard.writeText(receiptUrl);
-      message.success("Link copiado");
-    } catch {
-      message.error("No se pudo copiar el link");
-    }
+    window.open(receiptUrl, "_blank");
   };
 
   const sendReceiptEmail = () => {
@@ -508,7 +577,7 @@ const ControlComandero: React.FC = () => {
     }
     const subject = encodeURIComponent("Tu recibo");
     const body = encodeURIComponent(
-      `Gracias por tu visita.\n\nPuedes ver tu recibo aquí:\n${receiptUrl}`
+      `Gracias por tu visita.\n\nPuedes ver tu recibo aquí:\n${receiptUrl}`,
     );
     window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
   };
@@ -559,7 +628,7 @@ const ControlComandero: React.FC = () => {
 
       // (futuro) puedes manejar order_created / order_changed aquí
     },
-    [fetchCheques, orderIdCurrent]
+    [fetchCheques, orderIdCurrent],
   );
   useEffect(() => {
     if (!isJwtValid()) return;
@@ -741,7 +810,7 @@ const ControlComandero: React.FC = () => {
                     }
                   } else {
                     message.info(
-                      "Aún no hay turno. Intenta de nuevo en unos segundos."
+                      "Aún no hay turno. Intenta de nuevo en unos segundos.",
                     );
                   }
                 }}
@@ -757,7 +826,7 @@ const ControlComandero: React.FC = () => {
 
   const chequesPaginados = chequesFiltrados.slice(
     (paginaActual - 1) * viewPaginate,
-    paginaActual * viewPaginate
+    paginaActual * viewPaginate,
   );
   const statusOrderCurrent = String(
     (orderCurrent as any)?.status || ""
@@ -781,34 +850,86 @@ const ControlComandero: React.FC = () => {
     setModalComandaVisible(true);
   };
 
-  const handleImprimirModal = () => {
-    const status = String((orderCurrent as any)?.status || "").toLowerCase();
-    if (status === "printed") {
-      message.warning("Orden impresa. Reabre con autorización para editar.");
+  const handleImprimirModal = async () => {
+    setAccionesChequeVisible(false);
+    if (!isPrintEnabled) {
+      message.warning("El modo actual no permite imprimir.");
       return;
     }
-    setAccionesChequeVisible(false);
-    const items =
-      detalle_cheque.length > 0
-        ? detalle_cheque
-        : (orderCurrent?.items as OrderItem[] | undefined) ?? [];
-    const sendItems = detalle_cheque.length > 0;
-    requestPrintFlow(items, sendItems);
-  };
-  const handleOpenReceipt = () => {
-    const orderId = orderIdCurrent ?? (orderCurrent as any)?.id ?? null;
-    const ridForQr = (orderCurrent as any)?.restaurantId ?? rid;
-    if (!orderId || !ridForQr) {
+    const orderId = orderIdCurrent ?? orderCurrent?.id ?? null;
+    const items = orderCurrent?.items ?? [];
+    if (!orderId) {
       message.error("No hay orden seleccionada.");
       return;
     }
-    if (!canOpenReceipt) {
-      message.warning("Primero imprime la orden para generar el recibo.");
+
+    if (!items.length) {
+      message.warning("La orden no tiene productos para imprimir.");
       return;
     }
-    setAccionesChequeVisible(false);
-    openReceiptModal(orderId, Number(ridForQr));
+
+    const tableName = orderCurrent?.tableName ?? "";
+    const localBaseUrl =
+      orderCurrent?.restaurant?.localBaseUrl ??
+      cheques.find((c) => c.id === orderId)?.restaurant?.localBaseUrl ??
+      null;
+
+    if (!localBaseUrl) {
+      message.warning(
+        "No se encontró la URL local de impresión (restaurant.localBaseUrl).",
+      );
+      return;
+    }
+
+    const payloads = buildLocalPrintPayloads({ items, orderId, tableName });
+    if (!payloads.length) {
+      message.warning(
+        "No hay áreas de impresión configuradas para estos ítems.",
+      );
+      return;
+    }
+
+    try {
+      const cleanBase = localBaseUrl.replace(/\/$/, "");
+      const response = await fetch(`${cleanBase}/nprint/printers/print`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payloads),
+      });
+      const body = await response.json().catch(() => null);
+      console.log("Impresión simulada", {
+        payloads,
+        response: body ?? response,
+      });
+      message.success("Solicitud de impresión enviada (ver consola).");
+    } catch (error) {
+      console.error("No se pudo solicitar la impresión", error);
+      message.error("No se pudo solicitar la impresión.");
+    }
   };
+
+  const isPrintEnabled =
+    settingsImpresion === "hibrido" || settingsImpresion === "impresion";
+  const isQrEnabled =
+    settingsImpresion === "hibrido" || settingsImpresion === "qr";
+
+  const handleQrAction = () => {
+    setAccionesChequeVisible(false);
+    if (!isQrEnabled) {
+      message.warning("El modo actual no permite mostrar el QR.");
+      return;
+    }
+    const orderId = orderIdCurrent ?? orderCurrent?.id ?? null;
+    const restaurantId = orderCurrent?.restaurantId ?? rid;
+
+    if (!orderId || !restaurantId) {
+      message.warning("Esta orden no tiene identificación para mostrar el QR.");
+      return;
+    }
+
+    openReceiptModal(orderId, Number(restaurantId), "qr");
+  };
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleAccionesCheque = (cuenta: any, i: number) => {
     setOrderCurrent(cuenta);
@@ -817,111 +938,8 @@ const ControlComandero: React.FC = () => {
     setAccionesChequeVisible(true);
   };
 
-  const executePrintFlow = async ({
-    items,
-    sendItems,
-  }: {
-    items: OrderItem[];
-    sendItems: boolean;
-  }) => {
-    const orderId = orderIdCurrent ?? (orderCurrent as any)?.id ?? null;
-    if (!orderId) {
-      message.error("No hay orden seleccionada.");
-      return;
-    }
-    const status = String((orderCurrent as any)?.status || "").toLowerCase();
-    if (status === "printed") {
-      message.warning("Orden impresa. Reabre con autorización para editar.");
-      return;
-    }
-    if (!items.length) {
-      message.warning("No hay productos para imprimir.");
-      return;
-    }
-
-    try {
-      if (sendItems) {
-        await apiOrder.post(`/orders/${orderId}/items`, {
-          orderItems: items,
-        });
-      }
-
-      if (effectivePrintMode !== "qr") {
-        const itemsPorArea = new Map<number, OrderItem[]>();
-        items.forEach((item) => {
-          const areaId =
-            (item as any).route_area_id ||
-            (item as any).routeAreaId ||
-            item.route_area_id ||
-            item.product?.areaImpresion?.id ||
-            item.product?.printArea;
-
-          if (!areaId) return;
-          if (!itemsPorArea.has(areaId)) itemsPorArea.set(areaId, []);
-          itemsPorArea.get(areaId)!.push(item);
-        });
-
-        const chequeActual = cheques.find((c) => c.id === orderId);
-        const tableName = chequeActual?.tableName ?? "";
-        const localBaseUrl =
-          chequeActual?.restaurant?.localBaseUrl ||
-          (orderCurrent as any)?.restaurant?.localBaseUrl ||
-          null;
-        const templateId = "4";
-
-        const printPromises: Promise<void | null>[] = [];
-        itemsPorArea.forEach((itemsArea, areaId) => {
-          const areaCfg = areasImpresions.find((a) => a.id === areaId);
-          const printerName = areaCfg?.printerName || undefined;
-          if (!printerName) return;
-
-          const payload: NPrintJobPayload[] = [
-            {
-              printerName,
-              templateId,
-              data: {
-                  orderId,
-                  tableName,
-                  areaName: areaCfg?.name ?? "",
-                  items: itemsArea.map((it) => ({
-                  name: it.product?.name ?? "",
-                  qty: it.qty,
-                  notes: it.notes,
-                  course: it.course,
-                })),
-              },
-            },
-          ];
-          printPromises.push(sendPrintJobToLocalPrinter(payload, localBaseUrl));
-        });
-
-        await Promise.all(printPromises);
-      }
-
-      await markOrderAsPrinted(orderId);
-
-      if (sendItems) {
-        setDetalle_cheque([]);
-        setModalComandaVisible(false);
-        await fetchCheques();
-      }
-
-      const modeLabel =
-        effectivePrintMode === "qr" ? "Enviado sin impresora" : "Comanda impresa";
-      message.success(modeLabel);
-    } catch (error: any) {
-      console.error(error);
-      const msg =
-        error?.response?.data?.error ||
-        error?.response?.data?.message ||
-        error?.message ||
-        "Ocurrió un error al imprimir/comandar";
-      message.error(msg);
-    }
-  };
-
   const sendToProduction = async (items: OrderItem[]) => {
-    const orderId = orderIdCurrent ?? (orderCurrent as any)?.id ?? null;
+    const orderId = orderIdCurrent ?? orderCurrent?.id ?? null;
     if (!orderId) {
       message.error("No hay orden seleccionada.");
       return;
@@ -936,11 +954,30 @@ const ControlComandero: React.FC = () => {
       return;
     }
     try {
-      await apiOrder.post(`/orders/${orderId}/items`, { orderItems: items });
+      const itemsToSend = [...items];
+      await apiOrder.post(`/orders/${orderId}/items`, {
+        orderItems: itemsToSend,
+      });
+      const fetchedCheques = (await fetchCheques()) ?? cheques;
+      const chequeActual =
+        fetchedCheques.find((c: any) => c.id === orderId) ??
+        cheques.find((c) => c.id === orderId) ??
+        orderCurrent;
+      const tableName = chequeActual?.tableName ?? "";
+      const localBaseUrl =
+        chequeActual?.restaurant?.localBaseUrl ||
+        orderCurrent?.restaurant?.localBaseUrl ||
+        null;
+      const payloads = buildLocalPrintPayloads({
+        items: itemsToSend,
+        orderId,
+        tableName,
+      });
+      await sendPrintJobToLocalPrinter(payloads, localBaseUrl);
       setDetalle_cheque([]);
       setModalComandaVisible(false);
       await fetchCheques();
-      message.success("Enviado a produccion");
+      message.success("Enviado a producción y solicitado a impresora local");
     } catch (error: any) {
       console.error(error);
       const msg =
@@ -949,121 +986,6 @@ const ControlComandero: React.FC = () => {
         error?.message ||
         "No se pudo enviar a produccion";
       message.error(msg);
-    }
-  };
-
-  const markOrderAsPrinted = async (orderId: number) => {
-    const status = String((orderCurrent as any)?.status || "").toLowerCase();
-    const rawPrintCount =
-      (orderCurrent as any)?.printCount ?? (orderCurrent as any)?.print_count;
-    const printCount = Number(rawPrintCount || 0);
-
-    if (status === "printed" || printCount > 0) return;
-
-    const res = await apiOrder.post(
-      `/orders/${orderId}/firstPrint`,
-      {},
-      { validateStatus: () => true }
-    );
-    if (res && res.status >= 200 && res.status < 300) {
-      const updated = await fetchCheques();
-      if (updated) {
-        const found = updated.find((o: any) => Number(o.id) === Number(orderId));
-        if (found) setOrderCurrent(found);
-      }
-      return;
-    }
-
-    const err =
-      (res?.data && (res.data.error || res.data.message)) ||
-      "No se pudo marcar como impresa";
-    if (err === "order_already_printed") return;
-    if (err === "status_not_allowed_to_first_print") return;
-    message.warning(err);
-  };
-
-  const requestPrintFlow = (items: OrderItem[], sendItems: boolean) => {
-    if (!items.length) {
-      message.warning("No hay productos para imprimir.");
-      return;
-    }
-    if (printSettings.confirmPrint) {
-      const ok = window.confirm(
-        "¿Seguro que deseas imprimir/comandar esta orden?"
-      );
-      if (ok) executePrintFlow({ items, sendItems });
-      return;
-    }
-    executePrintFlow({ items, sendItems });
-  };
-
-  const requestApprovalToken = async (
-    action: string,
-    password: string,
-    targetId: number
-  ) => {
-    const res = await axios.post(
-      `${apiUrlAuth}/approvals/issue-by-password`,
-      {
-        restaurantId: rid,
-        password,
-        action,
-        targetId,
-      },
-      { validateStatus: () => true }
-    );
-    if (!res || res.status < 200 || res.status >= 300) {
-      const err = (res?.data && res.data.error) || "Aprobación rechazada";
-      throw new Error(err);
-    }
-    return String(res.data.approval_token || "");
-  };
-
-  const openReopenFlow = () => {
-    setReopenManagerPassword("");
-    setReopenApprovalVisible(true);
-  };
-
-  const handleReopenApprovalConfirm = async () => {
-    const orderId = orderIdCurrent ?? (orderCurrent as any)?.id ?? null;
-    if (!orderId) {
-      message.error("No hay orden seleccionada.");
-      return;
-    }
-    if (!reopenManagerPassword) {
-      message.error("Ingresa la contraseña del administrador");
-      return;
-    }
-    setReopenSubmitting(true);
-    try {
-      const approval = await requestApprovalToken(
-        "order.reopen",
-        reopenManagerPassword,
-        orderId
-      );
-      const res = await apiOrder.post(
-        `/orders/${orderId}/reopen`,
-        {},
-        {
-          headers: { "X-Approval": `Bearer ${approval}` },
-          validateStatus: () => true,
-        }
-      );
-      if (!res || res.status < 200 || res.status >= 300) {
-        const err =
-          (res?.data && (res.data.details || res.data.error)) ||
-          "No se pudo reabrir la orden";
-        throw new Error(err);
-      }
-      message.success("Orden reabierta");
-      await fetchCheques();
-      setAccionesChequeVisible(false);
-      setReopenApprovalVisible(false);
-      setReopenManagerPassword("");
-    } catch (e: any) {
-      message.error(String(e?.message || "Error al reabrir la orden"));
-    } finally {
-      setReopenSubmitting(false);
     }
   };
 
@@ -1224,6 +1146,7 @@ const ControlComandero: React.FC = () => {
             <div className="w-full">
               <div className="w-full">
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                   <button
                     className={`flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 ${
                       isOrderPrinted
@@ -1243,44 +1166,52 @@ const ControlComandero: React.FC = () => {
                         : "bg-gray-300 text-gray-800"
                     }`}
                     onClick={() => handleImprimirModal()}
-                    disabled={isOrderPrinted}
+                    disabled={!isPrintEnabled}
+                    title={
+                      !settingsImpresion
+                        ? "Cargando modo de impresión..."
+                        : !isPrintEnabled
+                          ? "Activa sólo en modo impresión/híbrido"
+                          : undefined
+                    }
+                    style={{
+                      cursor: isPrintEnabled ? "pointer" : "not-allowed",
+                    }}
                   >
                     <FaPrint className="text-[22px]" />
                     Imprimir
                   </button>
                   <button
-                    className={`flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 ${
-                      !canOpenReceipt
-                        ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                        : "bg-gray-300 text-gray-800"
-                    }`}
-                    onClick={handleOpenReceipt}
-                    disabled={!canOpenReceipt}
+                    className="flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 bg-blue-600 text-white"
+                    onClick={() => handleQrAction()}
+                    disabled={!isQrEnabled}
+                    title={
+                      !settingsImpresion
+                        ? "Cargando modo de impresión..."
+                        : !isQrEnabled
+                          ? "Activa sólo en modo QR/híbrido"
+                          : undefined
+                    }
+                    style={{ cursor: isQrEnabled ? "pointer" : "not-allowed" }}
                   >
-                    Recibo
+                    <FaQrcode className="text-[22px]" />
+                    QR
                   </button>
-                  {isOrderPrinted ? (
-                    <button
-                      className="flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 bg-amber-500 text-white"
-                      onClick={openReopenFlow}
-                    >
-                      <MdPointOfSale className="text-[22px]" />
-                      Reabrir
-                    </button>
-                  ) : null}
                   <button
                     className="flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 bg-blue-600 text-white"
                     onClick={() => {
                       setAccionesChequeVisible(false);
-                      setDetalle_cheque_consulta(
-                        (orderCurrent?.items as OrderItem[] | undefined) ?? []
-                      );
+                      setDetalle_cheque_consulta(orderCurrent?.items ?? []);
                       setModalConsultaVisible(true);
                     }}
                   >
                     <MdAdsClick className="text-[25px]" />
                     Ver detalle
                   </button>
+                </div>
+                <div className="text-xs text-gray-500 mt-2">
+                  Modo de impresión:{" "}
+                  {settingsImpresion ? settingsImpresion : "cargando..."}
                 </div>
               </div>
             </div>
@@ -1344,32 +1275,29 @@ const ControlComandero: React.FC = () => {
           onCancel={() => setReceiptOpen(false)}
           footer={null}
         >
-          {!receiptUrl ? (
-            <div className="text-sm text-gray-500">
-              No hay recibo disponible para esta orden.
+          {receiptMode === "qr" && receiptUrl ? (
+            <div className="flex flex-col items-center gap-3">
+              <QRCodeCanvas value={receiptUrl} size={220} includeMargin />
+              <div className="break-all text-sm">{receiptUrl}</div>
+              <Button onClick={openReceiptUrl}>Abrir link</Button>
             </div>
-          ) : (
-            <div className="flex flex-col gap-4">
-              {shouldShowQrReceipt ? (
-                <div className="flex flex-col items-center gap-3">
-                  <QRCodeCanvas value={receiptUrl} size={220} includeMargin />
-                  <div className="break-all text-sm">{receiptUrl}</div>
-                  <Button onClick={copyReceiptUrl}>Copiar link</Button>
-                </div>
-              ) : null}
-              <div className="flex flex-col gap-3">
-                <Input
-                  placeholder="correo@cliente.com"
-                  value={receiptEmail}
-                  onChange={(e) => setReceiptEmail(e.target.value)}
-                />
-                <Button type="primary" onClick={sendReceiptEmail}>
-                  Enviar por email
-                </Button>
-                {shouldShowQrReceipt ? null : (
-                  <Button onClick={copyReceiptUrl}>Copiar link</Button>
-                )}
-              </div>
+          ) : null}
+          {receiptMode === "email" && receiptUrl ? (
+            <div className="flex flex-col gap-3">
+              <Input
+                placeholder="correo@cliente.com"
+                value={receiptEmail}
+                onChange={(e) => setReceiptEmail(e.target.value)}
+              />
+              <Button type="primary" onClick={sendReceiptEmail}>
+                Enviar por email
+              </Button>
+              <Button onClick={openReceiptUrl}>Abrir link</Button>
+            </div>
+          ) : null}
+          {receiptMode === "none" ? (
+            <div className="text-sm text-gray-500">
+              No hay entrega de recibo configurada.
             </div>
           )}
         </Modal>
