@@ -45,14 +45,17 @@ export default function PaymentsDrawer({
   const [rows, setRows] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [paidTotal, setPaidTotal] = useState<number>(0);
+  const [balance, setBalance] = useState<number | null>(null);
+  const [invoiceStatus, setInvoiceStatus] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editPayment, setEditPayment] = useState<PaymentRow | null>(null);
   const [editForm] = Form.useForm<{ reference?: string; notes?: string }>();
 
   const remaining = useMemo(() => {
     const due = Number(invoice?.amountDue ?? 0);
+    if (balance != null) return Math.max(0, +Number(balance).toFixed(2));
     return Math.max(0, +(due - Number(paidTotal)).toFixed(2));
-  }, [invoice, paidTotal]);
+  }, [invoice, paidTotal, balance]);
 
   const invoiceStatusLabel = (status?: string | null) => {
     switch (status) {
@@ -81,7 +84,13 @@ export default function PaymentsDrawer({
         fee: Number(p.fee ?? 0),
       }));
       setRows(items);
-      setPaidTotal(Number(data?.summary?.paidTotal ?? 0));
+      setPaidTotal(Number(data?.invoice?.paid ?? 0));
+      setBalance(
+        data?.invoice?.balance != null ? Number(data.invoice.balance) : null
+      );
+      setInvoiceStatus(
+        data?.invoice?.status ? String(data.invoice.status) : null
+      );
     } catch (e) {
       console.error(e);
       message.error("No se pudieron cargar pagos");
@@ -161,14 +170,14 @@ export default function PaymentsDrawer({
           &nbsp;&nbsp;
           <Text
             type={
-              invoice?.status === "paid"
+              (invoiceStatus ?? invoice?.status) === "paid"
                 ? "success"
-                : invoice?.status === "past_due"
+                : (invoiceStatus ?? invoice?.status) === "past_due"
                   ? "danger"
                   : "secondary"
             }
           >
-            Estado: {invoiceStatusLabel(invoice?.status)}
+            Estado: {invoiceStatusLabel(invoiceStatus ?? invoice?.status)}
           </Text>
         </div>
 

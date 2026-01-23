@@ -18,6 +18,8 @@ apiOrder.interceptors.request.use(async (config) => {
   const jwt = await getFreshKioskJwt(askPin);
   config.headers = config.headers ?? {};
   config.headers.Authorization = `Bearer ${jwt}`;
+  const sid = sessionStorage.getItem("kiosk_shift_id");
+  if (sid) (config.headers as Record<string, string>)["X-Shift-Id"] = sid;
   return config;
 });
 

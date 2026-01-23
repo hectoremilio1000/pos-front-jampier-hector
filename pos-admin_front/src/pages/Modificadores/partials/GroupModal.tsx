@@ -1,28 +1,31 @@
 // pos-admin/src/pages/Modificadores/partials/GroupModal.tsx
 import { useEffect } from "react";
-import { Modal, Form, Input, message } from "antd";
+import { Modal, Form, Input, message, Steps } from "antd";
 import apiOrder from "@/components/apis/apiOrder";
-import type { ModifierGroup } from "../index";
+
+type SavedGroup = { id: number; name: string; code: string };
 
 export default function GroupModal({
   open,
   editing,
+  wizard,
   onCancel,
   onSaved,
 }: {
   open: boolean;
-  editing: ModifierGroup | null;
+  editing: SavedGroup | null;
+  wizard?: { steps: { title: string }[]; current: number };
   onCancel: () => void;
-  onSaved: () => Promise<void> | void;
+  onSaved: (group?: SavedGroup) => Promise<void> | void;
 }) {
-  const [form] = Form.useForm<{ name: string; code: string }>();
+  const [form] = Form.useForm<{ name: string; code?: string }>();
 
   useEffect(() => {
     if (!open) return;
     if (editing) {
       form.setFieldsValue({ name: editing.name, code: editing.code });
     } else {
-      form.resetFields();
+      form.resetFields(["name", "code"]);
     }
   }, [open, editing, form]);
 
@@ -32,10 +35,17 @@ export default function GroupModal({
       if (editing) {
         await apiOrder.put(`/modifier-groups/${editing.id}`, { name: v.name });
         message.success("Grupo actualizado");
-      } else {
-        await apiOrder.post(`/modifier-groups`, v);
-        message.success("Grupo creado");
+        await onSaved({ id: editing.id, name: v.name, code: editing.code });
+        return;
       }
+      const res = await apiOrder.post(`/modifier-groups`, { name: v.name });
+      const created = (res.data?.data ?? res.data) as SavedGroup | undefined;
+      if (created?.id) {
+        message.success("Grupo creado");
+        await onSaved(created);
+        return;
+      }
+      message.success("Grupo creado");
       await onSaved();
     } catch {
       /* no-op */
@@ -51,6 +61,14 @@ export default function GroupModal({
       okText={editing ? "Guardar" : "Crear"}
       destroyOnClose
     >
+      {wizard && (
+        <Steps
+          size="small"
+          current={wizard.current}
+          items={wizard.steps}
+          style={{ marginBottom: 16 }}
+        />
+      )}
       <Form form={form} layout="vertical">
         <Form.Item
           label="Nombre"
@@ -59,13 +77,11 @@ export default function GroupModal({
         >
           <Input placeholder="Ej. Toppings" />
         </Form.Item>
-        <Form.Item
-          label="Código"
-          name="code"
-          rules={[{ required: !editing, message: "Indica un código" }]}
-        >
-          <Input placeholder="Ej. TOP" disabled={!!editing} />
-        </Form.Item>
+        {editing && (
+          <Form.Item label="Código" name="code">
+            <Input disabled />
+          </Form.Item>
+        )}
       </Form>
     </Modal>
   );

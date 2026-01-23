@@ -5,16 +5,16 @@ contraseña: admin20251
 
 ### cafe tacuba
 
+owner
 email: cafetacuba@r0.pos
 contraseña: secret123
 
-cafe tacuba
-cajero
-hector cajero
-456789
-
 juantio mesero
 987867
+
+cajero
+hectorcajero@r7.pos
+231223
 
 Código maestro del restaurante
 544005

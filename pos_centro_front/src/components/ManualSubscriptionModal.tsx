@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Modal, Form, Select, InputNumber, DatePicker, Switch, Space, message } from "antd";
+import { Modal, Form, Select, InputNumber, DatePicker, Switch, Space, message, Input } from "antd";
 import dayjs from "dayjs";
 import apiAuth from "./apis/apiAuth";
 import apiCenter from "./apis/apiCenter";
@@ -35,6 +35,7 @@ export default function ManualSubscriptionModal({ open, onClose, onCreated }: Pr
     () => plan?.prices.find((pr) => pr.id === priceId),
     [plan, priceId]
   );
+  const createPayment = Form.useWatch("createPayment", form) as boolean | undefined;
 
   const formatInterval = (interval: PlanPrice["interval"], count: number) => {
     const map: Record<string, { s: string; p: string }> = {
@@ -78,17 +79,19 @@ export default function ManualSubscriptionModal({ open, onClose, onCreated }: Pr
     try {
       const v = await form.validateFields();
       setLoading(true);
+      const shouldCreatePayment = !!v.createPayment;
       await apiCenter.post("/subscriptions/manual", {
         restaurantId: Number(v.restaurantId),
         planPriceId: Number(v.planPriceId),
         subscriptionStatus: v.subscriptionStatus,
         startDateIso: v.startDateIso?.toISOString(),
-        createPayment: !!v.createPayment,
-        provider: v.provider,
-        paymentStatus: v.paymentStatus,
-        providerPaymentId: v.providerPaymentId || null,
-        providerSessionId: v.providerSessionId || null,
-        amountOverride: v.amountOverride != null ? Number(v.amountOverride) : null,
+        createPayment: shouldCreatePayment,
+        provider: shouldCreatePayment ? v.provider : null,
+        paymentStatus: shouldCreatePayment ? v.paymentStatus : null,
+        providerPaymentId: shouldCreatePayment ? v.providerPaymentId || null : null,
+        providerSessionId: shouldCreatePayment ? v.providerSessionId || null : null,
+        amountOverride:
+          shouldCreatePayment && v.amountOverride != null ? Number(v.amountOverride) : null,
       });
       message.success("Suscripción creada");
       await onCreated();
@@ -164,49 +167,67 @@ export default function ManualSubscriptionModal({ open, onClose, onCreated }: Pr
 
         <Form.Item
           name="createPayment"
-          label="Registrar pago"
+          label="Registrar pago inicial"
           valuePropName="checked"
           initialValue={true}
         >
           <Switch />
         </Form.Item>
 
-        <Space.Compact style={{ width: "100%", gap: 8 }}>
-          <Form.Item name="provider" label="Proveedor" style={{ width: "50%" }}>
-            <Select
-              options={[
-                { value: "cash", label: "Efectivo" },
-                { value: "stripe", label: "Stripe" },
-                { value: "mp", label: "Mercado Pago" },
-                { value: "transfer", label: "Transferencia" },
-              ]}
-            />
-          </Form.Item>
-          <Form.Item name="paymentStatus" label="Estado de pago" style={{ width: "50%" }}>
-            <Select
-              options={[
-                { value: "succeeded", label: "Pagado" },
-                { value: "pending", label: "Pendiente" },
-                { value: "failed", label: "Fallido" },
-                { value: "refunded", label: "Reembolsado" },
-              ]}
-            />
-          </Form.Item>
-        </Space.Compact>
+        {createPayment && (
+          <>
+            <Space.Compact style={{ width: "100%", gap: 8 }}>
+              <Form.Item
+                name="provider"
+                label="Proveedor"
+                style={{ width: "50%" }}
+                rules={[{ required: true, message: "Selecciona proveedor" }]}
+              >
+                <Select
+                  options={[
+                    { value: "cash", label: "Efectivo" },
+                    { value: "stripe", label: "Stripe" },
+                    { value: "mp", label: "Mercado Pago" },
+                    { value: "transfer", label: "Transferencia" },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item
+                name="paymentStatus"
+                label="Estado de pago"
+                style={{ width: "50%" }}
+                rules={[{ required: true, message: "Selecciona estado de pago" }]}
+              >
+                <Select
+                  options={[
+                    { value: "succeeded", label: "Pagado" },
+                    { value: "pending", label: "Pendiente" },
+                    { value: "failed", label: "Fallido" },
+                  ]}
+                />
+              </Form.Item>
+            </Space.Compact>
 
-        <Space.Compact style={{ width: "100%", gap: 8 }}>
-          <Form.Item
-            name="amountOverride"
-            label="Importe"
-            tooltip="Si lo dejas en blanco, se usa el monto del PlanPrice"
-            style={{ width: "50%" }}
-          >
-            <InputNumber style={{ width: "100%" }} min={0} step={10} />
-          </Form.Item>
-          <Form.Item name="providerPaymentId" label="Ref. pago (opcional)" style={{ width: "50%" }}>
-            <InputNumber style={{ width: "100%" }} />
-          </Form.Item>
-        </Space.Compact>
+            <Space.Compact style={{ width: "100%", gap: 8 }}>
+              <Form.Item
+                name="amountOverride"
+                label="Importe"
+                tooltip="Monto a registrar en el pago inicial"
+                style={{ width: "50%" }}
+                rules={[{ required: true, message: "Ingresa importe" }]}
+              >
+                <InputNumber style={{ width: "100%" }} min={0} step={10} />
+              </Form.Item>
+              <Form.Item
+                name="providerPaymentId"
+                label="Ref. pago (opcional)"
+                style={{ width: "50%" }}
+              >
+                <Input style={{ width: "100%" }} />
+              </Form.Item>
+            </Space.Compact>
+          </>
+        )}
 
         {/* Si quieres session/link externo */}
         {/* <Form.Item name="providerSessionId" label="Ref. sesión (opcional)">

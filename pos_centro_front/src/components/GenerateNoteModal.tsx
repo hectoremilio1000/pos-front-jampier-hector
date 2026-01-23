@@ -128,6 +128,8 @@ export default function GenerateNoteModal({
     try {
       const v = await form.validateFields();
       setSaving(true);
+      const periodStart = selectedSub?.currentPeriodStart ?? null;
+      const periodEnd = selectedSub?.currentPeriodEnd ?? null;
       const payload = {
         subscriptionId: v.subscriptionId,
         amountBase: Number(v.amountBase),
@@ -135,6 +137,8 @@ export default function GenerateNoteModal({
         adjustments: Number(v.adjustments || 0),
         currency: v.currency,
         dueAt: v.dueAt?.toISOString(),
+        periodStart,
+        periodEnd,
         status: v.status,
         paidAt: v.status === "paid" ? v.paidAt?.toISOString() : null,
         notes: v.notes || null,

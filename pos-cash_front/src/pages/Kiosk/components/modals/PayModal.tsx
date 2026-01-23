@@ -12,6 +12,7 @@ import {
   Typography,
   Radio,
 } from "antd";
+import { CloseOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { useCash } from "../../context/CashKioskContext";
 import apiCashKiosk from "@/components/apis/apiCashKiosk";
@@ -128,6 +129,7 @@ export default function PayModal({ open, onClose }: Props) {
 
   const saleBalanced = Math.abs(saleDiff) <= EPS && saleTarget > 0;
   const tipBalanced = Math.abs(tipDiff) <= EPS || tipAmount === 0; // tip puede ser 0
+  const totalDue = money(saleTarget + tipAmount);
 
   // Reset al abrir
   useEffect(() => {
@@ -187,14 +189,25 @@ export default function PayModal({ open, onClose }: Props) {
     );
   };
 
+  const renderStatusTag = (type: "sale" | "tip") => {
+    if (type === "tip" && tipAmount <= 0) return <Tag>Sin propina</Tag>;
+    const balanced = type === "sale" ? saleBalanced : tipBalanced;
+    const diff = type === "sale" ? saleDiff : tipDiff;
+    if (balanced) return <Tag color="green">Cuadrado</Tag>;
+    if (diff > EPS) return <Tag color="red">Faltante</Tag>;
+    return <Tag color="red">Sobra</Tag>;
+  };
+
   const columns = (type: "sale" | "tip"): ColumnsType<PaymentLine> => [
     {
       title: "Método",
       dataIndex: "methodId",
       key: "methodId",
+      width: 160,
       render: (_v, r) => (
         <Select
-          style={{ width: 180 }}
+          size="small"
+          style={{ width: "100%" }}
           value={r.methodId ?? undefined}
           onChange={(val) => setLine(r.key, { methodId: val }, type)}
           options={methods.map((m) => ({ value: m.id, label: m.name }))}
@@ -203,64 +216,66 @@ export default function PayModal({ open, onClose }: Props) {
       ),
     },
     {
-      title: type === "sale" ? "Importe (consumo)" : "Propina",
+      title: type === "sale" ? "Importe" : "Propina",
       dataIndex: "amount",
       key: "amount",
       align: "right",
+      width: 140,
       render: (_v, r) => (
-        <Space>
-          <InputNumber
-            min={0}
-            step={0.1}
-            precision={2}
-            value={r.amount ?? undefined}
-            onChange={(val) => {
-              const n = typeof val === "number" ? money(val) : null;
-              setLine(r.key, { amount: n }, type);
-            }}
-            addonBefore="$"
-            style={{ width: 160 }}
-          />
-          <Button
-            onClick={() => {
-              const sumCurrent =
-                (type === "sale" ? sumSale : sumTip) - (Number(r.amount) || 0);
-              const target = type === "sale" ? saleTarget : tipAmount;
-              const rest = money(Math.max(target - sumCurrent, 0));
-              setLine(r.key, { amount: rest }, type);
-            }}
-          >
-            Faltante
-          </Button>
-        </Space>
+        <InputNumber
+          min={0}
+          step={0.1}
+          precision={2}
+          value={r.amount ?? undefined}
+          onChange={(val) => {
+            const n = typeof val === "number" ? money(val) : null;
+            setLine(r.key, { amount: n }, type);
+          }}
+          addonBefore="$"
+          style={{ width: "100%" }}
+          size="small"
+        />
       ),
+    },
+    {
+      title: "Estado",
+      key: "status",
+      align: "center",
+      width: 120,
+      render: () => renderStatusTag(type),
     },
     {
       title: "",
       key: "actions",
-      width: 80,
+      width: 48,
       align: "center",
       render: (_v, r) => (
-        <Button danger onClick={() => removeLine(r.key, type)}>
-          Quitar
-        </Button>
+        <Button
+          type="text"
+          danger
+          icon={<CloseOutlined />}
+          onClick={() => removeLine(r.key, type)}
+          title="Quitar"
+        />
       ),
     },
   ];
 
   const tagSale = () => {
     if (saleTarget <= 0) return <Tag color="green">Sin saldo</Tag>;
-    if (saleBalanced) return <Tag color="blue">Consumo: cuadra</Tag>;
+    if (saleBalanced) return <Tag color="green">Consumo: cuadrado</Tag>;
     if (saleDiff > EPS)
-      return <Tag color="orange">Faltan {CURRENCY(saleDiff)}</Tag>;
-    return <Tag color="red">Sobra {CURRENCY(Math.abs(saleDiff))}</Tag>;
+      return <Tag color="red">Consumo: faltan {CURRENCY(saleDiff)}</Tag>;
+    return (
+      <Tag color="red">Consumo: sobra {CURRENCY(Math.abs(saleDiff))}</Tag>
+    );
   };
   const tagTip = () => {
     if (tipAmount <= 0) return <Tag>Propina: $0.00</Tag>;
-    if (tipBalanced) return <Tag color="blue">Propina: cuadra</Tag>;
+    if (tipBalanced) return <Tag color="green">Propina: cuadrado</Tag>;
     if (tipDiff > EPS)
-      return <Tag color="orange">Faltan {CURRENCY(tipDiff)}</Tag>;
-    return <Tag color="red">Sobra {CURRENCY(Math.abs(tipDiff))}</Tag>;
+      return <Tag color="red">Propina: faltan {CURRENCY(tipDiff)}</Tag>;
+    return <Tag color="red">Propina: sobra {CURRENCY(Math.abs(tipDiff))}</Tag>;
   };
 
   const onConfirm = async () => {
@@ -365,129 +380,125 @@ export default function PayModal({ open, onClose }: Props) {
       destroyOnClose
       maskClosable={!loading}
       width={"100%"}
-      footer={
-        <>
+      footer={null}
+    >
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm text-slate-600">
+            Consumo: <b>{CURRENCY(saleTarget)}</b> · Propina:{" "}
+            <b>{CURRENCY(tipAmount)}</b> · Total: <b>{CURRENCY(totalDue)}</b>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {tagSale()}
+            {tagTip()}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <Space className="mb-5">
-              <span className="text-2xl font-bold">
-                Total: <b>{CURRENCY(orderSubtotal + tipAmount)}</b>
+            {/* Consumo */}
+            <Typography.Title
+              level={5}
+              style={{ marginTop: 0, fontSize: 28, fontWeight: "bold" }}
+            >
+              Consumo
+            </Typography.Title>
+            <Space style={{ marginBottom: 8 }}>
+              <span>
+                Objetivo consumo: <b>{CURRENCY(saleTarget)}</b>
               </span>
             </Space>
+            <Table<PaymentLine>
+              rowKey={(r) => r.key}
+              dataSource={saleLines}
+              columns={columns("sale")}
+              pagination={false}
+              size="small"
+            />
+            <Space style={{ marginTop: 8, marginBottom: 16 }}>
+              <Button onClick={addSaleLine}>Agregar método de pago</Button>
+            </Space>
           </div>
-          <Space>
-            <Button onClick={onClose} disabled={loading}>
-              Cancelar
-            </Button>
-            <Button
-              type="primary"
-              onClick={onConfirm}
-              disabled={
-                loading || saleTarget <= 0 || !saleBalanced || !tipBalanced
-              }
-              loading={loading}
-            >
-              Cobrar
-            </Button>
-          </Space>
-        </>
-      }
-    >
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          {/* Consumo */}
-          <Typography.Title
-            level={5}
-            style={{ marginTop: 0, fontSize: 28, fontWeight: "bold" }}
-          >
-            Consumo
-          </Typography.Title>
-          <Space
-            split={<Divider type="vertical" />}
-            style={{ marginBottom: 8 }}
-          >
-            <span>
-              Objetivo consumo: <b>{CURRENCY(saleTarget)}</b>
-            </span>
-            <span>{tagSale()}</span>
-          </Space>
-          <Table<PaymentLine>
-            rowKey={(r) => r.key}
-            dataSource={saleLines}
-            columns={columns("sale")}
-            pagination={false}
-            size="small"
-          />
-          <Space style={{ marginTop: 8, marginBottom: 16 }}>
-            <Button onClick={addSaleLine}> Agregar método de pago</Button>
-          </Space>
-        </div>
-        <div>
-          {/* Propina */}
+          <div>
+            {/* Propina */}
 
-          <Typography.Title
-            level={5}
-            style={{ fontSize: 28, fontWeight: "bold" }}
+            <Typography.Title
+              level={5}
+              style={{ fontSize: 28, fontWeight: "bold" }}
+            >
+              Propina
+            </Typography.Title>
+            <Space style={{ marginBottom: 8 }}>
+              <span>
+                Propina objetivo: <b>{CURRENCY(tipAmount)}</b>
+              </span>
+            </Space>
+            <Table<PaymentLine>
+              rowKey={(r) => r.key}
+              dataSource={tipLines}
+              columns={columns("tip")}
+              pagination={false}
+              size="small"
+            />
+            <Space style={{ marginTop: 8 }}>
+              <Button onClick={addTipLine} disabled={tipAmount <= 0}>
+                Agregar método de pago
+              </Button>
+            </Space>
+            <Divider />
+            {/* <Space>
+                  <span>Desc:</span>
+                  <InputNumber
+                    min={0}
+                    step={0.1}
+                    precision={2}
+                    value={discount}
+                    onChange={(v) =>
+                      setDiscount(typeof v === "number" ? money(v) : 0)
+                    }
+                    addonBefore="$"
+                    style={{ width: 140 }}
+                  />
+                </Space> */}
+            <Divider type="vertical" />
+            <Radio.Group
+              value={tipMode}
+              onChange={(e) => setTipMode(e.target.value)}
+              options={[
+                { label: "Propina fija", value: "fixed" },
+                { label: "Propina %", value: "percent" },
+              ]}
+              optionType="button"
+            />
+            <InputNumber
+              min={0}
+              step={tipMode === "percent" ? 0.5 : 0.1}
+              precision={2}
+              value={tipValue}
+              onChange={(v) => setTipValue(typeof v === "number" ? v : 0)}
+              addonAfter={tipMode === "percent" ? "%" : "$"}
+              style={{ width: 140 }}
+            />
+            <Tag color="purple">
+              Propina calc: <b>{CURRENCY(tipAmount)}</b>
+            </Tag>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t pt-3">
+          <Button type="text" onClick={onClose} disabled={loading}>
+            Cancelar
+          </Button>
+          <Button
+            type="primary"
+            onClick={onConfirm}
+            disabled={
+              loading || saleTarget <= 0 || !saleBalanced || !tipBalanced
+            }
+            loading={loading}
           >
-            Propina
-          </Typography.Title>
-          <Space
-            split={<Divider type="vertical" />}
-            style={{ marginBottom: 8 }}
-          >
-            <span>
-              Propina objetivo: <b>{CURRENCY(tipAmount)}</b>
-            </span>
-            <span>{tagTip()}</span>
-          </Space>
-          <Table<PaymentLine>
-            rowKey={(r) => r.key}
-            dataSource={tipLines}
-            columns={columns("tip")}
-            pagination={false}
-            size="small"
-          />
-          <Space style={{ marginTop: 8 }}>
-            <Button onClick={addTipLine} disabled={tipAmount <= 0}>
-              Agregar método de pago
-            </Button>
-          </Space>
-          <Divider />
-          {/* <Space>
-                <span>Desc:</span>
-                <InputNumber
-                  min={0}
-                  step={0.1}
-                  precision={2}
-                  value={discount}
-                  onChange={(v) =>
-                    setDiscount(typeof v === "number" ? money(v) : 0)
-                  }
-                  addonBefore="$"
-                  style={{ width: 140 }}
-                />
-              </Space> */}
-          <Divider type="vertical" />
-          <Radio.Group
-            value={tipMode}
-            onChange={(e) => setTipMode(e.target.value)}
-            options={[
-              { label: "Propina fija", value: "fixed" },
-              { label: "Propina %", value: "percent" },
-            ]}
-            optionType="button"
-          />
-          <InputNumber
-            min={0}
-            step={tipMode === "percent" ? 0.5 : 0.1}
-            precision={2}
-            value={tipValue}
-            onChange={(v) => setTipValue(typeof v === "number" ? v : 0)}
-            addonAfter={tipMode === "percent" ? "%" : "$"}
-            style={{ width: 140 }}
-          />
-          <Tag color="purple">
-            Propina calc: <b>{CURRENCY(tipAmount)}</b>
-          </Tag>
+            Cobrar
+          </Button>
         </div>
       </div>
     </Modal>

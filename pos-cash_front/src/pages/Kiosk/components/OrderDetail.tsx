@@ -31,7 +31,7 @@ import type { CashOrderItem } from "../hooks/useCashKiosk";
 const money = (n: number) =>
   `$${(Math.round((n ?? 0) * 100) / 100).toFixed(2)}`;
 type DiscountType = "percent" | "fixed";
-type PrintMode = "local" | "cloud" | "hybrid";
+type PrintMode = "qr" | "impresion" | "mixto";
 
 // ====== Config nprint (impresión por API) ======
 
@@ -140,9 +140,21 @@ export default function OrderDetail() {
   const [deleteApprovalVisible, setDeleteApprovalVisible] = useState(false);
   const [deleteManagerPassword, setDeleteManagerPassword] = useState("");
 
+  // Recibo (email / QR opcional)
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
+  const [receiptEmail, setReceiptEmail] = useState("");
+
   // ====== Datos / columnas / totales ======
   const status: string = (selectedOrder?.status || "").toLowerCase();
   const items: CashOrderItem[] = selectedOrder?.items ?? [];
+  const canOpenReceipt =
+    !!selectedOrder &&
+    (printSettings?.printMode === "qr" ||
+      printSettings?.printMode === "mixto" ||
+      status === "printed");
+  const shouldShowQrReceipt =
+    printSettings?.printMode === "qr" || printSettings?.printMode === "mixto";
 
   const canApplyDiscounts =
     status === "open" || status === "in_progress" || status === "reopened";
@@ -787,6 +799,59 @@ export default function OrderDetail() {
     printViaIframe(html);
   }
 
+  // ====== Recibo (email / QR opcional) ======
+  function buildReceiptUrl(orderId: number, restaurantId: number) {
+    const envBase = (import.meta as any).env?.VITE_RECEIPT_BASE_URL as
+      | string
+      | undefined;
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const base = (envBase || origin).replace(/\/$/, "");
+    return `${base}/${restaurantId}/qrscan/${orderId}`;
+  }
+
+  function openReceiptModal() {
+    if (!selectedOrder) return;
+    if (!canOpenReceipt) {
+      message.warning("Primero imprime la orden para generar el recibo.");
+      return;
+    }
+    const rid = Number(
+      restaurantId || selectedOrder.restaurant?.id || 0
+    );
+    const oid = Number(selectedOrder.id || 0);
+    if (!rid || !oid) {
+      message.error("No hay orden seleccionada.");
+      return;
+    }
+    setReceiptUrl(buildReceiptUrl(oid, rid));
+    setReceiptEmail("");
+    setReceiptOpen(true);
+  }
+
+  async function copyReceiptUrl() {
+    if (!receiptUrl) return;
+    try {
+      await navigator.clipboard.writeText(receiptUrl);
+      message.success("Link copiado");
+    } catch {
+      message.error("No se pudo copiar el link");
+    }
+  }
+
+  function sendReceiptEmail() {
+    if (!receiptUrl) return;
+    const email = receiptEmail.trim();
+    if (!email) {
+      message.warning("Escribe un correo válido");
+      return;
+    }
+    const subject = encodeURIComponent("Tu recibo");
+    const body = encodeURIComponent(
+      `Gracias por tu visita.\n\nPuedes ver tu recibo aquí:\n${receiptUrl}`
+    );
+    window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
+  }
+
   // ====== Aprobaciones (pos-auth) ======
   async function requestApprovalToken(
     action: string,
@@ -827,7 +892,10 @@ export default function OrderDetail() {
 
   const canPrint =
     hasItems &&
-    (status === "open" || status === "in_progress" || status === "reopened");
+    (status === "open" ||
+      status === "in_progress" ||
+      status === "reopened" ||
+      (printCount > 0 && ["printed", "paid", "closed"].includes(status)));
   const canPay = status === "printed"; // debe estar impresa
   const canVoidItems =
     hasItems && !["printed", "closed", "paid"].includes(status);
@@ -839,10 +907,10 @@ export default function OrderDetail() {
   const canDeleteOrder = printCount === 0 && !hasItems;
   const hasPrinter = Boolean(stationCurrent?.printerName);
   const configuredPrintMode = (printSettings?.printMode ||
-    "hybrid") as PrintMode;
+    "mixto") as PrintMode;
   const effectivePrintMode =
-    configuredPrintMode !== "cloud" && !hasPrinter
-      ? "cloud"
+    configuredPrintMode !== "qr" && !hasPrinter
+      ? "qr"
       : configuredPrintMode;
 
   // ====== Cancelación ======
@@ -962,7 +1030,7 @@ export default function OrderDetail() {
         } catch {}
       }
 
-      if (effectivePrintMode !== "cloud") {
+      if (effectivePrintMode !== "qr") {
         await sendTicketToPrintProxy({
           folioSeries: r.folioSeries,
           folioNumber: r.folioNumber,
@@ -1025,7 +1093,7 @@ export default function OrderDetail() {
       setPrintApprovalVisible(false);
       setPrintManagerPassword("");
 
-      if (effectivePrintMode !== "cloud") {
+      if (effectivePrintMode !== "qr") {
         // 👉 Reimpresión: también va a nprint
         await sendTicketToPrintProxy({
           folioSeries: r.folioSeries,
@@ -1272,7 +1340,10 @@ export default function OrderDetail() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap gap-2">
                 <Button onClick={handlePrintClick} disabled={!canPrint}>
-                  🖨️ Imprimir Cuenta
+                  🖨️ {printCount > 0 ? "Reimprimir Cuenta" : "Imprimir Cuenta"}
+                </Button>
+                <Button onClick={openReceiptModal} disabled={!canOpenReceipt}>
+                  Recibo
                 </Button>
 
                 <Button
@@ -1333,6 +1404,43 @@ export default function OrderDetail() {
 
             <PayModal open={openPay} onClose={() => setOpenPay(false)} />
           </Space>
+          <Modal
+            title="Recibo"
+            open={receiptOpen}
+            onCancel={() => setReceiptOpen(false)}
+            footer={null}
+          >
+            {!receiptUrl ? (
+              <div className="text-sm text-gray-500">
+                No hay recibo disponible para esta orden.
+              </div>
+            ) : (
+              <div className="flex flex-col gap-4">
+                {shouldShowQrReceipt ? (
+                  <div className="flex flex-col gap-2">
+                    <div className="text-sm text-gray-500">
+                      QR disponible (link):
+                    </div>
+                    <div className="break-all text-sm">{receiptUrl}</div>
+                    <Button onClick={copyReceiptUrl}>Copiar link</Button>
+                  </div>
+                ) : null}
+                <div className="flex flex-col gap-3">
+                  <Input
+                    placeholder="correo@cliente.com"
+                    value={receiptEmail}
+                    onChange={(e) => setReceiptEmail(e.target.value)}
+                  />
+                  <Button type="primary" onClick={sendReceiptEmail}>
+                    Enviar por email
+                  </Button>
+                  {shouldShowQrReceipt ? null : (
+                    <Button onClick={copyReceiptUrl}>Copiar link</Button>
+                  )}
+                </div>
+              </div>
+            )}
+          </Modal>
           {/* ========= Descuento general ========= */}
           <Modal
             title="Descuento general de la orden"

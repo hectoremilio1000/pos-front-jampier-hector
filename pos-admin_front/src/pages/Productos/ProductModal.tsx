@@ -11,6 +11,7 @@ import {
   Divider,
   Button,
   Typography,
+  message,
 } from "antd";
 import type { ModifierGroupConfig } from "./ModifierGroupCard";
 import ModifierGroupCard from "./ModifierGroupCard";
@@ -54,6 +55,7 @@ export default function ProductModal({
   onCancel,
   onOk,
   onOpenSelector, // abre tu SelectorModal
+  onAddModifierGroup, // agrega grupo creado rápido
   onUpdateModifier, // reemplaza un grupo de modificadores en la pos i
   onRemoveModifier, // elimina un grupo de modificadores en la pos i
 }: {
@@ -66,6 +68,7 @@ export default function ProductModal({
   onCancel: () => void;
   onOk: (values: ProductValues) => Promise<void> | void;
   onOpenSelector: () => void; // padre abre <SelectorModal/>
+  onAddModifierGroup?: (group: ModifierGroupConfig) => void;
   onUpdateModifier: (index: number, updated: ModifierGroupConfig) => void;
   onRemoveModifier: (index: number) => void;
 }) {
@@ -75,6 +78,19 @@ export default function ProductModal({
   const [priceGross, setPriceGross] = React.useState<number>(0); // con IVA (el que captura el dueño)
   const [vat, setVat] = React.useState<number>(16); // % IVA (default 16)
   const [priceNet, setPriceNet] = React.useState<number>(0); // sin IVA (auto)
+  const [quickOpen, setQuickOpen] = React.useState(false);
+  const [quickLoading, setQuickLoading] = React.useState(false);
+  const [quickGroupName, setQuickGroupName] = React.useState("");
+  const [quickOptionName, setQuickOptionName] = React.useState("");
+  const [quickOptionGroupId, setQuickOptionGroupId] = React.useState<number | undefined>(
+    undefined
+  );
+  const [quickOptionPrintArea, setQuickOptionPrintArea] = React.useState<number | undefined>(
+    undefined
+  );
+  const [quickOptionTaxRate, setQuickOptionTaxRate] = React.useState<number>(16);
+  const [quickOptionPriceGross, setQuickOptionPriceGross] = React.useState<number>(0);
+  const [quickPriceDelta, setQuickPriceDelta] = React.useState<number>(0);
 
   // mapa de subgrupos según groupId
   const [subgroupOptions, setSubgroupOptions] = React.useState<
@@ -123,6 +139,7 @@ export default function ProductModal({
     } else {
       setSubgroupOptions([]);
     }
+    setQuickOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -202,6 +219,128 @@ export default function ProductModal({
     next.splice(index, 1);
     form.setFieldsValue({ modifierGroups: next });
     onRemoveModifier(index); // notifica al padre
+  };
+
+  const openQuickModal = () => {
+    const fallbackGroupId =
+      currentGroupId ?? (catalogGroups[0]?.id as number | undefined);
+    const fallbackAreaId = areasImpresions[0]?.id as number | undefined;
+    setQuickGroupName("");
+    setQuickOptionName("");
+    setQuickOptionGroupId(fallbackGroupId);
+    setQuickOptionPrintArea(fallbackAreaId);
+    setQuickOptionTaxRate(vat || 16);
+    setQuickOptionPriceGross(0);
+    setQuickPriceDelta(0);
+    setQuickOpen(true);
+  };
+
+  const createQuickGroupAndOption = async () => {
+    const groupName = quickGroupName.trim();
+    const optionName = quickOptionName.trim();
+    if (!groupName) {
+      message.warning("Indica un nombre para el grupo");
+      return;
+    }
+    if (!optionName) {
+      message.warning("Indica un nombre para la opción");
+      return;
+    }
+    if (!quickOptionGroupId) {
+      message.warning("Selecciona un grupo de catálogo para la opción");
+      return;
+    }
+    if (!quickOptionPrintArea) {
+      message.warning("Selecciona un área de impresión");
+      return;
+    }
+
+    setQuickLoading(true);
+    try {
+      const groupRes = await apiOrder.post("/modifier-groups", {
+        name: groupName,
+      });
+      const createdGroup = (groupRes.data?.data ?? groupRes.data) as {
+        id: number;
+        name: string;
+        code?: string;
+      };
+
+      const optionRes = await apiOrder.post("/products", {
+        name: optionName,
+        groupId: quickOptionGroupId,
+        printArea: quickOptionPrintArea,
+        priceGross: quickOptionPriceGross ?? 0,
+        taxRate: quickOptionTaxRate ?? 16,
+        enabled: false,
+      });
+      const createdOption = (optionRes.data?.data ?? optionRes.data) as {
+        id: number;
+        code?: string;
+        name?: string;
+        basePrice?: number;
+        taxRate?: number;
+        isEnabled?: boolean;
+        groupId?: number;
+        subgroupId?: number | null;
+      };
+
+      await apiOrder.post("/modifiers", {
+        modifierGroupId: createdGroup.id,
+        modifierId: createdOption.id,
+        priceDelta: Number(quickPriceDelta ?? 0),
+        isEnabled: true,
+      });
+
+      const basePrice =
+        createdOption.basePrice ??
+        r2(Number(quickOptionPriceGross ?? 0) / (1 + (quickOptionTaxRate || 0) / 100));
+
+      const newGroup: ModifierGroupConfig = {
+        id: createdGroup.id,
+        name: createdGroup.name ?? groupName,
+        code: createdGroup.code ?? createdGroup.name ?? groupName,
+        includedQty: 0,
+        maxQty: 1,
+        isForced: false,
+        captureIncluded: false,
+        priority: 0,
+        modifiers: [
+          {
+            modifierGroupId: createdGroup.id,
+            modifierId: createdOption.id,
+            priceDelta: Number(quickPriceDelta ?? 0),
+            isEnabled: true,
+            modifier: {
+              id: createdOption.id,
+              groupId: createdOption.groupId ?? quickOptionGroupId,
+              subgroupId: createdOption.subgroupId ?? null,
+              code: createdOption.code ?? "",
+              name: createdOption.name ?? optionName,
+              basePrice,
+              taxRate: createdOption.taxRate ?? quickOptionTaxRate ?? 16,
+              isEnabled: createdOption.isEnabled ?? true,
+              isNew: false,
+            } as any,
+          },
+        ],
+        isNew: false,
+      };
+
+      const existing =
+        (form.getFieldValue("modifierGroups") as ModifierGroupConfig[]) ?? [];
+      const next = [...existing, newGroup];
+      form.setFieldsValue({ modifierGroups: next });
+      onAddModifierGroup?.(newGroup);
+
+      message.success("Grupo y opción creados");
+      setQuickOpen(false);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || "No se pudo crear el grupo";
+      message.error(msg);
+    } finally {
+      setQuickLoading(false);
+    }
   };
   return (
     <Modal
@@ -331,13 +470,11 @@ export default function ProductModal({
         </div>
 
         <Divider>Grupos de modificadores</Divider>
-
-        <div className="flex items-center gap-2 mb-2">
-          <Button onClick={onOpenSelector}>Agregar grupos</Button>
+        {(mg ?? []).length === 0 && (
           <Text type="secondary">
-            Selecciona uno o varios conjuntos de modificadores
+            Aún no has agregado grupos de modificadores a este producto.
           </Text>
-        </div>
+        )}
 
         {/* 👇 Registrar el campo en el Form (aunque sea oculto) */}
         <Form.Item name="modifierGroups" hidden>
@@ -355,6 +492,117 @@ export default function ProductModal({
             onRemove={() => removeGroupLocal(i)}
           />
         ))}
+
+        <Divider>Agregar modificadores</Divider>
+        <div className="rounded-md border border-dashed p-3">
+          <div className="text-sm font-medium text-slate-700">
+            ¿Qué quieres agregar?
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            <Button type="primary" onClick={onOpenSelector}>
+              Grupo de modificadores
+            </Button>
+            <Button onClick={openQuickModal}>Modificador individual (rápido)</Button>
+          </div>
+          <div className="mt-2 text-xs text-slate-600">
+            El flujo rápido crea un grupo con una sola opción y lo adjunta a
+            este producto.
+          </div>
+          <div className="mt-2 text-xs text-slate-500">
+            Tip: en el punto de venta, cada grupo aparece como una pregunta y
+            sus opciones se capturan como extras según el máximo y las
+            incluidas.
+          </div>
+        </div>
+        <Modal
+          open={quickOpen}
+          title="Crear grupo + opción"
+          onCancel={() => setQuickOpen(false)}
+          onOk={createQuickGroupAndOption}
+          okText="Crear y agregar"
+          confirmLoading={quickLoading}
+          destroyOnClose
+        >
+          <div className="space-y-4">
+            <div>
+              <div className="text-sm font-medium text-slate-700">
+                Grupo (la pregunta)
+              </div>
+              <Input
+                placeholder="Ej. Salsas"
+                value={quickGroupName}
+                onChange={(e) => setQuickGroupName(e.target.value)}
+              />
+            </div>
+
+            <Divider className="my-3" />
+
+            <div>
+              <div className="text-sm font-medium text-slate-700">
+                Opción (el modificador)
+              </div>
+              <div className="mt-2 grid gap-3 md:grid-cols-2">
+                <Input
+                  placeholder="Ej. Chipotle"
+                  value={quickOptionName}
+                  onChange={(e) => setQuickOptionName(e.target.value)}
+                />
+                <Select
+                  placeholder="Grupo de catálogo"
+                  value={quickOptionGroupId}
+                  onChange={(v) => setQuickOptionGroupId(v)}
+                  options={catalogGroups.map((g) => ({
+                    value: g.id,
+                    label: g.name,
+                  }))}
+                  showSearch
+                  optionFilterProp="label"
+                />
+                <Select
+                  placeholder="Área de impresión"
+                  value={quickOptionPrintArea}
+                  onChange={(v) => setQuickOptionPrintArea(v)}
+                  options={areasImpresions.map((a) => ({
+                    value: a.id,
+                    label: a.name,
+                  }))}
+                  showSearch
+                  optionFilterProp="label"
+                />
+                <InputNumber
+                  min={0}
+                  step={0.01}
+                  className="w-full"
+                  addonBefore="$"
+                  placeholder="Precio con IVA"
+                  value={quickOptionPriceGross}
+                  onChange={(v) => setQuickOptionPriceGross(toNumber(v))}
+                />
+                <InputNumber
+                  min={0}
+                  step={0.5}
+                  className="w-full"
+                  addonAfter="%"
+                  placeholder="IVA"
+                  value={quickOptionTaxRate}
+                  onChange={(v) => setQuickOptionTaxRate(toNumber(v))}
+                />
+                <InputNumber
+                  min={0}
+                  step={0.01}
+                  className="w-full"
+                  addonBefore="$"
+                  placeholder="Extra por opción"
+                  value={quickPriceDelta}
+                  onChange={(v) => setQuickPriceDelta(toNumber(v))}
+                />
+              </div>
+              <div className="mt-2 text-xs text-slate-500">
+                El extra se cobra cuando la opción excede las incluidas.
+              </div>
+            </div>
+          </div>
+        </Modal>
       </Form>
     </Modal>
   );

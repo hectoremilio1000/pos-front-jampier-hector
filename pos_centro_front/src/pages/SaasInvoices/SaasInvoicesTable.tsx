@@ -19,13 +19,14 @@ type SubscriptionInfo = {
   planPrice?: PlanPriceInfo | null;
 };
 
-type SubscriptionPaymentInfo = {
+type InvoiceInfo = {
   id: number;
-  provider?: string | null;
-  status?: string | null;
-  providerPaymentId?: string | null;
-  amount?: number | null;
+  folio?: string | null;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  amountDue?: number | null;
   currency?: string | null;
+  status?: string | null;
 };
 
 export type SaasInvoiceRow = {
@@ -33,7 +34,8 @@ export type SaasInvoiceRow = {
   restaurantId: number;
   restaurant?: { id: number; name: string } | null;
   subscription?: SubscriptionInfo | null;
-  subscriptionPayment?: SubscriptionPaymentInfo | null;
+  invoiceId?: number | null;
+  invoice?: InvoiceInfo | null;
   periodStart: string;
   periodEnd: string;
   amount: number;
@@ -76,25 +78,14 @@ function tagForStatus(status?: string | null) {
   return <Tag>{status}</Tag>;
 }
 
-function paymentLabel(payment?: SubscriptionPaymentInfo | null) {
-  if (!payment) return "—";
-  const providerMap: Record<string, string> = {
-    cash: "Efectivo",
-    transfer: "Transferencia",
-    stripe: "Stripe",
-    mercadopago: "Mercado Pago",
-    mp: "Mercado Pago",
-  };
-  const statusMap: Record<string, string> = {
-    succeeded: "Pagado",
-    pending: "Pendiente",
-    failed: "Fallido",
-    refunded: "Reembolsado",
-  };
-  const provider = payment.provider ? providerMap[payment.provider] || payment.provider : "—";
-  const status = payment.status ? statusMap[payment.status] || payment.status : "—";
-  const ref = payment.providerPaymentId || "—";
-  return `${provider} · ${status} · ${ref}`;
+function invoiceLabel(invoice?: InvoiceInfo | null, invoiceId?: number | null) {
+  if (!invoice && !invoiceId) return "—";
+  const id = invoice?.id ?? invoiceId;
+  const folio = invoice?.folio ? ` · ${invoice.folio}` : "";
+  if (invoice?.periodStart && invoice?.periodEnd) {
+    return `#${id}${folio} · ${invoice.periodStart} → ${invoice.periodEnd}`;
+  }
+  return `#${id}${folio}`;
 }
 
 export default function SaasInvoicesTable({ rows, loading, apiBase }: Props) {
@@ -127,11 +118,11 @@ export default function SaasInvoicesTable({ rows, loading, apiBase }: Props) {
       render: (v: number, row) => `$${Number(v).toFixed(2)} ${row.currency}`,
     },
     {
-      title: "Pago ligado",
-      key: "payment",
-      width: 240,
+      title: "Nota ligada",
+      key: "invoice",
+      width: 260,
       render: (_: unknown, row) => (
-        <Typography.Text>{paymentLabel(row.subscriptionPayment)}</Typography.Text>
+        <Typography.Text>{invoiceLabel(row.invoice, row.invoiceId)}</Typography.Text>
       ),
     },
     {

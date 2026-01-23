@@ -54,13 +54,22 @@ export type Area = {
   name?: string;
 };
 
-type PrintMode = "local" | "cloud" | "hybrid";
-type ReceiptDelivery = "qr" | "email" | "whatsapp" | "none";
+type PrintMode = "qr" | "impresion" | "mixto";
+type ReceiptDelivery = "email";
 type PrintSettings = {
   printMode: PrintMode;
   confirmPrint: boolean;
   receiptDelivery: ReceiptDelivery;
 };
+
+function normalizePrintMode(raw?: string | null): PrintMode {
+  const v = String(raw || "").toLowerCase();
+  if (v === "qr" || v === "impresion" || v === "mixto") return v as PrintMode;
+  if (v === "cloud") return "qr";
+  if (v === "local") return "impresion";
+  if (v === "hybrid") return "mixto";
+  return "mixto";
+}
 
 export type Waiter = {
   id: number;
@@ -132,9 +141,9 @@ export function useCashKiosk() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [openPay, setOpenPay] = useState(false);
   const [printSettings, setPrintSettings] = useState<PrintSettings>({
-    printMode: "hybrid",
+    printMode: "mixto",
     confirmPrint: true,
-    receiptDelivery: "qr",
+    receiptDelivery: "email",
   });
   const [kpis, setKpis] = useState<KPIs>({
     salesCash: 0,
@@ -367,17 +376,16 @@ export function useCashKiosk() {
       const { data } = await apiOrderKiosk.get("/kiosk/settings");
       const next = data || {};
       setPrintSettings({
-        printMode: (next.printMode as PrintMode) ?? "hybrid",
+        printMode: normalizePrintMode(next.printMode),
         confirmPrint:
           next.confirmPrint === undefined ? true : Boolean(next.confirmPrint),
-        receiptDelivery:
-          (next.receiptDelivery as ReceiptDelivery) ?? "qr",
+        receiptDelivery: "email",
       });
     } catch {
       setPrintSettings({
-        printMode: "hybrid",
+        printMode: "mixto",
         confirmPrint: true,
-        receiptDelivery: "qr",
+        receiptDelivery: "email",
       });
     }
   }, []);

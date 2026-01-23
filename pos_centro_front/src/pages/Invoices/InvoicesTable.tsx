@@ -6,9 +6,12 @@ export type InvoiceStatus = "pending" | "paid" | "past_due" | "void";
 
 export type InvoiceRow = {
   id: number;
+  folio?: string | null;
   restaurantId: number;
   restaurantName?: string | null;
   subscriptionId: number;
+  periodStart?: string | null;
+  periodEnd?: string | null;
   amountBase: number; // MXN
   discount: number; // MXN
   adjustments: number; // MXN

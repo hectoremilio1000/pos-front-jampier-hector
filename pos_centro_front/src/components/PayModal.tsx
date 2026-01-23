@@ -39,11 +39,13 @@ export default function PayModal({ open, invoice, onClose, onPaid }: Props) {
 
   // summary de pagos (opcional si tienes endpoint)
   const [paidTotal, setPaidTotal] = useState<number>(0);
+  const [balance, setBalance] = useState<number | null>(null);
   const remaining = useMemo(() => {
+    if (balance != null) return Math.max(0, +Number(balance).toFixed(2));
     const due = Number(invoice?.amountDue ?? 0);
     const paid = Number(paidTotal ?? 0);
     return Math.max(0, +(due - paid).toFixed(2));
-  }, [invoice, paidTotal]);
+  }, [invoice, paidTotal, balance]);
 
   const [form] = Form.useForm<RegisterForm>();
 
@@ -52,11 +54,18 @@ export default function PayModal({ open, invoice, onClose, onPaid }: Props) {
     if (!invoice) return;
     try {
       const { data } = await apiCenter.get(`/invoices/${invoice.id}/payments`);
-      const summaryPaid = Number(data?.summary?.paidTotal ?? 0);
-      setPaidTotal(summaryPaid);
+      const paid = Number(data?.invoice?.paid ?? 0);
+      const bal = data?.invoice?.balance;
+      setPaidTotal(paid);
+      setBalance(bal != null ? Number(bal) : null);
+      const due = Number(invoice.amountDue ?? 0);
+      const nextRemaining =
+        bal != null ? Math.max(0, +Number(bal).toFixed(2)) : Math.max(0, +(due - paid).toFixed(2));
+      form.setFieldsValue({ amount: nextRemaining > 0 ? nextRemaining : due });
     } catch {
       // si no existe el endpoint aún, asumimos 0 (la UI sigue funcionando)
       setPaidTotal(0);
+      setBalance(null);
     }
   };
 

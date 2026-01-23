@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Card, Input, Modal, Pagination, message } from "antd";
+import { Button, Card, Input, Modal, Pagination, Tag, message } from "antd";
+import axios from "axios";
 import { FaPrint, FaTable } from "react-icons/fa";
 import { QRCodeCanvas } from "qrcode.react";
 import CapturaComandaModal from "@/components/CapturaComandaModal";
@@ -14,6 +15,7 @@ import { GiForkKnifeSpoon } from "react-icons/gi";
 import RegistroChequeModal from "@/components/RegistroChequeModal";
 import apiOrder from "@/components/apis/apiOrder";
 import ConsultarItemModal from "@/components/ConsultarItemModal";
+import MesaMapPicker from "@/components/MesaMapPicker";
 
 import { Transmit } from "@adonisjs/transmit-client";
 
@@ -76,13 +78,22 @@ type AreaImpresion = {
   printerNetwork?: boolean | null;
   printerAvailability?: string | null;
 };
-type PrintMode = "local" | "cloud" | "hybrid";
-type ReceiptDelivery = "qr" | "email" | "whatsapp" | "none";
+type PrintMode = "qr" | "impresion" | "mixto";
+type ReceiptDelivery = "email";
 type PrintSettings = {
   printMode: PrintMode;
   confirmPrint: boolean;
   receiptDelivery: ReceiptDelivery;
 };
+
+function normalizePrintMode(raw?: string | null): PrintMode {
+  const v = String(raw || "").toLowerCase();
+  if (v === "qr" || v === "impresion" || v === "mixto") return v as PrintMode;
+  if (v === "cloud") return "qr";
+  if (v === "local") return "impresion";
+  if (v === "hybrid") return "mixto";
+  return "mixto";
+}
 
 type Producto = {
   id: number;
@@ -141,6 +152,61 @@ function getRestaurantIdFromJwt(): number {
   }
 }
 
+const CLOSED_SALE_STATUSES = new Set([
+  "closed",
+  "paid",
+  "completed",
+  "complete",
+  "settled",
+  "cerrada",
+  "cerrado",
+  "pagada",
+  "pagado",
+  "cobrada",
+  "cobrado",
+  "finalizada",
+  "finalizado",
+]);
+
+const normalizeStatus = (status?: string | null) =>
+  String(status || "").trim().toLowerCase();
+
+const isClosedSaleStatus = (status?: string | null) => {
+  const normalized = normalizeStatus(status);
+  if (!normalized) return false;
+  if (CLOSED_SALE_STATUSES.has(normalized)) return true;
+  if (
+    normalized.includes("pagad") ||
+    normalized.includes("cobrad") ||
+    normalized.includes("paid") ||
+    normalized.includes("closed") ||
+    normalized.includes("complete") ||
+    normalized.includes("final")
+  ) {
+    return true;
+  }
+  return false;
+};
+
+const calcItemTotal = (item: OrderItem) => {
+  const total = Number(item.total);
+  if (Number.isFinite(total)) return total;
+  const unit = Number(item.unitPrice || item.basePrice || 0);
+  const qty = Number(item.qty || 0);
+  return unit * qty;
+};
+
+const calcOrderTotal = (order: { items?: OrderItem[] }) => {
+  const items = Array.isArray(order.items) ? order.items : [];
+  return items.reduce((sum, item) => sum + calcItemTotal(item), 0);
+};
+
+const formatMoney = (value: number) =>
+  `$${Number(value || 0).toLocaleString("es-MX", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+
 const ControlComandero: React.FC = () => {
   const { isJwtValid, shiftId, refreshShift } = useKioskAuth(); // 👈 del provider
   const [ready, setReady] = useState(false);
@@ -153,6 +219,9 @@ const ControlComandero: React.FC = () => {
   const [detalle_cheque_consulta, setDetalle_cheque_consulta] = useState<
     OrderItem[]
   >([]);
+  const [reopenApprovalVisible, setReopenApprovalVisible] = useState(false);
+  const [reopenSubmitting, setReopenSubmitting] = useState(false);
+  const [reopenManagerPassword, setReopenManagerPassword] = useState("");
   const [cheques, setCheques] = useState<
     {
       shiftId: number | null;
@@ -170,6 +239,7 @@ const ControlComandero: React.FC = () => {
   >([]);
 
   const rid = getRestaurantIdFromJwt();
+  const apiUrlAuth = import.meta.env.VITE_API_URL_AUTH;
 
   // ---- NUEVO: helper para imprimir por área de impresión ----
   type NPrintJobPayload = {
@@ -225,6 +295,53 @@ const ControlComandero: React.FC = () => {
   const [modalComandaVisible, setModalComandaVisible] = useState(false);
   const [modalConsultaVisible, setModalConsultaVisible] = useState(false);
   const [mesaReciente, setMesaReciente] = useState(-1);
+  const [mapVisible, setMapVisible] = useState(false);
+  const [salesVisible, setSalesVisible] = useState(false);
+  const [salesView, setSalesView] = useState<"closed" | "all">("closed");
+
+  const mapAreaId = useMemo(() => {
+    if (areaSeleccionadaNombre !== "Todas") {
+      const found = areas.find((a) => a.name === areaSeleccionadaNombre);
+      return found?.id ?? selectedAreaId ?? null;
+    }
+    return selectedAreaId ?? areas[0]?.id ?? null;
+  }, [areas, areaSeleccionadaNombre, selectedAreaId]);
+
+  const salesOrders = useMemo(() => {
+    if (salesView === "all") return cheques;
+    return cheques.filter((order) => isClosedSaleStatus(order.status));
+  }, [cheques, salesView]);
+
+  const salesSummary = useMemo(() => {
+    let total = 0;
+    let itemsQty = 0;
+    salesOrders.forEach((order) => {
+      total += calcOrderTotal(order);
+      order.items?.forEach((item) => {
+        itemsQty += Number(item.qty || 0);
+      });
+    });
+    const count = salesOrders.length;
+    return {
+      count,
+      total,
+      avg: count ? total / count : 0,
+      itemsQty,
+    };
+  }, [salesOrders]);
+
+  const salesRows = useMemo(
+    () =>
+      salesOrders.map((order) => {
+        const items = order.items || [];
+        return {
+          order,
+          total: calcOrderTotal(order),
+          qty: items.reduce((sum, item) => sum + Number(item.qty || 0), 0),
+        };
+      }),
+    [salesOrders]
+  );
 
   const fetchAreas = async () => {
     try {
@@ -284,14 +401,13 @@ const ControlComandero: React.FC = () => {
 
   const [areasImpresions, setAreasImpresions] = useState<AreaImpresion[]>([]);
   const [printSettings, setPrintSettings] = useState<PrintSettings>({
-    printMode: "hybrid",
+    printMode: "mixto",
     confirmPrint: true,
-    receiptDelivery: "qr",
+    receiptDelivery: "email",
   });
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
   const [receiptEmail, setReceiptEmail] = useState("");
-  const [receiptMode, setReceiptMode] = useState<ReceiptDelivery>("none");
 
   const fetchAreasImpresions = async () => {
     try {
@@ -310,17 +426,17 @@ const ControlComandero: React.FC = () => {
       const res = await apiOrder.get("/kiosk/settings");
       const data = res.data || {};
       setPrintSettings({
-        printMode: data.printMode ?? "hybrid",
+        printMode: normalizePrintMode(data.printMode),
         confirmPrint:
           data.confirmPrint === undefined ? true : Boolean(data.confirmPrint),
-        receiptDelivery: data.receiptDelivery ?? "qr",
+        receiptDelivery: "email",
       });
     } catch (e) {
       console.error(e);
       setPrintSettings({
-        printMode: "hybrid",
+        printMode: "mixto",
         confirmPrint: true,
-        receiptDelivery: "qr",
+        receiptDelivery: "email",
       });
     }
   };
@@ -357,8 +473,8 @@ const ControlComandero: React.FC = () => {
   );
 
   const effectivePrintMode: PrintMode =
-    printSettings.printMode !== "cloud" && !hasLocalPrinters
-      ? "cloud"
+    printSettings.printMode !== "qr" && !hasLocalPrinters
+      ? "qr"
       : printSettings.printMode;
 
   const buildReceiptUrl = (orderId: number, restaurantId: number) => {
@@ -370,7 +486,6 @@ const ControlComandero: React.FC = () => {
     const url = buildReceiptUrl(orderId, restaurantId);
     setReceiptUrl(url);
     setReceiptEmail("");
-    setReceiptMode(printSettings.receiptDelivery);
     setReceiptOpen(true);
   };
 
@@ -644,13 +759,34 @@ const ControlComandero: React.FC = () => {
     (paginaActual - 1) * viewPaginate,
     paginaActual * viewPaginate
   );
+  const statusOrderCurrent = String(
+    (orderCurrent as any)?.status || ""
+  ).toLowerCase();
+  const isOrderPrinted = statusOrderCurrent === "printed";
+  const canOpenReceipt =
+    !!orderCurrent &&
+    (printSettings.printMode === "qr" ||
+      printSettings.printMode === "mixto" ||
+      isOrderPrinted);
+  const shouldShowQrReceipt =
+    printSettings.printMode === "qr" || printSettings.printMode === "mixto";
 
   const handleCapturaModal = () => {
+    const status = String((orderCurrent as any)?.status || "").toLowerCase();
+    if (status === "printed") {
+      message.warning("Orden impresa. Reabre con autorización para editar.");
+      return;
+    }
     setAccionesChequeVisible(false);
     setModalComandaVisible(true);
   };
 
   const handleImprimirModal = () => {
+    const status = String((orderCurrent as any)?.status || "").toLowerCase();
+    if (status === "printed") {
+      message.warning("Orden impresa. Reabre con autorización para editar.");
+      return;
+    }
     setAccionesChequeVisible(false);
     const items =
       detalle_cheque.length > 0
@@ -658,6 +794,20 @@ const ControlComandero: React.FC = () => {
         : (orderCurrent?.items as OrderItem[] | undefined) ?? [];
     const sendItems = detalle_cheque.length > 0;
     requestPrintFlow(items, sendItems);
+  };
+  const handleOpenReceipt = () => {
+    const orderId = orderIdCurrent ?? (orderCurrent as any)?.id ?? null;
+    const ridForQr = (orderCurrent as any)?.restaurantId ?? rid;
+    if (!orderId || !ridForQr) {
+      message.error("No hay orden seleccionada.");
+      return;
+    }
+    if (!canOpenReceipt) {
+      message.warning("Primero imprime la orden para generar el recibo.");
+      return;
+    }
+    setAccionesChequeVisible(false);
+    openReceiptModal(orderId, Number(ridForQr));
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleAccionesCheque = (cuenta: any, i: number) => {
@@ -679,6 +829,11 @@ const ControlComandero: React.FC = () => {
       message.error("No hay orden seleccionada.");
       return;
     }
+    const status = String((orderCurrent as any)?.status || "").toLowerCase();
+    if (status === "printed") {
+      message.warning("Orden impresa. Reabre con autorización para editar.");
+      return;
+    }
     if (!items.length) {
       message.warning("No hay productos para imprimir.");
       return;
@@ -691,7 +846,7 @@ const ControlComandero: React.FC = () => {
         });
       }
 
-      if (effectivePrintMode !== "cloud") {
+      if (effectivePrintMode !== "qr") {
         const itemsPorArea = new Map<number, OrderItem[]>();
         items.forEach((item) => {
           const areaId =
@@ -743,10 +898,7 @@ const ControlComandero: React.FC = () => {
         await Promise.all(printPromises);
       }
 
-      if (printSettings.receiptDelivery !== "none") {
-        const ridForQr = (orderCurrent as any)?.restaurantId ?? rid;
-        if (ridForQr) openReceiptModal(orderId, Number(ridForQr));
-      }
+      await markOrderAsPrinted(orderId);
 
       if (sendItems) {
         setDetalle_cheque([]);
@@ -755,7 +907,7 @@ const ControlComandero: React.FC = () => {
       }
 
       const modeLabel =
-        effectivePrintMode === "cloud" ? "Enviado sin impresora" : "Comanda impresa";
+        effectivePrintMode === "qr" ? "Enviado sin impresora" : "Comanda impresa";
       message.success(modeLabel);
     } catch (error: any) {
       console.error(error);
@@ -772,6 +924,11 @@ const ControlComandero: React.FC = () => {
     const orderId = orderIdCurrent ?? (orderCurrent as any)?.id ?? null;
     if (!orderId) {
       message.error("No hay orden seleccionada.");
+      return;
+    }
+    const status = String((orderCurrent as any)?.status || "").toLowerCase();
+    if (status === "printed") {
+      message.warning("Orden impresa. Reabre con autorización para editar.");
       return;
     }
     if (!items.length) {
@@ -795,6 +952,36 @@ const ControlComandero: React.FC = () => {
     }
   };
 
+  const markOrderAsPrinted = async (orderId: number) => {
+    const status = String((orderCurrent as any)?.status || "").toLowerCase();
+    const rawPrintCount =
+      (orderCurrent as any)?.printCount ?? (orderCurrent as any)?.print_count;
+    const printCount = Number(rawPrintCount || 0);
+
+    if (status === "printed" || printCount > 0) return;
+
+    const res = await apiOrder.post(
+      `/orders/${orderId}/firstPrint`,
+      {},
+      { validateStatus: () => true }
+    );
+    if (res && res.status >= 200 && res.status < 300) {
+      const updated = await fetchCheques();
+      if (updated) {
+        const found = updated.find((o: any) => Number(o.id) === Number(orderId));
+        if (found) setOrderCurrent(found);
+      }
+      return;
+    }
+
+    const err =
+      (res?.data && (res.data.error || res.data.message)) ||
+      "No se pudo marcar como impresa";
+    if (err === "order_already_printed") return;
+    if (err === "status_not_allowed_to_first_print") return;
+    message.warning(err);
+  };
+
   const requestPrintFlow = (items: OrderItem[], sendItems: boolean) => {
     if (!items.length) {
       message.warning("No hay productos para imprimir.");
@@ -808,6 +995,76 @@ const ControlComandero: React.FC = () => {
       return;
     }
     executePrintFlow({ items, sendItems });
+  };
+
+  const requestApprovalToken = async (
+    action: string,
+    password: string,
+    targetId: number
+  ) => {
+    const res = await axios.post(
+      `${apiUrlAuth}/approvals/issue-by-password`,
+      {
+        restaurantId: rid,
+        password,
+        action,
+        targetId,
+      },
+      { validateStatus: () => true }
+    );
+    if (!res || res.status < 200 || res.status >= 300) {
+      const err = (res?.data && res.data.error) || "Aprobación rechazada";
+      throw new Error(err);
+    }
+    return String(res.data.approval_token || "");
+  };
+
+  const openReopenFlow = () => {
+    setReopenManagerPassword("");
+    setReopenApprovalVisible(true);
+  };
+
+  const handleReopenApprovalConfirm = async () => {
+    const orderId = orderIdCurrent ?? (orderCurrent as any)?.id ?? null;
+    if (!orderId) {
+      message.error("No hay orden seleccionada.");
+      return;
+    }
+    if (!reopenManagerPassword) {
+      message.error("Ingresa la contraseña del administrador");
+      return;
+    }
+    setReopenSubmitting(true);
+    try {
+      const approval = await requestApprovalToken(
+        "order.reopen",
+        reopenManagerPassword,
+        orderId
+      );
+      const res = await apiOrder.post(
+        `/orders/${orderId}/reopen`,
+        {},
+        {
+          headers: { "X-Approval": `Bearer ${approval}` },
+          validateStatus: () => true,
+        }
+      );
+      if (!res || res.status < 200 || res.status >= 300) {
+        const err =
+          (res?.data && (res.data.details || res.data.error)) ||
+          "No se pudo reabrir la orden";
+        throw new Error(err);
+      }
+      message.success("Orden reabierta");
+      await fetchCheques();
+      setAccionesChequeVisible(false);
+      setReopenApprovalVisible(false);
+      setReopenManagerPassword("");
+    } catch (e: any) {
+      message.error(String(e?.message || "Error al reabrir la orden"));
+    } finally {
+      setReopenSubmitting(false);
+    }
   };
 
   const mandarComanda = async () => {
@@ -889,11 +1146,17 @@ const ControlComandero: React.FC = () => {
             >
               <MdTableBar /> Abrir Mesa
             </Button>
-            <Button className="bg-blue-800">
-              <MdPointOfSale /> Mis ventas
+            <Button
+              className="bg-white"
+              onClick={() => setMapVisible(true)}
+            >
+              <MdTableBar /> Mapa de mesas
             </Button>
-            <Button className="bg-blue-800">
-              <GiForkKnifeSpoon /> Monitoreo de pedidos
+            <Button
+              className="bg-blue-800"
+              onClick={() => setSalesVisible(true)}
+            >
+              <MdPointOfSale /> Mis ventas
             </Button>
           </div>
           <div className="col-span-6">
@@ -918,6 +1181,7 @@ const ControlComandero: React.FC = () => {
                 ))}
               </div>
             </div>
+
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
               {chequesPaginados.map((cuenta, i) => (
                 <Card
@@ -927,6 +1191,11 @@ const ControlComandero: React.FC = () => {
                 >
                   <FaTable className="text-4xl text-blue-500 mx-auto" />
                   <p className="font-bold mt-2">{cuenta.tableName}</p>
+                  {String(cuenta.status || "").toLowerCase() === "printed" ? (
+                    <Tag color="blue" className="mt-1">
+                      Impresa
+                    </Tag>
+                  ) : null}
                   <p>{cuenta.persons} personas</p>
                   <p className="text-sm text-gray-500">
                     {cuenta.area?.name ?? "Sin área"}
@@ -954,21 +1223,51 @@ const ControlComandero: React.FC = () => {
           <div className="w-full">
             <div className="w-full">
               <div className="w-full">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                   <button
-                    className="flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 bg-gray-300 text-gray-800"
+                    className={`flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 ${
+                      isOrderPrinted
+                        ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                        : "bg-gray-300 text-gray-800"
+                    }`}
                     onClick={() => handleCapturaModal()}
+                    disabled={isOrderPrinted}
                   >
                     <MdAdsClick className="text-[25px] " />
                     Capturar
                   </button>
                   <button
-                    className="flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 bg-gray-300 text-gray-800"
+                    className={`flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 ${
+                      isOrderPrinted
+                        ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                        : "bg-gray-300 text-gray-800"
+                    }`}
                     onClick={() => handleImprimirModal()}
+                    disabled={isOrderPrinted}
                   >
                     <FaPrint className="text-[22px]" />
                     Imprimir
                   </button>
+                  <button
+                    className={`flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 ${
+                      !canOpenReceipt
+                        ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                        : "bg-gray-300 text-gray-800"
+                    }`}
+                    onClick={handleOpenReceipt}
+                    disabled={!canOpenReceipt}
+                  >
+                    Recibo
+                  </button>
+                  {isOrderPrinted ? (
+                    <button
+                      className="flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 bg-amber-500 text-white"
+                      onClick={openReopenFlow}
+                    >
+                      <MdPointOfSale className="text-[22px]" />
+                      Reabrir
+                    </button>
+                  ) : null}
                   <button
                     className="flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 bg-blue-600 text-white"
                     onClick={() => {
@@ -1026,41 +1325,163 @@ const ControlComandero: React.FC = () => {
           }}
         />
         <Modal
+          title="Aprobación — Reabrir orden"
+          open={reopenApprovalVisible}
+          onCancel={() => setReopenApprovalVisible(false)}
+          onOk={handleReopenApprovalConfirm}
+          confirmLoading={reopenSubmitting}
+          okText="Reabrir"
+        >
+          <Input.Password
+            value={reopenManagerPassword}
+            onChange={(e) => setReopenManagerPassword(e.target.value)}
+            placeholder="Contraseña de administrador"
+          />
+        </Modal>
+        <Modal
           title="Entrega de recibo"
           open={receiptOpen}
           onCancel={() => setReceiptOpen(false)}
           footer={null}
         >
-          {receiptMode === "qr" && receiptUrl ? (
-            <div className="flex flex-col items-center gap-3">
-              <QRCodeCanvas value={receiptUrl} size={220} includeMargin />
-              <div className="break-all text-sm">{receiptUrl}</div>
-              <Button onClick={copyReceiptUrl}>Copiar link</Button>
+          {!receiptUrl ? (
+            <div className="text-sm text-gray-500">
+              No hay recibo disponible para esta orden.
             </div>
-          ) : null}
-          {receiptMode === "email" && receiptUrl ? (
-            <div className="flex flex-col gap-3">
-              <Input
-                placeholder="correo@cliente.com"
-                value={receiptEmail}
-                onChange={(e) => setReceiptEmail(e.target.value)}
-              />
-              <Button type="primary" onClick={sendReceiptEmail}>
-                Enviar por email
+          ) : (
+            <div className="flex flex-col gap-4">
+              {shouldShowQrReceipt ? (
+                <div className="flex flex-col items-center gap-3">
+                  <QRCodeCanvas value={receiptUrl} size={220} includeMargin />
+                  <div className="break-all text-sm">{receiptUrl}</div>
+                  <Button onClick={copyReceiptUrl}>Copiar link</Button>
+                </div>
+              ) : null}
+              <div className="flex flex-col gap-3">
+                <Input
+                  placeholder="correo@cliente.com"
+                  value={receiptEmail}
+                  onChange={(e) => setReceiptEmail(e.target.value)}
+                />
+                <Button type="primary" onClick={sendReceiptEmail}>
+                  Enviar por email
+                </Button>
+                {shouldShowQrReceipt ? null : (
+                  <Button onClick={copyReceiptUrl}>Copiar link</Button>
+                )}
+              </div>
+            </div>
+          )}
+        </Modal>
+        <Modal
+          title="Mapa de mesas"
+          open={mapVisible}
+          onCancel={() => setMapVisible(false)}
+          footer={null}
+          width={1100}
+          centered
+        >
+          <div className="text-sm text-gray-500 mb-3">
+            Area: {areaSeleccionadaNombre !== "Todas" ? areaSeleccionadaNombre : "Todas"}
+          </div>
+          <MesaMapPicker areaId={mapAreaId ?? null} selectedTableId={null} readOnly />
+        </Modal>
+        <Modal
+          title="Mis ventas"
+          open={salesVisible}
+          onCancel={() => setSalesVisible(false)}
+          footer={null}
+          width={980}
+          centered
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div className="text-sm text-gray-500">
+              Turno: {shiftId ?? "—"}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type={salesView === "closed" ? "primary" : "default"}
+                onClick={() => setSalesView("closed")}
+              >
+                Cerradas/Pagadas
               </Button>
-              <Button onClick={copyReceiptUrl}>Copiar link</Button>
+              <Button
+                type={salesView === "all" ? "primary" : "default"}
+                onClick={() => setSalesView("all")}
+              >
+                Todas
+              </Button>
             </div>
-          ) : null}
-          {receiptMode === "none" ? (
-            <div className="text-sm text-gray-500">
-              No hay entrega de recibo configurada.
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            <div className="rounded border border-slate-200 bg-white p-3">
+              <div className="text-xs text-gray-500">Total ventas</div>
+              <div className="text-lg font-semibold">
+                {formatMoney(salesSummary.total)}
+              </div>
             </div>
-          ) : null}
-          {receiptMode === "whatsapp" ? (
-            <div className="text-sm text-gray-500">
-              Envio por WhatsApp pendiente de configurar.
+            <div className="rounded border border-slate-200 bg-white p-3">
+              <div className="text-xs text-gray-500">Órdenes</div>
+              <div className="text-lg font-semibold">{salesSummary.count}</div>
             </div>
-          ) : null}
+            <div className="rounded border border-slate-200 bg-white p-3">
+              <div className="text-xs text-gray-500">Ticket promedio</div>
+              <div className="text-lg font-semibold">
+                {formatMoney(salesSummary.avg)}
+              </div>
+            </div>
+          </div>
+
+          {salesRows.length === 0 ? (
+            <div className="rounded border border-dashed border-slate-200 p-4 text-sm text-gray-500">
+              No hay ventas para mostrar con este filtro.
+            </div>
+          ) : (
+            <div className="overflow-auto rounded border border-slate-200">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-xs text-gray-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Mesa</th>
+                    <th className="px-3 py-2 text-left">Área</th>
+                    <th className="px-3 py-2 text-left">Estado</th>
+                    <th className="px-3 py-2 text-right">Items</th>
+                    <th className="px-3 py-2 text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {salesRows.map((row) => (
+                    <tr
+                      key={row.order.id}
+                      className="border-t border-slate-200"
+                    >
+                      <td className="px-3 py-2">
+                        {row.order.tableName || `Mesa ${row.order.id}`}
+                      </td>
+                      <td className="px-3 py-2">
+                        {row.order.area?.name ?? "Sin área"}
+                      </td>
+                      <td className="px-3 py-2">
+                        <Tag
+                          color={
+                            isClosedSaleStatus(row.order.status)
+                              ? "green"
+                              : "default"
+                          }
+                        >
+                          {normalizeStatus(row.order.status) || "sin estado"}
+                        </Tag>
+                      </td>
+                      <td className="px-3 py-2 text-right">{row.qty}</td>
+                      <td className="px-3 py-2 text-right font-semibold">
+                        {formatMoney(row.total)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Modal>
       </div>
     </>

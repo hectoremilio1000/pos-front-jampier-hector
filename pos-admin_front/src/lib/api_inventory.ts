@@ -257,6 +257,71 @@ export type StockCountDetail = StockCountRow & {
   items: StockCountItemRow[];
 };
 
+export type InventoryCutRow = {
+  inventoryItemId: Id;
+  code?: string | null;
+  name?: string | null;
+  unitCode?: string | null;
+  initialQtyBase: number;
+  movementQtyBase: number;
+  theoreticalQtyBase: number;
+  finalQtyBase?: number | null;
+  diffQtyBase?: number | null;
+  unitCost?: number | null;
+  diffCost?: number | null;
+};
+
+export type InventoryCutTotals = {
+  initialQtyBase: number;
+  movementQtyBase: number;
+  theoreticalQtyBase: number;
+  finalQtyBase?: number | null;
+  diffQtyBase?: number | null;
+  diffCost?: number | null;
+};
+
+export type InventoryCutResponse = {
+  ok: true;
+  range: { start: string; end: string };
+  warehouseId: Id;
+  initialCount: { id: Id; finishedAt?: string | null };
+  finalCount?: { id: Id; finishedAt?: string | null } | null;
+  movementTypes: string[];
+  totals: InventoryCutTotals;
+  rows: InventoryCutRow[];
+};
+
+export type InventoryCutRequest = {
+  initialCountId: Id;
+  finalCountId?: Id | null;
+  endDate?: string | null;
+  movementTypes?: string[];
+  itemIds?: Id[];
+  warehouseId?: Id | null;
+};
+
+export type InventoryCutCreateResponse = InventoryCutResponse & {
+  cutId: Id;
+};
+
+export type InventoryCutSummaryRow = {
+  id: Id;
+  compareMode: "theoretical" | "count" | string;
+  rangeStart?: string | null;
+  rangeEnd?: string | null;
+  endAt?: string | null;
+  movementTypes: string[];
+  itemScope: "all" | "selected" | string;
+  initialCountId: Id;
+  finalCountId?: Id | null;
+  initialCountName?: string | null;
+  initialCountFinishedAt?: string | null;
+  finalCountName?: string | null;
+  finalCountFinishedAt?: string | null;
+  totals: InventoryCutTotals;
+  createdAt?: string | null;
+};
+
 export type ExternalRefRow = {
   id: Id;
   entityType: string;
@@ -1181,6 +1246,40 @@ export function deleteStockCount(restaurantId: Id, countId: Id): Promise<{ ok: t
     method: "DELETE",
     restaurantId,
     qs: { restaurantId },
+  });
+}
+
+export function calcInventoryCut(
+  restaurantId: Id,
+  payload: InventoryCutRequest
+): Promise<InventoryCutResponse> {
+  return http<InventoryCutResponse>("/inventory/cuts/calc", {
+    method: "POST",
+    restaurantId,
+    qs: { restaurantId },
+    body: payload,
+  });
+}
+
+export function createInventoryCut(
+  restaurantId: Id,
+  payload: InventoryCutRequest
+): Promise<InventoryCutCreateResponse> {
+  return http<InventoryCutCreateResponse>("/inventory/cuts", {
+    method: "POST",
+    restaurantId,
+    qs: { restaurantId },
+    body: payload,
+  });
+}
+
+export function listInventoryCuts(
+  restaurantId: Id,
+  opts: { warehouseId?: Id | null } = {}
+): Promise<InventoryCutSummaryRow[]> {
+  return http<InventoryCutSummaryRow[]>("/inventory/cuts", {
+    restaurantId,
+    qs: { restaurantId, warehouseId: opts.warehouseId },
   });
 }
 

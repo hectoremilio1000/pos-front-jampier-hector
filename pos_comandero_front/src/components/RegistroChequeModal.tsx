@@ -13,6 +13,7 @@ import {
 
 import apiOrder from "@/components/apis/apiOrder";
 import TecladoVirtual from "./TecladoVirtual";
+import MesaMapPicker, { type TableRow as MesaTableRow } from "./MesaMapPicker";
 
 interface Area {
   id: number | null;
@@ -27,8 +28,7 @@ interface Service {
   sortOrder: number;
 }
 
-type TableRow = {
-  id: number;
+type TableRow = MesaTableRow & {
   name?: string | null;
   code?: string | null;
   number?: string | null;
@@ -104,6 +104,7 @@ const RegistroChequeModal: React.FC<Props> = ({
 
   const [cuenta, setCuenta] = useState("");
   const [personas, setPersonas] = useState("");
+  const [showMap, setShowMap] = useState(true);
 
   // ✅ Mesas por área (tableId puede ser null)
   const [tables, setTables] = useState<TableRow[]>([]);
@@ -176,7 +177,7 @@ const RegistroChequeModal: React.FC<Props> = ({
       try {
         setTablesLoading(true);
         const res = await apiOrder.get("/commander/tables", {
-          params: { areaId, status: "free" },
+          params: { areaId },
         });
 
         const raw = res?.data;
@@ -219,7 +220,8 @@ const RegistroChequeModal: React.FC<Props> = ({
 
   const registrar = async () => {
     // Validaciones mínimas
-    if (!cuenta?.trim()) {
+    const hasSelectedTable = selectedTableId !== null;
+    if (!hasSelectedTable && !cuenta?.trim()) {
       message.warning("Escribe el nombre de mesa/alias");
       return;
     }
@@ -301,7 +303,18 @@ const RegistroChequeModal: React.FC<Props> = ({
   // ----- Vistas de pasos -----
   const PasoNombre = (
     <div>
-      <p className="mb-2 font-semibold">Nombre de la mesa:</p>
+      <div className="flex items-center justify-between mb-2">
+        <p className="font-semibold">Nombre de la mesa:</p>
+        <Button
+          size="small"
+          onClick={() => {
+            setShowMap(true);
+            setStep(2);
+          }}
+        >
+          Elegir mesa en mapa
+        </Button>
+      </div>
       <TecladoVirtual
         onKeyPress={(v) => setCuenta((prev) => prev + v)}
         onBackspace={() => setCuenta((prev) => prev.slice(0, -1))}
@@ -334,7 +347,7 @@ const RegistroChequeModal: React.FC<Props> = ({
       {/* Editables en línea */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* ✅ Mesa física (opcional) - solo si hay mesas en esta área */}
-        <div className="p-3 rounded border bg-white">
+        <div className="p-3 rounded border bg-white md:col-span-2">
           <div className="text-xs text-gray-500 mb-1">Mesa (opcional)</div>
 
           {tablesLoading ? (
@@ -354,13 +367,30 @@ const RegistroChequeModal: React.FC<Props> = ({
                   return;
                 }
                 const id = Number(v);
-                setSelectedTableId(Number.isFinite(id) ? id : null);
+                const nextId = Number.isFinite(id) ? id : null;
+                setSelectedTableId(nextId);
+                if (nextId !== null) {
+                  const t = tables.find((row) => Number(row.id) === nextId);
+                  if (t) {
+                    if (!cuenta.trim()) {
+                      setCuenta(getTableLabel(t));
+                    }
+                    if (!personas.trim() && t.seats) {
+                      setPersonas(String(t.seats));
+                    }
+                  }
+                }
               }}
               options={[
                 { value: "none", label: "Sin mesa de area asignada" },
                 ...tables.map((t) => ({
                   value: String(t.id),
-                  label: getTableLabel(t),
+                  label: `${getTableLabel(t)} (${String(
+                    t.status || "unknown"
+                  ).toLowerCase()})`,
+                  disabled: String(t.status || "")
+                    .toLowerCase()
+                    .trim() !== "free",
                 })),
               ]}
             />
@@ -368,6 +398,34 @@ const RegistroChequeModal: React.FC<Props> = ({
             <div className="text-sm text-gray-500">
               No hay mesas registradas para esta área.
             </div>
+          )}
+        </div>
+
+        <div className="p-3 rounded border bg-white">
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-gray-500">Mesa en mapa</div>
+            <Button size="small" onClick={() => setShowMap((v) => !v)}>
+              {showMap ? "Ocultar" : "Mostrar"}
+            </Button>
+          </div>
+          {showMap ? (
+            <div className="mt-3">
+              <MesaMapPicker
+                areaId={areaId || null}
+                selectedTableId={selectedTableId}
+                onSelect={(table) => {
+                  setSelectedTableId(table.id);
+                  if (!cuenta.trim()) {
+                    setCuenta(String(table.code || ""));
+                  }
+                  if (!personas.trim() && table.seats) {
+                    setPersonas(String(table.seats));
+                  }
+                }}
+              />
+            </div>
+          ) : (
+            <div className="mt-2 text-sm text-gray-500">Mapa oculto.</div>
           )}
         </div>
 

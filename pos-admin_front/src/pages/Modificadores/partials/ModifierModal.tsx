@@ -10,6 +10,7 @@ import {
   Input,
   Space,
   Card,
+  Steps,
   Typography,
   message,
 } from "antd";
@@ -24,13 +25,20 @@ const { Text } = Typography;
 type Producto = { id: number; code: string; name: string; groupId: number };
 type GrupoCat = { id: number; name: string; code: string };
 type AreasCat = { id: number; name: string; code: string };
+type ModifierGroupOption = {
+  id: number;
+  name: string;
+  code: string;
+  modifiers?: { modifierId: number }[];
+};
 
 export default function ModifierModal({
   open,
   editing,
   groupId,
   groupName,
-  existingModifierIds,
+  modifierGroups,
+  wizard,
   onCancel,
   onSaved,
 }: {
@@ -44,7 +52,8 @@ export default function ModifierModal({
   } | null;
   groupId?: number;
   groupName?: string;
-  existingModifierIds: number[];
+  modifierGroups: ModifierGroupOption[];
+  wizard?: { steps: { title: string }[]; current: number };
   onCancel: () => void;
   onSaved: () => Promise<void> | void;
 }) {
@@ -54,6 +63,10 @@ export default function ModifierModal({
     priceDelta: number;
     isEnabled: boolean;
   }>();
+  const watchedModifierId = Form.useWatch("modifierId", form) as number | null;
+  const watchedPriceDelta = Form.useWatch("priceDelta", form) as number | null;
+  const watchedEnabled = Form.useWatch("isEnabled", form) as boolean | null;
+  const watchedGroupId = Form.useWatch("modifierGroupId", form) as number | null;
 
   const [products, setProducts] = useState<Producto[]>([]);
   const [groupsCat, setGroupsCat] = useState<GrupoCat[]>([]);
@@ -64,7 +77,6 @@ export default function ModifierModal({
   const [qpName, setQpName] = useState("");
   const [qpGroupId, setQpGroupId] = useState<number | undefined>(undefined);
   const [printArea, setPrintArea] = useState<number | undefined>(undefined);
-  const [qpCode, setQpCode] = useState("");
   const [qpTax, setQpTax] = useState(16);
   const [qpPriceGross, setQpPriceGross] = useState(0);
   const [creatingProduct, setCreatingProduct] = useState(false);
@@ -75,7 +87,7 @@ export default function ModifierModal({
     (async () => {
       try {
         const [p, gc, ac] = await Promise.all([
-          apiOrder.get("/products"),
+          apiOrder.get("/modifier-products"),
           apiOrder.get("/groups"),
           apiOrder.get("/areasImpresion"),
         ]);
@@ -121,6 +133,15 @@ export default function ModifierModal({
   }, [open]);
 
   // filtra productos para no permitir duplicar dentro del grupo
+  const selectedGroupId =
+    watchedGroupId ?? editing?.modifierGroupId ?? groupId ?? null;
+
+  const existingModifierIds = useMemo(() => {
+    if (!selectedGroupId) return [];
+    const group = modifierGroups.find((g) => g.id === selectedGroupId);
+    return group?.modifiers?.map((m) => m.modifierId) ?? [];
+  }, [modifierGroups, selectedGroupId]);
+
   const filteredProducts = useMemo(() => {
     if (!editing) {
       return products.filter((p) => !existingModifierIds.includes(p.id));
@@ -158,49 +179,33 @@ export default function ModifierModal({
 
   /* ───────── crear producto rápido ───────── */
 
-  // genera siguiente código simple por prefijo de grupo (fallback)
-  const nextCodeForGroup = (
-    prefix: string,
-    list: Producto[],
-    groupId: number
-  ): string => {
-    const numbers = list
-      .filter((p) => p.groupId === groupId && p.code?.startsWith(prefix))
-      .map((p) => {
-        const tail = String(p.code).replace(prefix, "").trim();
-        const n = parseInt(tail, 10);
-        return isNaN(n) ? 0 : n;
-      });
-    const next = (numbers.length ? Math.max(...numbers) : 0) + 1;
-    return `${prefix}${String(next).padStart(2, "0")}`;
-  };
+  const defaultModifierGroup = useMemo(() => {
+    return (
+      groupsCat.find((g) => String(g.code || '').toUpperCase() === 'EXTRAS') ||
+      groupsCat.find((g) => String(g.name || '').toLowerCase() === 'extras') ||
+      groupsCat.find((g) => String(g.name || '').toLowerCase() === 'modificadores') ||
+      null
+    )
+  }, [groupsCat])
 
   useEffect(() => {
     if (!quickOpen) return;
-    // set defaults al abrir bloque rápido
-    const g = groupsCat[0];
-    if (g) {
-      setQpGroupId((prev) => prev ?? g.id);
-      if (!qpCode) setQpCode(nextCodeForGroup(g.code, products, g.id));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quickOpen]);
-
-  useEffect(() => {
-    if (!qpGroupId) return;
-    const g = groupsCat.find((x) => x.id === qpGroupId);
-    if (!g) return;
-    setQpCode(nextCodeForGroup(g.code, products, qpGroupId));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qpGroupId, products, groupsCat]);
+    setQpName('');
+    setQpPriceGross(0);
+    setQpTax(16);
+    setQpGroupId(defaultModifierGroup?.id);
+    setPrintArea(areasCat[0]?.id);
+  }, [quickOpen, defaultModifierGroup, areasCat]);
 
   const createQuickProduct = async () => {
-    if (!qpName.trim() || !qpCode.trim() || !qpGroupId) {
-      message.warning("Completa nombre, código y grupo");
+    if (!qpName.trim()) {
+      message.warning("Completa el nombre del modificador");
       return;
     }
-    if (!printArea) {
-      message.warning("Debes seleccionar una area de impresion");
+    const fallbackGroupId = qpGroupId ?? defaultModifierGroup?.id;
+    const fallbackPrintArea = printArea ?? areasCat[0]?.id;
+    if (!fallbackGroupId) {
+      message.warning("No se encontró el grupo de modificadores (EXTRAS)");
       return;
     }
     try {
@@ -208,10 +213,9 @@ export default function ModifierModal({
       // Tu backend prioriza priceGross si llega
       const { data: prod } = await apiOrder.post("/products", {
         name: qpName.trim(),
-        code: qpCode.trim(),
-        groupId: qpGroupId,
+        groupId: fallbackGroupId,
         subgroupId: null,
-        printArea: printArea,
+        printArea: fallbackPrintArea,
         priceGross: Number(qpPriceGross ?? 0),
         taxRate: Number(qpTax ?? 16),
         enabled: false,
@@ -225,10 +229,12 @@ export default function ModifierModal({
       // agrega al catálogo local y selecciónalo
       setProducts((prev) => [...prev, nuevo]);
       form.setFieldsValue({ modifierId: nuevo.id });
+      const currentDelta = Number(form.getFieldValue("priceDelta") ?? 0);
+      if (currentDelta === 0 && Number(qpPriceGross ?? 0) > 0) {
+        form.setFieldsValue({ priceDelta: Number(qpPriceGross ?? 0) });
+      }
 
       // prepara siguiente
-      const g = groupsCat.find((x) => x.id === qpGroupId)!;
-      setQpCode(nextCodeForGroup(g.code, [...products, nuevo], qpGroupId));
       setQpName("");
       setQpPriceGross(0);
       setQpTax(16);
@@ -248,9 +254,18 @@ export default function ModifierModal({
       okText={editing ? "Guardar" : "Crear"}
       destroyOnClose
     >
+      {wizard && (
+        <Steps
+          size="small"
+          current={wizard.current}
+          items={wizard.steps}
+          style={{ marginBottom: 16 }}
+        />
+      )}
       <Form
         form={form}
         layout="vertical"
+        requiredMark={false}
         initialValues={{
           modifierGroupId: groupId,
           priceDelta: 0,
@@ -258,14 +273,18 @@ export default function ModifierModal({
         }}
       >
         <Form.Item
-          label="Grupo"
+          label="Grupo de modificadores"
           name="modifierGroupId"
           rules={[{ required: true, message: "Elige un grupo" }]}
         >
           <Select
-            placeholder="Elige un grupo"
-            options={
-              groupId
+            placeholder="Elige un grupo de modificadores"
+            options={[
+              ...modifierGroups.map((g) => ({
+                value: g.id,
+                label: `${g.name} (${g.code})`,
+              })),
+              ...(groupId && !modifierGroups.some((g) => g.id === groupId)
                 ? [
                     {
                       value: groupId,
@@ -274,17 +293,17 @@ export default function ModifierModal({
                         : `#${groupId}`,
                     },
                   ]
-                : []
-            }
-            disabled={!!groupId}
+                : []),
+            ]}
+            disabled={!!editing}
           />
         </Form.Item>
 
         <Form.Item
           label={
             <span className="inline-flex items-center gap-2">
-              Opción (usa un producto del catálogo)
-              <Tooltip title="Estas opciones se guardan como productos para poder reutilizarlas en varios productos (ej: ‘Hawaiana’, ‘Americana’).">
+              Modificador (obligatorio)
+              <Tooltip title="Se guarda internamente como producto para poder reutilizarlo en varios productos (ej: ‘Hawaiana’, ‘Americana’).">
                 <InfoCircleOutlined />
               </Tooltip>
             </span>
@@ -292,15 +311,20 @@ export default function ModifierModal({
           name="modifierId"
           rules={[{ required: true, message: "Elige una opción" }]}
           normalize={(v) => (v === null ? null : Number(v))}
-          extra="Tip: si no existe la opción, créala aquí y quedará disponible para futuros productos."
+          extra="Tip: si no existe el modificador, créalo aquí y quedará disponible para futuros productos."
         >
           <Select
-            placeholder="Buscar opción…"
+            placeholder="Buscar modificador…"
             showSearch
-            optionFilterProp="label"
+            filterOption={(input, option) => {
+              const label = String(option?.label ?? "");
+              const code = String((option as any)?.code ?? "");
+              return `${label} ${code}`.toLowerCase().includes(input.toLowerCase());
+            }}
             options={filteredProducts.map((p) => ({
               value: p.id,
-              label: `${p.code} ${p.name}`,
+              label: p.name,
+              code: p.code,
             }))}
             getPopupContainer={(trigger) => trigger.parentElement!}
           />
@@ -312,14 +336,15 @@ export default function ModifierModal({
             icon={<PlusOutlined />}
             onClick={() => setQuickOpen(true)}
           >
-            Crear opción nueva
+            Crear modificador nuevo
           </Button>
         </div>
 
         <Form.Item
-          label="Extra (monto a sumar)"
+          label="Extra por modificador (se suma a la cuenta)"
           name="priceDelta"
           rules={[{ required: true, message: "Indica el monto del extra" }]}
+          extra="Este monto se agrega al total cada vez que el mesero selecciona este modificador. Ej: $15 x 2 = $30."
         >
           <InputNumber min={0} step={0.01} addonBefore="$" className="w-full" />
         </Form.Item>
@@ -332,47 +357,46 @@ export default function ModifierModal({
         <Card size="small">
           <Space direction="vertical" size="small">
             <div>
-              <Text strong>Producto: </Text>
+              <Text strong>Modificador: </Text>
               {(() => {
-                const v = form.getFieldValue("modifierId");
-                const p = products.find((x) => x.id === v);
-                return p ? `${p.code} ${p.name}` : "—";
+                const p = products.find((x) => x.id === watchedModifierId);
+                return p ? p.name : "—";
               })()}
             </div>
             <div>
               <Text strong>Extra: </Text>$
-              {Number(form.getFieldValue("priceDelta") ?? 0).toFixed(2)}
+              {Number(watchedPriceDelta ?? 0).toFixed(2)}
             </div>
             <div>
               <Text strong>Estado: </Text>
-              {form.getFieldValue("isEnabled") ? "Activo" : "Off"}
+              {watchedEnabled ? "Activo" : "Off"}
             </div>
           </Space>
         </Card>
       </Form>
       <Modal
         open={quickOpen}
-        title="Crear producto rápido"
+        title="Crear modificador rápido"
         onCancel={() => setQuickOpen(false)}
         footer={null}
         destroyOnClose
       >
         <Space direction="vertical" style={{ width: "100%" }}>
           <Input
-            placeholder="Nombre"
+            placeholder="Nombre del modificador"
             value={qpName}
             onChange={(e) => setQpName(e.target.value)}
             autoFocus
           />
 
-          <Select
-            placeholder="Grupo de catálogo"
-            value={qpGroupId}
-            onChange={setQpGroupId}
-            options={groupsCat.map((g) => ({ value: g.id, label: g.name }))}
-            showSearch
-            optionFilterProp="label"
-            getPopupContainer={(trigger) => trigger.parentElement!}
+          <InputNumber
+            addonBefore="$"
+            placeholder="Precio con IVA"
+            value={qpPriceGross}
+            min={0}
+            step={0.01}
+            onChange={(v) => setQpPriceGross(v ?? 0)}
+            style={{ width: "100%" }}
           />
 
           <Select
@@ -381,36 +405,10 @@ export default function ModifierModal({
             onChange={setPrintArea}
             options={areasCat.map((a) => ({ value: a.id, label: a.name }))}
             showSearch
+            allowClear
             optionFilterProp="label"
             getPopupContainer={(trigger) => trigger.parentElement!}
           />
-
-          <Input
-            placeholder="Código"
-            value={qpCode}
-            onChange={(e) => setQpCode(e.target.value)}
-          />
-
-          <Space.Compact style={{ width: "100%" }}>
-            <InputNumber
-              addonBefore="$"
-              placeholder="Precio con IVA"
-              value={qpPriceGross}
-              min={0}
-              step={0.01}
-              onChange={(v) => setQpPriceGross(v ?? 0)}
-              style={{ width: "60%" }}
-            />
-            <InputNumber
-              addonAfter="%"
-              placeholder="IVA"
-              value={qpTax}
-              min={0}
-              step={0.5}
-              onChange={(v) => setQpTax(v ?? 16)}
-              style={{ width: "40%" }}
-            />
-          </Space.Compact>
 
           <Button
             type="primary"
@@ -421,7 +419,7 @@ export default function ModifierModal({
               setQuickOpen(false);
             }}
           >
-            Crear producto y usar
+            Crear modificador y usar
           </Button>
 
           <Text type="secondary">

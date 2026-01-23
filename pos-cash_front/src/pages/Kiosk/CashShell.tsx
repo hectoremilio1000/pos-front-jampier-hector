@@ -15,7 +15,7 @@ import XCutModal from "./components/modals/XCutModal";
 import OrdersReviewDrawer from "./components/modals/OrdersReviewDrawer";
 
 const { Title, Text } = Typography;
-type PrintMode = "local" | "cloud" | "hybrid";
+type PrintMode = "qr" | "impresion" | "mixto";
 
 function ShellInner() {
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -85,10 +85,10 @@ function ShellInner() {
     printerName && (printerStatus === "offline" || printerStatus === "down");
   const printerMissing = !printerName;
   const configuredPrintMode = (printSettings?.printMode ||
-    "hybrid") as PrintMode;
+    "mixto") as PrintMode;
   const effectivePrintMode =
-    configuredPrintMode !== "cloud" && printerMissing
-      ? "cloud"
+    configuredPrintMode !== "qr" && printerMissing
+      ? "qr"
       : configuredPrintMode;
 
   if (loading && !hasShift) {
@@ -111,7 +111,7 @@ function ShellInner() {
         />
       )}
       {hasSession &&
-        effectivePrintMode !== "cloud" &&
+        effectivePrintMode !== "qr" &&
         (printerMissing || printerOffline) && (
         <Alert
           type="error"

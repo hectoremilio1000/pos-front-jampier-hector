@@ -333,6 +333,10 @@ export default function ProductosPage() {
     copy.splice(index, 1);
     setForm({ ...form, modifierGroups: copy });
   };
+  const addModifierGroup = (group: ModifierGroupConfig) => {
+    const next = [...(form.modifierGroups ?? []), group];
+    setForm({ ...form, modifierGroups: next });
+  };
 
   return (
     <div className="space-y-4">
@@ -391,6 +395,7 @@ export default function ProductosPage() {
           setForm(vals); // opcional, para mantener el estado local
         }}
         onOpenSelector={openSelector}
+        onAddModifierGroup={addModifierGroup}
         onUpdateModifier={updateModifierAt}
         onRemoveModifier={removeModifierAt}
       />

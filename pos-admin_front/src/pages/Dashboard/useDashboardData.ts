@@ -66,6 +66,7 @@ type OrderItem = {
   qty: number;
   unitPrice: number;
   total: number;
+  isModifier?: boolean | null;
   routeAreaId?: number;
   areaImpresion?: AreaImpresion;
   product?: Product;
@@ -81,17 +82,6 @@ export type OrderDTO = {
   waiterId: number;
   items?: OrderItem[];
 };
-
-function isToday(iso?: string | null) {
-  if (!iso) return false;
-  const d = new Date(iso);
-  const now = new Date();
-  return (
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate()
-  );
-}
 
 export function useDashboardData(restaurantId?: number) {
   const [loading, setLoading] = useState(true);
@@ -122,6 +112,7 @@ export function useDashboardData(restaurantId?: number) {
 
     for (const order of orders || []) {
       for (const item of order.items || []) {
+        if (item.isModifier) continue;
         const categoryName = item.product?.group?.category?.name;
         if (!categoryName) continue;
 
@@ -129,7 +120,9 @@ export function useDashboardData(restaurantId?: number) {
 
         if (mode === "amount") {
           // $$$ – suma de dinero
-          value = Number(item.total || 0);
+          const lineTotal =
+            item.total != null ? Number(item.total) : Number(item.unitPrice) * Number(item.qty);
+          value = Number.isFinite(lineTotal) ? lineTotal : 0;
         } else {
           // "qty" – cantidad de piezas
           value = Number(item.qty || 0);
@@ -150,16 +143,35 @@ export function useDashboardData(restaurantId?: number) {
     // convertir a { name, amount }
     return sortedEntries.map(([name, amount]) => ({ name, amount }));
   }
+  function businessDayRange(fiscalCutHour: string) {
+    const [hRaw, mRaw] = fiscalCutHour.split(":");
+    const h = Number(hRaw || 0);
+    const m = Number(mRaw || 0);
+    const now = dayjs();
+    let start = now.hour(h).minute(m).second(0).millisecond(0);
+    if (now.isBefore(start)) start = start.subtract(1, "day");
+    const end = start.add(1, "day").subtract(1, "second");
+    return { start, end };
+  }
+
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
-        const [shiftRes, tablesRes, areasRes, ordersRes, ordersCancelRes] =
-          await Promise.all([
+        const rid = restaurantId ?? user?.restaurant?.id;
+        if (!rid) {
+          setLoading(false);
+          return;
+        }
+
+        const [shiftRes, settingsRes, tablesRes, areasRes] = await Promise.all(
+          [
             apiCash
-              .get<ShiftDTO>(
-                `/admin/shifts/current?restaurantId=${user?.restaurant?.id}`
-              )
+              .get<ShiftDTO>(`/admin/shifts/current?restaurantId=${rid}`)
+              .then((r) => r.data)
+              .catch(() => null),
+            apiCash
+              .get<{ fiscalCutHour?: string }>(`/settings/${rid}`)
               .then((r) => r.data)
               .catch(() => null),
             apiOrder
@@ -170,34 +182,52 @@ export function useDashboardData(restaurantId?: number) {
               .get<AreaDTO[]>("/areas")
               .then((r) => r.data)
               .catch(() => []),
-            apiOrderAuth
-              .get<OrderDTO[]>("/admin/orders")
-              .then((r) => {
-                return r.data;
-              })
-              .catch(() => []),
-            apiOrderAuth
-              .get<OrderDTO[]>("/admin/orders/cancel")
-              .then((r) => {
-                return r.data;
-              })
-              .catch(() => []),
-          ]);
+          ]
+        );
+
+        const fiscalCutHour = settingsRes?.fiscalCutHour ?? "05:00";
+        const { start, end } = businessDayRange(fiscalCutHour);
+        const dateStart = start.toISOString();
+        const dateEnd = end.toISOString();
+
+        const [ordersData, ordersCancelData, ordersCurrent] = await Promise.all([
+          apiOrderAuth
+            .get<OrderDTO[]>("/admin/orders", {
+              params: {
+                dateStart,
+                dateEnd,
+                statuses: "paid,settled,closed",
+              },
+            })
+            .then((r) => r.data)
+            .catch(() => []),
+          apiOrderAuth
+            .get<OrderDTO[]>("/admin/orders/cancel", {
+              params: { dateStart, dateEnd },
+            })
+            .then((r) => r.data)
+            .catch(() => []),
+          apiOrderAuth
+            .get<OrderDTO[]>("/admin/orders/consult", {
+              params: {
+                mode: "current",
+                status: "all",
+              },
+            })
+            .then((r) => r.data)
+            .catch(() => []),
+        ]);
 
         setShift(shiftRes);
         setTables(tablesRes);
         setAreas(areasRes);
-        setOrders(ordersRes);
-        setOrdersCancel(ordersCancelRes);
+        setOrders(ordersCurrent);
+        setOrdersCancel(ordersCancelData);
 
         // 1) KPIs (derivados de orders cerradas hoy)
-        const closedToday = ordersRes.filter((o) => {
-          const openedAt = dayjs(o.openedAt)
-            .local()
-            .format("YYYY-MM-DD HH:mm:ss");
-
-          return o.status === "closed" && isToday(openedAt);
-        });
+        const closedToday = ordersData.filter((o) =>
+          ["paid", "settled", "closed"].includes(String(o.status || ""))
+        );
         const salesTotal = closedToday.reduce(
           (s, o) => s + (Number(o.total) ?? 0),
           0
@@ -247,13 +277,14 @@ export function useDashboardData(restaurantId?: number) {
         >();
         for (const o of closedToday) {
           for (const it of o.items || []) {
+            if (it.isModifier) continue;
             const cur = prodMap.get(it.productId) || {
-              name: `#${it.product?.name}`,
+              name: it.product?.name || `#${it.productId}`,
               qty: 0,
               amount: 0,
             };
             cur.qty += it.qty;
-            cur.amount += it.unitPrice * it.qty;
+            cur.amount += (it.total ?? it.unitPrice * it.qty) || 0;
             prodMap.set(it.productId, cur);
           }
         }
@@ -264,18 +295,16 @@ export function useDashboardData(restaurantId?: number) {
         );
 
         // 3) Categorías (si no hay join lo dejamos vacío)
-        const topCategories = getTopCategories(ordersRes, 5, "amount");
-        console.log(topCategories);
+        const topCategories = getTopCategories(closedToday, 5, "amount");
         setCategories(topCategories);
 
         // 4) Horas pico
         const byHour: Record<string, number> = {};
         for (const o of closedToday) {
-          const d = new Date(o.closedAt || o.createdAt);
-          console.log(d);
+          if (!o.closedAt) continue;
+          const d = new Date(o.closedAt);
           const hh = String(d.getHours()).padStart(2, "0");
-          console.log(hh);
-          byHour[hh] = o.total ?? 0;
+          byHour[hh] = (byHour[hh] || 0) + (o.total ?? 0);
         }
         setHourly(
           Object.entries(byHour)
@@ -286,14 +315,15 @@ export function useDashboardData(restaurantId?: number) {
         setLoading(false);
       }
     })();
-  }, [restaurantId]);
+  }, [restaurantId, user?.restaurant?.id]);
 
   // Estado operativo derivado
   const state = useMemo(() => {
+    const openSessions = shift?.sessions?.filter((s) => s.status === "OPEN") ?? [];
     const cashOpen = shift
       ? {
-          count: 1,
-          sessions: shift.sessions,
+          count: openSessions.length,
+          sessions: openSessions,
         }
       : { count: 0, sessions: [] };
 
@@ -311,7 +341,10 @@ export function useDashboardData(restaurantId?: number) {
     // meseros
     const waiterIds = new Set<number>();
 
+    const inactiveStatuses = new Set(["closed", "void", "settled", "refunded", "partial_refund"]);
     for (const o of orders) {
+      const st = String(o.status || "").toLowerCase();
+      if (inactiveStatuses.has(st)) continue;
       if (o.waiterId != null) {
         waiterIds.add(o.waiterId);
       }
