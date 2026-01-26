@@ -123,7 +123,7 @@ export default function MapWizardCanvasModal({
 
   const selected = useMemo(
     () => items.find((item) => item.id === selectedId) ?? null,
-    [items, selectedId]
+    [items, selectedId],
   );
 
   const isDrawingPolygon = polygonDraft !== null;
@@ -131,7 +131,7 @@ export default function MapWizardCanvasModal({
 
   const tableItems = useMemo(
     () => items.filter((item) => isTable(item.kind)),
-    [items]
+    [items],
   );
 
   const getStagePoint = useCallback(() => {
@@ -170,9 +170,7 @@ export default function MapWizardCanvasModal({
     const maxX = Math.max(...xs);
     const minY = Math.min(...ys);
     const maxY = Math.max(...ys);
-    const relPoints = points.map((v, i) =>
-      i % 2 === 0 ? v - minX : v - minY
-    );
+    const relPoints = points.map((v, i) => (i % 2 === 0 ? v - minX : v - minY));
 
     const item: LayoutItem = {
       id: createId(),
@@ -190,11 +188,11 @@ export default function MapWizardCanvasModal({
     setPolygonDraft(null);
   }, [polygonDraftPoints]);
 
-  const startPolygonDraw = useCallback(() => {
-    setPolygonDraft([]);
-    setSelectedId(null);
-    message.info("Modo polígono: clic para puntos, Enter para cerrar, Esc para cancelar");
-  }, []);
+  // const startPolygonDraw = useCallback(() => {
+  //   setPolygonDraft([]);
+  //   setSelectedId(null);
+  //   message.info("Modo polígono: clic para puntos, Enter para cerrar, Esc para cancelar");
+  // }, []);
 
   useEffect(() => {
     if (!open || !wrapRef.current) return;
@@ -227,7 +225,7 @@ export default function MapWizardCanvasModal({
         cancelPolygon();
       } else if (e.key === "Backspace" || e.key === "Delete") {
         setPolygonDraft((prev) =>
-          prev && prev.length ? prev.slice(0, -2) : prev
+          prev && prev.length ? prev.slice(0, -2) : prev,
         );
       }
     };
@@ -264,7 +262,8 @@ export default function MapWizardCanvasModal({
           ? tablesRes.data
           : [];
 
-        const layoutPayload = layoutRes.data?.published ?? layoutRes.data?.draft;
+        const layoutPayload =
+          layoutRes.data?.published ?? layoutRes.data?.draft;
         const normalized = normalizeLayout(layoutPayload, stageSize);
 
         if (normalized?.gridSize) setGridSize(normalized.gridSize);
@@ -283,7 +282,7 @@ export default function MapWizardCanvasModal({
                 x: stageSize.width / 2,
                 y: stageSize.height / 2,
               },
-              defaultSeats
+              defaultSeats,
             ),
           ];
         }
@@ -323,7 +322,7 @@ export default function MapWizardCanvasModal({
 
   const updateItem = (id: string, patch: Partial<LayoutItem>) => {
     setItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, ...patch } : item))
+      prev.map((item) => (item.id === id ? { ...item, ...patch } : item)),
     );
   };
 
@@ -388,32 +387,32 @@ export default function MapWizardCanvasModal({
     updateItem(item.id, { width, height, rotation });
   };
 
-  const updatePolygonPoint = useCallback(
-    (itemId: string, pointIndex: number, x: number, y: number) => {
-      setItems((prev) =>
-        prev.map((item) => {
-          if (item.id !== itemId || item.kind !== "polygon") return item;
-          const next = [...(item.points ?? [])];
-          next[pointIndex] = x;
-          next[pointIndex + 1] = y;
-          return { ...item, points: next };
-        })
-      );
-    },
-    []
-  );
+  // const updatePolygonPoint = useCallback(
+  //   (itemId: string, pointIndex: number, x: number, y: number) => {
+  //     setItems((prev) =>
+  //       prev.map((item) => {
+  //         if (item.id !== itemId || item.kind !== "polygon") return item;
+  //         const next = [...(item.points ?? [])];
+  //         next[pointIndex] = x;
+  //         next[pointIndex + 1] = y;
+  //         return { ...item, points: next };
+  //       })
+  //     );
+  //   },
+  //   []
+  // );
 
   const autoNumberTables = () => {
     const sorted = [...tableItems].sort((a, b) =>
-      a.y === b.y ? a.x - b.x : a.y - b.y
+      a.y === b.y ? a.x - b.x : a.y - b.y,
     );
     const updates = new Map(
-      sorted.map((table, index) => [table.id, String(index + 1)])
+      sorted.map((table, index) => [table.id, String(index + 1)]),
     );
     setItems((prev) =>
       prev.map((item) =>
-        updates.has(item.id) ? { ...item, name: updates.get(item.id) } : item
-      )
+        updates.has(item.id) ? { ...item, name: updates.get(item.id) } : item,
+      ),
     );
   };
 
@@ -441,9 +440,12 @@ export default function MapWizardCanvasModal({
 
     setSaving(true);
     try {
-      const replaceRes = await apiOrder.post(`/areas/${area.id}/tables/replace`, {
-        tables: tablesPayload,
-      });
+      const replaceRes = await apiOrder.post(
+        `/areas/${area.id}/tables/replace`,
+        {
+          tables: tablesPayload,
+        },
+      );
 
       const codePairs = replaceRes.data?.codes;
       let nextItems = items;
@@ -451,10 +453,10 @@ export default function MapWizardCanvasModal({
         const codeMap = new Map(
           codePairs
             .filter((pair: any) => pair?.clientId && pair?.code)
-            .map((pair: any) => [String(pair.clientId), String(pair.code)])
+            .map((pair: any) => [String(pair.clientId), String(pair.code)]),
         );
         nextItems = items.map((item) =>
-          codeMap.has(item.id) ? { ...item, code: codeMap.get(item.id) } : item
+          codeMap.has(item.id) ? { ...item, code: codeMap.get(item.id) } : item,
         );
         setItems(nextItems);
       }
@@ -534,7 +536,7 @@ export default function MapWizardCanvasModal({
           points={[i * gridSize, 0, i * gridSize, height]}
           stroke="#e2e8f0"
           strokeWidth={1}
-        />
+        />,
       );
     }
     for (let j = 0; j < height / gridSize; j += 1) {
@@ -544,7 +546,7 @@ export default function MapWizardCanvasModal({
           points={[0, j * gridSize, width, j * gridSize]}
           stroke="#e2e8f0"
           strokeWidth={1}
-        />
+        />,
       );
     }
     return lines;
@@ -771,7 +773,7 @@ export default function MapWizardCanvasModal({
   const previewScale = Math.min(
     1,
     previewWidth / stageSize.width,
-    previewHeight / stageSize.height
+    previewHeight / stageSize.height,
   );
   const previewPos = {
     x: (previewWidth - stageSize.width * previewScale) / 2,
@@ -910,9 +912,7 @@ export default function MapWizardCanvasModal({
                           />
                         </div>
                         <div>
-                          <div className="text-xs text-slate-500">
-                            Asientos
-                          </div>
+                          <div className="text-xs text-slate-500">Asientos</div>
                           <InputNumber
                             min={1}
                             size="small"
@@ -949,7 +949,7 @@ export default function MapWizardCanvasModal({
                             updateItem(selected.id, {
                               width: clampSize(
                                 Number(v),
-                                getMinSize(selected.kind)
+                                getMinSize(selected.kind),
                               ),
                             })
                           }
@@ -962,7 +962,7 @@ export default function MapWizardCanvasModal({
                             updateItem(selected.id, {
                               height: clampSize(
                                 Number(v),
-                                getMinSize(selected.kind)
+                                getMinSize(selected.kind),
                               ),
                             })
                           }
@@ -1011,7 +1011,6 @@ export default function MapWizardCanvasModal({
                   </Space>
                 </Space>
               </div>
-
             </div>
           </div>
 
@@ -1056,9 +1055,7 @@ export default function MapWizardCanvasModal({
                 <InputNumber
                   min={1}
                   value={table.seats ?? defaultSeats}
-                  onChange={(v) =>
-                    updateItem(table.id, { seats: Number(v) })
-                  }
+                  onChange={(v) => updateItem(table.id, { seats: Number(v) })}
                 />
               </div>
             ))}
@@ -1134,7 +1131,7 @@ export default function MapWizardCanvasModal({
 
 function normalizeLayout(
   raw: any,
-  stageSize: { width: number; height: number }
+  stageSize: { width: number; height: number },
 ): LayoutDocument | null {
   if (!raw || typeof raw !== "object") return null;
   const items: LayoutItem[] = Array.isArray(raw.items)
@@ -1158,7 +1155,11 @@ function normalizeLayout(
             width: Number(item.width ?? DEFAULT_TABLE_SIZE),
             height: Number(item.height ?? DEFAULT_TABLE_SIZE),
             rotation: Number(item.rotation ?? 0),
-            name: item.name ? String(item.name) : item.code ? String(item.code) : "",
+            name: item.name
+              ? String(item.name)
+              : item.code
+                ? String(item.code)
+                : "",
             code: item.code ? String(item.code) : "",
             seats: item.seats ? Number(item.seats) : undefined,
             label: item.label ? String(item.label) : undefined,
@@ -1189,7 +1190,7 @@ function normalizeLayout(
 function scaleLayoutItems(
   items: LayoutItem[],
   from: { width: number; height: number },
-  to: { width: number; height: number }
+  to: { width: number; height: number },
 ) {
   if (!from.width || !from.height) return items;
   const scaleX = to.width / from.width;
@@ -1206,19 +1207,21 @@ function scaleLayoutItems(
 function mergeTablesIntoLayout(
   items: LayoutItem[],
   tables: TableRow[],
-  stageSize: { width: number; height: number }
+  stageSize: { width: number; height: number },
 ) {
   const map = new Map(
     items
       .filter((item) => isTable(item.kind) && item.code)
-      .map((item) => [String(item.code).trim().toLowerCase(), item])
+      .map((item) => [String(item.code).trim().toLowerCase(), item]),
   );
 
   const nextItems = [...items];
   let addedCount = 0;
 
   tables.forEach((table, index) => {
-    const key = String(table.code || "").trim().toLowerCase();
+    const key = String(table.code || "")
+      .trim()
+      .toLowerCase();
     if (!key) return;
     const existing = map.get(key);
     if (existing) {
@@ -1229,7 +1232,7 @@ function mergeTablesIntoLayout(
     }
     const position = autoPlacePosition(
       index + items.length + addedCount,
-      stageSize
+      stageSize,
     );
     nextItems.push({
       id: createId(),
@@ -1251,7 +1254,7 @@ function mergeTablesIntoLayout(
 
 function autoPlacePosition(
   index: number,
-  stageSize: { width: number; height: number }
+  stageSize: { width: number; height: number },
 ) {
   const spacing = 140;
   const columns = Math.max(1, Math.floor(stageSize.width / spacing));
@@ -1263,7 +1266,7 @@ function autoPlacePosition(
 function getCanvasCenter(
   stageSize: { width: number; height: number },
   scale: number,
-  stagePos: { x: number; y: number }
+  stagePos: { x: number; y: number },
 ) {
   return {
     x: (stageSize.width / 2 - stagePos.x) / scale,
@@ -1274,7 +1277,7 @@ function getCanvasCenter(
 function createItem(
   kind: LayoutItemKind,
   center: { x: number; y: number },
-  defaultSeats: number
+  defaultSeats: number,
 ): LayoutItem {
   const base: LayoutItem = {
     id: createId(),

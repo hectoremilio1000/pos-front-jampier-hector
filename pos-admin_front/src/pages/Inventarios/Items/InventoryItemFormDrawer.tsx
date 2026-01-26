@@ -1,6 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Drawer, Form, Input, Select, Switch, Button, Space, Divider, message } from "antd";
-import type { InventoryGroupRow, InventoryItemRow, MeasurementUnitRow } from "@/lib/api_inventory";
+import {
+  Drawer,
+  Form,
+  Input,
+  Select,
+  Switch,
+  Button,
+  Space,
+  Divider,
+  message,
+} from "antd";
+import type {
+  InventoryGroupRow,
+  InventoryItemRow,
+  MeasurementUnitRow,
+} from "@/lib/api_inventory";
 import { upsertInventoryGroup, upsertInventoryItem } from "@/lib/api_inventory";
 import InventoryItemPhotosPanel from "./InventoryItemPhotosPanel";
 
@@ -60,19 +74,29 @@ export default function InventoryItemFormDrawer({
   const isEdit = !!item?.id;
   const codeTouchedRef = useRef(false);
 
-  const groupOptions = useMemo(
+  type GroupSelectValue = number | `suggested:${string}`;
+  type GroupSelectOption = { label: string; value: GroupSelectValue };
+
+  const groupOptions: GroupSelectOption[] = useMemo(
     () => groups.map((g) => ({ label: `${g.code} — ${g.name}`, value: g.id })),
-    [groups]
+    [groups],
   );
-  const suggestedGroupOptions = useMemo(
-    () => SUGGESTED_GROUPS.map((g) => ({ label: g.name, value: `suggested:${g.code}` })),
-    []
+
+  const suggestedGroupOptions: GroupSelectOption[] = useMemo(
+    () =>
+      SUGGESTED_GROUPS.map((g) => ({
+        label: g.name,
+        value: `suggested:${g.code}`,
+      })),
+    [],
   );
-  const groupSelectOptions = groupOptions.length > 0 ? groupOptions : suggestedGroupOptions;
+
+  const groupSelectOptions: GroupSelectOption[] =
+    groupOptions.length > 0 ? groupOptions : suggestedGroupOptions;
 
   const unitOptions = useMemo(
     () => units.map((u) => ({ label: `${u.code} — ${u.name}`, value: u.id })),
-    [units]
+    [units],
   );
 
   useEffect(() => {
@@ -111,8 +135,8 @@ export default function InventoryItemFormDrawer({
   }
 
   async function submit() {
-      const values = await form.validateFields();
-      setSaving(true);
+    const values = await form.validateFields();
+    setSaving(true);
     try {
       const groupId = await resolveGroupId(values.groupId);
       const finalCode =
@@ -186,15 +210,24 @@ export default function InventoryItemFormDrawer({
           <Select
             options={[
               { value: "raw", label: "Materia prima (raw)" }, // insumos base: carne, limón, azúcar
-              { value: "prepared", label: "Preparación / Subreceta (prepared)" }, // jarabes, salsas, mix, pre-batch
+              {
+                value: "prepared",
+                label: "Preparación / Subreceta (prepared)",
+              }, // jarabes, salsas, mix, pre-batch
               { value: "beverage", label: "Bebida (beverage)" }, // refrescos, cerveza, vino (si lo manejas como insumo)
               { value: "packaging", label: "Empaque / Desechable (packaging)" }, // vasos desechables, tapas, bolsas, popotes
               { value: "glassware", label: "Cristalería (glassware)" }, // vasos, copas, tarros
               { value: "tableware", label: "Vajilla (tableware)" }, // platos, tazas, bowls
               { value: "utensil", label: "Utensilio / Bar tools (utensil)" }, // jiggers, shakers, pinzas, cuchillos
               { value: "cleaning", label: "Limpieza / Químicos (cleaning)" }, // cloro, detergente, desengrasante
-              { value: "consumable", label: "Consumible operativo (consumable)" }, // servilletas, toallas, guantes (si no es empaque)
-              { value: "maintenance", label: "Mantenimiento / Refacciones (maintenance)" }, // focos, filtros, empaques, refacciones
+              {
+                value: "consumable",
+                label: "Consumible operativo (consumable)",
+              }, // servilletas, toallas, guantes (si no es empaque)
+              {
+                value: "maintenance",
+                label: "Mantenimiento / Refacciones (maintenance)",
+              }, // focos, filtros, empaques, refacciones
               { value: "asset", label: "Activo / Equipo (asset)" }, // licuadora, refrigerador, mobiliario
               { value: "merch", label: "Producto para reventa (merch)" }, // playeras, termos, botellas selladas
               { value: "service", label: "Servicio (service)" }, // lavandería, fumigación, internet (si lo quieres trackear)
@@ -203,10 +236,18 @@ export default function InventoryItemFormDrawer({
         </Form.Item>
 
         <Form.Item label="Grupo" name="groupId">
-          <Select allowClear placeholder="(sin grupo)" options={groupSelectOptions} />
+          <Select
+            allowClear
+            placeholder="(sin grupo)"
+            options={groupSelectOptions}
+          />
         </Form.Item>
 
-        <Form.Item label="Unidad base" name="unitId" rules={[{ required: true }]}>
+        <Form.Item
+          label="Unidad base"
+          name="unitId"
+          rules={[{ required: true }]}
+        >
           <Select placeholder="g / ml / pza" options={unitOptions} />
         </Form.Item>
 
@@ -218,9 +259,14 @@ export default function InventoryItemFormDrawer({
       <Divider />
 
       {isEdit ? (
-        <InventoryItemPhotosPanel restaurantId={restaurantId} itemId={item!.id} />
+        <InventoryItemPhotosPanel
+          restaurantId={restaurantId}
+          itemId={item!.id}
+        />
       ) : (
-        <div style={{ opacity: 0.7 }}>Guarda el insumo para poder subir fotos.</div>
+        <div style={{ opacity: 0.7 }}>
+          Guarda el insumo para poder subir fotos.
+        </div>
       )}
     </Drawer>
   );

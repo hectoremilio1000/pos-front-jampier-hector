@@ -51,9 +51,10 @@ export default function ModificadoresPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [wizardMode, setWizardMode] = useState<"modifier" | null>(null);
   const [wizardStep, setWizardStep] = useState(0);
-  const [wizardGroup, setWizardGroup] = useState<{ id: number; name: string } | null>(
-    null
-  );
+  const [wizardGroup, setWizardGroup] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
 
   // selección
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
@@ -69,7 +70,7 @@ export default function ModificadoresPage() {
 
   const [modModalOpen, setModModalOpen] = useState(false);
   const [modModalEditing, setModModalEditing] = useState<ModifierItem | null>(
-    null
+    null,
   );
 
   const fetchGroups = async (nextSelectedId?: number | null) => {
@@ -85,7 +86,7 @@ export default function ModificadoresPage() {
       const nextId =
         typeof nextSelectedId === "number"
           ? nextSelectedId
-          : selectedGroupId && data.some((g) => g.id === selectedGroupId)
+          : selectedGroupId && data.some((g: any) => g.id === selectedGroupId)
             ? selectedGroupId
             : data[0].id;
       setSelectedGroupId(nextId);
@@ -105,7 +106,7 @@ export default function ModificadoresPage() {
 
   const selectedGroup = useMemo(
     () => groups.find((g) => g.id === selectedGroupId) || null,
-    [groups, selectedGroupId]
+    [groups, selectedGroupId],
   );
   const hasGroups = groups.length > 0;
   const groupOptions = useMemo(
@@ -114,14 +115,14 @@ export default function ModificadoresPage() {
         label: `${g.name} (${g.code})`,
         value: g.id,
       })),
-    [groups]
+    [groups],
   );
 
   const filteredGroups = useMemo(() => {
     const q = searchGroup.trim().toLowerCase();
     if (!q) return groups;
     return groups.filter((g) =>
-      `${g.name} ${g.code}`.toLowerCase().includes(q)
+      `${g.name} ${g.code}`.toLowerCase().includes(q),
     );
   }, [groups, searchGroup]);
 
@@ -132,13 +133,13 @@ export default function ModificadoresPage() {
     return mods.filter((m) =>
       `${m.modifier?.code ?? ""} ${m.modifier?.name ?? ""}`
         .toLowerCase()
-        .includes(q)
+        .includes(q),
     );
   }, [selectedGroup, searchMod]);
 
   const wizardSteps = useMemo(
     () => [{ title: "Grupo" }, { title: "Modificador" }],
-    []
+    [],
   );
 
   /* ─────────── acciones grupos ─────────── */
@@ -210,7 +211,7 @@ export default function ModificadoresPage() {
       await fetchGroups();
     } catch (e: any) {
       message.error(
-        e?.response?.data?.message ?? "Error al eliminar el modificador"
+        e?.response?.data?.message ?? "Error al eliminar el modificador",
       );
     }
   };
@@ -305,7 +306,11 @@ export default function ModificadoresPage() {
       </div>
 
       <div className="flex items-center justify-end">
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={() => setCreateOpen(true)}
+        >
           Crear modificadores
         </Button>
       </div>
@@ -385,7 +390,7 @@ export default function ModificadoresPage() {
                       value={selectedGroupId ?? undefined}
                       onChange={(value) =>
                         setSelectedGroupId(
-                          typeof value === "number" ? value : null
+                          typeof value === "number" ? value : null,
                         )
                       }
                       options={groupOptions}
@@ -532,12 +537,9 @@ export default function ModificadoresPage() {
           const nextId = created?.id;
           const updated = await fetchGroups(nextId);
           if (wizardMode === "modifier") {
-            const picked =
-              created?.id
-                ? { id: created.id, name: created.name }
-                : updated.find((g) => g.id === nextId) ||
-                  updated[0] ||
-                  null;
+            const picked = created?.id
+              ? { id: created.id, name: created.name }
+              : updated.find((g: any) => g.id === nextId) || updated[0] || null;
             if (picked) setWizardGroup({ id: picked.id, name: picked.name });
             setWizardStep(1);
             setModModalEditing(null);

@@ -36,10 +36,15 @@ export default function StockRequestFormDrawer({
   const [loadingCatalogs, setLoadingCatalogs] = useState(false);
 
   const warehouseOptions = useMemo(
-    () => warehouses.map((w) => ({ label: w.name ?? `Almacén #${w.id}`, value: w.id })),
-    [warehouses]
+    () =>
+      warehouses.map((w) => ({
+        label: w.name ?? `Almacén #${w.id}`,
+        value: w.id,
+      })),
+    [warehouses],
   );
 
+  const isEdit = !!request?.id;
   useEffect(() => {
     if (!open) return;
 
@@ -61,18 +66,17 @@ export default function StockRequestFormDrawer({
       }
     })();
 
-    const isEdit = !!request?.id;
     form.setFieldsValue({
-      areaLabel: isEdit ? request?.areaLabel ?? "" : "",
-      warehouseId: isEdit ? request?.warehouseId ?? undefined : undefined,
+      areaLabel: isEdit ? (request?.areaLabel ?? "") : "",
+      warehouseId: isEdit ? (request?.warehouseId ?? undefined) : undefined,
       requestedAt: isEdit
         ? request?.requestedAt
           ? dayjs(request.requestedAt)
           : dayjs()
         : defaultRequestedAt
-        ? dayjs(defaultRequestedAt)
-        : dayjs(),
-      notes: isEdit ? request?.notes ?? "" : "",
+          ? dayjs(defaultRequestedAt)
+          : dayjs(),
+      notes: isEdit ? (request?.notes ?? "") : "",
     });
   }, [open, request, form, restaurantId, defaultRequestedAt]);
 
@@ -112,7 +116,9 @@ export default function StockRequestFormDrawer({
 
   return (
     <Drawer
-      title={request?.id ? `Editar pedido #${request.id}` : "Nuevo pedido al almacén"}
+      title={
+        request?.id ? `Editar pedido #${request.id}` : "Nuevo pedido al almacén"
+      }
       open={open}
       onClose={onClose}
       width={520}
@@ -135,7 +141,11 @@ export default function StockRequestFormDrawer({
           />
         </Form.Item>
 
-        <Form.Item label="Almacén destino" name="warehouseId" rules={[{ required: true }]}>
+        <Form.Item
+          label="Almacén destino"
+          name="warehouseId"
+          rules={[{ required: true }]}
+        >
           <Select
             loading={loadingCatalogs}
             options={warehouseOptions}
@@ -157,12 +167,17 @@ export default function StockRequestFormDrawer({
       </Form>
 
       <div style={{ opacity: 0.65, marginTop: 12, marginBottom: 12 }}>
-        * Siguiente paso: agregar líneas (presentación + cantidad) y luego registrar la salida.
+        * Siguiente paso: agregar líneas (presentación + cantidad) y luego
+        registrar la salida.
       </div>
       <div className="flex justify-end flex-nowrap items-center">
         <Button onClick={onClose}>Cancelar</Button>
 
-        <Button className="ml-6" loading={saving} onClick={() => submit({ openItems: false })}>
+        <Button
+          className="ml-6"
+          loading={saving}
+          onClick={() => submit({ openItems: false })}
+        >
           Guardar
         </Button>
 
