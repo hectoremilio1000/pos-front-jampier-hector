@@ -18,6 +18,7 @@ import { useOutletContext } from "react-router-dom";
 import dayjs, { Dayjs } from "dayjs";
 import type { InventariosOutletContext } from "../index";
 import {
+  InventoryCutRequest,
   InventoryCutResponse,
   InventoryCutSummaryRow,
   InventoryItemRow,
@@ -32,9 +33,21 @@ import {
 type CompareMode = "theoretical" | "count";
 
 const movementOptions = [
-  { label: "Compras", value: "purchase", help: "Entradas por compras recibidas." },
-  { label: "Ventas", value: "sale_consumption", help: "Salidas por consumo de recetas." },
-  { label: "Ajustes", value: "manual_adjustment", help: "Ajustes manuales de inventario." },
+  {
+    label: "Compras",
+    value: "purchase",
+    help: "Entradas por compras recibidas.",
+  },
+  {
+    label: "Ventas",
+    value: "sale_consumption",
+    help: "Salidas por consumo de recetas.",
+  },
+  {
+    label: "Ajustes",
+    value: "manual_adjustment",
+    help: "Ajustes manuales de inventario.",
+  },
   { label: "Mermas", value: "waste", help: "Salidas por mermas aplicadas." },
 ];
 
@@ -46,12 +59,17 @@ const movementLabelMap: Record<string, string> = {
 };
 
 function formatQty(value: number | null | undefined) {
-  return Number(value ?? 0).toLocaleString(undefined, { maximumFractionDigits: 4 });
+  return Number(value ?? 0).toLocaleString(undefined, {
+    maximumFractionDigits: 4,
+  });
 }
 
 function formatMoney(value: number | null | undefined) {
   if (value === null || value === undefined) return "—";
-  return Number(value).toLocaleString(undefined, { style: "currency", currency: "MXN" });
+  return Number(value).toLocaleString(undefined, {
+    style: "currency",
+    currency: "MXN",
+  });
 }
 
 function formatDate(value?: string | null) {
@@ -61,7 +79,7 @@ function formatDate(value?: string | null) {
 function buildCountLabel(
   id?: number | null,
   name?: string | null,
-  finishedAt?: string | null
+  finishedAt?: string | null,
 ) {
   if (!id) return "—";
   const dateText = formatDate(finishedAt);
@@ -87,7 +105,7 @@ export default function DiffsWizard() {
   const [compareMode, setCompareMode] = useState<CompareMode>("theoretical");
   const [endDate, setEndDate] = useState<Dayjs | null>(dayjs());
   const [movementTypes, setMovementTypes] = useState<string[]>(
-    movementOptions.map((o) => o.value)
+    movementOptions.map((o) => o.value),
   );
 
   const [scope, setScope] = useState<"all" | "selected">("all");
@@ -95,7 +113,9 @@ export default function DiffsWizard() {
   const [itemsLoading, setItemsLoading] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<number[]>([]);
 
-  const [pendingCut, setPendingCut] = useState<InventoryCutResponse | null>(null);
+  const [pendingCut, setPendingCut] = useState<InventoryCutResponse | null>(
+    null,
+  );
   const [calcLoading, setCalcLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
 
@@ -103,10 +123,16 @@ export default function DiffsWizard() {
     setCountsLoading(true);
     try {
       const r = await listStockCounts(restaurantId);
-      const closed = r.filter((c) => String(c.status).toLowerCase() === "closed");
+      const closed = r.filter(
+        (c) => String(c.status).toLowerCase() === "closed",
+      );
       const sorted = closed.slice().sort((a, b) => {
-        const aTime = a.finishedAt ? dayjs(a.finishedAt).valueOf() : dayjs(a.startedAt).valueOf();
-        const bTime = b.finishedAt ? dayjs(b.finishedAt).valueOf() : dayjs(b.startedAt).valueOf();
+        const aTime = a.finishedAt
+          ? dayjs(a.finishedAt).valueOf()
+          : dayjs(a.startedAt).valueOf();
+        const bTime = b.finishedAt
+          ? dayjs(b.finishedAt).valueOf()
+          : dayjs(b.startedAt).valueOf();
         return bTime - aTime;
       });
       setCounts(sorted);
@@ -154,12 +180,23 @@ export default function DiffsWizard() {
     setPendingCut(null);
   }
 
-  function buildPayload() {
+  function buildPayload(): InventoryCutRequest {
     return {
-      initialCountId: initialCountId ?? undefined,
-      finalCountId: compareMode === "count" ? finalCountId ?? undefined : undefined,
-      endDate: compareMode === "theoretical" ? endDate?.format("YYYY-MM-DD") : undefined,
+      // requerido por el tipo => aquí NO puede ser undefined
+      // ya lo validas en validateAllSteps(), entonces es seguro
+      initialCountId: initialCountId!,
+
+      // estos 2: ponlos como undefined SOLO si el tipo los permite
+      // si InventoryCutRequest los define como opcionales (?:), esto compila.
+      finalCountId: compareMode === "count" ? finalCountId! : undefined,
+      endDate:
+        compareMode === "theoretical"
+          ? endDate!.format("YYYY-MM-DD")
+          : undefined,
+
       movementTypes,
+
+      // igual: opcional
       itemIds: scope === "selected" ? selectedItemIds : undefined,
     };
   }
@@ -278,7 +315,7 @@ export default function DiffsWizard() {
         const label = `#${c.id} · ${c.name ?? c.notes ?? "Conteo"} · ${dateText}`;
         return { value: c.id, label };
       }),
-    [counts]
+    [counts],
   );
 
   const historyColumns = useMemo<ColumnsType<InventoryCutSummaryRow>>(
@@ -286,18 +323,27 @@ export default function DiffsWizard() {
       {
         title: "Fecha",
         width: 140,
-        render: (_, r) => formatDate(r.rangeEnd || r.endAt || r.createdAt || null),
+        render: (_, r) =>
+          formatDate(r.rangeEnd || r.endAt || r.createdAt || null),
       },
       {
         title: "Conteo inicial",
         render: (_, r) =>
-          buildCountLabel(r.initialCountId, r.initialCountName, r.initialCountFinishedAt),
+          buildCountLabel(
+            r.initialCountId,
+            r.initialCountName,
+            r.initialCountFinishedAt,
+          ),
       },
       {
         title: "Final",
         render: (_, r) => {
           if (String(r.compareMode) === "count") {
-            return buildCountLabel(r.finalCountId ?? null, r.finalCountName, r.finalCountFinishedAt);
+            return buildCountLabel(
+              r.finalCountId ?? null,
+              r.finalCountName,
+              r.finalCountFinishedAt,
+            );
           }
           return `Teorico hasta ${formatDate(r.rangeEnd || r.endAt || r.createdAt || null)}`;
         },
@@ -314,12 +360,17 @@ export default function DiffsWizard() {
         title: "Diferencia",
         width: 120,
         render: (_, r) =>
-          String(r.compareMode) === "count" ? formatQty(r.totals.diffQtyBase) : "—",
+          String(r.compareMode) === "count"
+            ? formatQty(r.totals.diffQtyBase)
+            : "—",
       },
       {
         title: "Costo dif.",
         width: 140,
-        render: (_, r) => (String(r.compareMode) === "count" ? formatMoney(r.totals.diffCost) : "—"),
+        render: (_, r) =>
+          String(r.compareMode) === "count"
+            ? formatMoney(r.totals.diffCost)
+            : "—",
       },
       {
         title: "Estado",
@@ -331,7 +382,7 @@ export default function DiffsWizard() {
         ),
       },
     ],
-    []
+    [],
   );
 
   const steps = [
@@ -339,7 +390,9 @@ export default function DiffsWizard() {
       title: "Productos",
       content: (
         <Space direction="vertical" style={{ width: "100%" }}>
-          <Typography.Text>Define si quieres todos los insumos o solo algunos.</Typography.Text>
+          <Typography.Text>
+            Define si quieres todos los insumos o solo algunos.
+          </Typography.Text>
           <Radio.Group value={scope} onChange={(e) => setScope(e.target.value)}>
             <Radio value="all">Todos los insumos</Radio>
             <Radio value="selected">Seleccionados</Radio>
@@ -361,7 +414,9 @@ export default function DiffsWizard() {
               }))}
             />
           ) : (
-            <Typography.Text type="secondary">Se incluiran todos los insumos.</Typography.Text>
+            <Typography.Text type="secondary">
+              Se incluiran todos los insumos.
+            </Typography.Text>
           )}
         </Space>
       ),
@@ -370,7 +425,9 @@ export default function DiffsWizard() {
       title: "Conteo inicial",
       content: (
         <Space direction="vertical" style={{ width: "100%" }}>
-          <Typography.Text>Selecciona el conteo fisico inicial.</Typography.Text>
+          <Typography.Text>
+            Selecciona el conteo fisico inicial.
+          </Typography.Text>
           <Select
             style={{ minWidth: 280 }}
             placeholder="Selecciona conteo inicial"
@@ -386,8 +443,13 @@ export default function DiffsWizard() {
       title: "Comparar",
       content: (
         <Space direction="vertical" style={{ width: "100%" }}>
-          <Typography.Text>Define contra que quieres comparar el inventario final.</Typography.Text>
-          <Radio.Group value={compareMode} onChange={(e) => setCompareMode(e.target.value)}>
+          <Typography.Text>
+            Define contra que quieres comparar el inventario final.
+          </Typography.Text>
+          <Radio.Group
+            value={compareMode}
+            onChange={(e) => setCompareMode(e.target.value)}
+          >
             <Radio value="theoretical">Solo teorico</Radio>
             <Radio value="count">Conteo fisico</Radio>
           </Radio.Group>
@@ -414,11 +476,16 @@ export default function DiffsWizard() {
       title: "Movimientos",
       content: (
         <Space direction="vertical" style={{ width: "100%" }}>
-          <Typography.Text>Elige que movimientos se consideran en el corte.</Typography.Text>
+          <Typography.Text>
+            Elige que movimientos se consideran en el corte.
+          </Typography.Text>
           <Checkbox.Group
             value={movementTypes}
             onChange={(vals) => setMovementTypes(vals as string[])}
-            options={movementOptions.map((opt) => ({ label: opt.label, value: opt.value }))}
+            options={movementOptions.map((opt) => ({
+              label: opt.label,
+              value: opt.value,
+            }))}
           />
           <Space direction="vertical" size={4}>
             {movementOptions.map((opt) => (
@@ -440,7 +507,7 @@ export default function DiffsWizard() {
               {buildCountLabel(
                 initialCountId,
                 counts.find((c) => c.id === initialCountId)?.name ?? null,
-                counts.find((c) => c.id === initialCountId)?.finishedAt ?? null
+                counts.find((c) => c.id === initialCountId)?.finishedAt ?? null,
               )}
             </b>
           </Typography.Text>
@@ -459,7 +526,7 @@ export default function DiffsWizard() {
                 {buildCountLabel(
                   finalCountId,
                   counts.find((c) => c.id === finalCountId)?.name ?? null,
-                  counts.find((c) => c.id === finalCountId)?.finishedAt ?? null
+                  counts.find((c) => c.id === finalCountId)?.finishedAt ?? null,
                 )}
               </b>
             </Typography.Text>
@@ -467,18 +534,25 @@ export default function DiffsWizard() {
           <Typography.Text>
             Movimientos:{" "}
             <b>
-              {movementTypes.map((m) => movementLabelMap[m] || m).join(", ") || "—"}
+              {movementTypes.map((m) => movementLabelMap[m] || m).join(", ") ||
+                "—"}
             </b>
           </Typography.Text>
           <Typography.Text>
-            Alcance: <b>{scope === "all" ? "Todos los insumos" : "Seleccionados"}</b>
+            Alcance:{" "}
+            <b>{scope === "all" ? "Todos los insumos" : "Seleccionados"}</b>
           </Typography.Text>
 
           <Space>
             <Button onClick={handleCalc} loading={calcLoading}>
               Calcular resumen
             </Button>
-            <Button type="primary" onClick={handleSave} loading={saveLoading} disabled={!pendingCut}>
+            <Button
+              type="primary"
+              onClick={handleSave}
+              loading={saveLoading}
+              disabled={!pendingCut}
+            >
               Guardar corte
             </Button>
           </Space>
@@ -486,17 +560,35 @@ export default function DiffsWizard() {
           {pendingCut ? (
             <Space direction="vertical" style={{ width: "100%" }}>
               <Typography.Text type="secondary">
-                Rango: {formatDate(pendingCut.range.start)} → {formatDate(pendingCut.range.end)}
+                Rango: {formatDate(pendingCut.range.start)} →{" "}
+                {formatDate(pendingCut.range.end)}
               </Typography.Text>
               <Space wrap>
-                <Typography.Text>Inicial: <b>{formatQty(pendingCut.totals.initialQtyBase)}</b></Typography.Text>
-                <Typography.Text>Movimientos: <b>{formatQty(pendingCut.totals.movementQtyBase)}</b></Typography.Text>
-                <Typography.Text>Teorico: <b>{formatQty(pendingCut.totals.theoreticalQtyBase)}</b></Typography.Text>
+                <Typography.Text>
+                  Inicial: <b>{formatQty(pendingCut.totals.initialQtyBase)}</b>
+                </Typography.Text>
+                <Typography.Text>
+                  Movimientos:{" "}
+                  <b>{formatQty(pendingCut.totals.movementQtyBase)}</b>
+                </Typography.Text>
+                <Typography.Text>
+                  Teorico:{" "}
+                  <b>{formatQty(pendingCut.totals.theoreticalQtyBase)}</b>
+                </Typography.Text>
                 {pendingCut.finalCount ? (
                   <>
-                    <Typography.Text>Final fisico: <b>{formatQty(pendingCut.totals.finalQtyBase)}</b></Typography.Text>
-                    <Typography.Text>Diferencia: <b>{formatQty(pendingCut.totals.diffQtyBase)}</b></Typography.Text>
-                    <Typography.Text>Costo dif.: <b>{formatMoney(pendingCut.totals.diffCost)}</b></Typography.Text>
+                    <Typography.Text>
+                      Final fisico:{" "}
+                      <b>{formatQty(pendingCut.totals.finalQtyBase)}</b>
+                    </Typography.Text>
+                    <Typography.Text>
+                      Diferencia:{" "}
+                      <b>{formatQty(pendingCut.totals.diffQtyBase)}</b>
+                    </Typography.Text>
+                    <Typography.Text>
+                      Costo dif.:{" "}
+                      <b>{formatMoney(pendingCut.totals.diffCost)}</b>
+                    </Typography.Text>
                   </>
                 ) : null}
               </Space>
@@ -538,7 +630,10 @@ export default function DiffsWizard() {
         width={760}
       >
         <Space direction="vertical" size={16} style={{ width: "100%" }}>
-          <Steps current={wizardStep} items={steps.map((s) => ({ title: s.title }))} />
+          <Steps
+            current={wizardStep}
+            items={steps.map((s) => ({ title: s.title }))}
+          />
           <div>{steps[wizardStep]?.content}</div>
           <Space>
             <Button onClick={closeWizard}>Cerrar</Button>

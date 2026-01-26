@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Button,
   Drawer,
@@ -49,21 +49,24 @@ export default function StockCountDetailDrawer({
 
   // búsqueda de presentaciones para agregar
   const [search, setSearch] = useState("");
-  const [suggestions, setSuggestions] = useState<InventoryPresentationRow[]>([]);
+  const [suggestions, setSuggestions] = useState<InventoryPresentationRow[]>(
+    [],
+  );
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
 
   // modal agregar item
   const [addOpen, setAddOpen] = useState(false);
-  const [selectedPresentation, setSelectedPresentation] = useState<InventoryPresentationRow | null>(
-    null
-  );
+  const [selectedPresentation, setSelectedPresentation] =
+    useState<InventoryPresentationRow | null>(null);
   const [addQtyPresentations, setAddQtyPresentations] = useState<number>(1);
   const [addNotes, setAddNotes] = useState<string>("");
   const [adding, setAdding] = useState(false);
 
   // modal editar item
   const [editOpen, setEditOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<StockCountItemRow | null>(null);
+  const [editingItem, setEditingItem] = useState<StockCountItemRow | null>(
+    null,
+  );
   const [editForm] = Form.useForm();
   const [editSaving, setEditSaving] = useState(false);
 
@@ -93,7 +96,10 @@ export default function StockCountDetailDrawer({
     const handle = setTimeout(async () => {
       setSuggestionsLoading(true);
       try {
-        const res = await searchInventoryPresentations(restaurantId, search || undefined);
+        const res = await searchInventoryPresentations(
+          restaurantId,
+          search || undefined,
+        );
         setSuggestions(res.slice(0, 10));
       } catch {
         setSuggestions([]);
@@ -105,13 +111,14 @@ export default function StockCountDetailDrawer({
     return () => clearTimeout(handle);
   }, [open, countId, restaurantId, search]);
 
-  const isClosed = detail?.status === "closed" || detail?.status === "cancelled";
+  const isClosed =
+    detail?.status === "closed" || detail?.status === "cancelled";
   const canClose = !isClosed;
 
-  const totalDiffCost = useMemo(() => {
-    const items = detail?.items ?? [];
-    return items.reduce((acc, it) => acc + (Number(it.differenceTotalCost ?? 0) || 0), 0);
-  }, [detail]);
+  // const totalDiffCost = useMemo(() => {
+  //   const items = detail?.items ?? [];
+  //   return items.reduce((acc, it) => acc + (Number(it.differenceTotalCost ?? 0) || 0), 0);
+  // }, [detail]);
 
   const itemColumns: ColumnsType<StockCountItemRow> = [
     {
@@ -207,7 +214,9 @@ export default function StockCountDetailDrawer({
       <div>
         <div style={{ fontWeight: 600 }}>{r.name}</div>
         <div style={{ opacity: 0.7, fontSize: 12 }}>
-          {r.item ? `${r.item.code} — ${r.item.name}` : String(r.inventoryItemId)}
+          {r.item
+            ? `${r.item.code} — ${r.item.name}`
+            : String(r.inventoryItemId)}
         </div>
       </div>
     ),
@@ -231,7 +240,8 @@ export default function StockCountDetailDrawer({
   async function doAdd() {
     if (!countId || !selectedPresentation) return;
     const qtyBase =
-      (Number(addQtyPresentations) || 0) * (Number(selectedPresentation.contentInBaseUnit) || 0);
+      (Number(addQtyPresentations) || 0) *
+      (Number(selectedPresentation.contentInBaseUnit) || 0);
     if (!Number.isFinite(qtyBase) || qtyBase < 0) {
       message.error("Cantidad inválida");
       return;
@@ -295,7 +305,12 @@ export default function StockCountDetailDrawer({
             Refrescar
           </Button>
           <Tooltip title={isClosed ? "Conteo cerrado" : ""}>
-            <Button type="primary" disabled={!canClose} loading={closing} onClick={doClose}>
+            <Button
+              type="primary"
+              disabled={!canClose}
+              loading={closing}
+              onClick={doClose}
+            >
               Cerrar conteo
             </Button>
           </Tooltip>
@@ -310,9 +325,13 @@ export default function StockCountDetailDrawer({
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div>
             <Typography.Text type="secondary">
-              Almacén: {detail.warehouse?.name ?? detail.warehouseId} · Fecha de conteo:{" "}
-              {detail.startedAt ? dayjs(detail.startedAt).format("YYYY-MM-DD HH:mm") : "—"} ·
-              Status: {(() => {
+              Almacén: {detail.warehouse?.name ?? detail.warehouseId} · Fecha de
+              conteo:{" "}
+              {detail.startedAt
+                ? dayjs(detail.startedAt).format("YYYY-MM-DD HH:mm")
+                : "—"}{" "}
+              · Status:{" "}
+              {(() => {
                 const s = String(detail.status ?? "");
                 if (s === "in_progress") return "En progreso";
                 if (s === "closed") return "Cerrado";
@@ -343,14 +362,18 @@ export default function StockCountDetailDrawer({
                 options={autocompleteOptions}
                 placeholder="Busca una presentación"
                 onSelect={(_, option) => {
-                  const match = (option as any)?.presentation as InventoryPresentationRow | undefined;
+                  const match = (option as any)?.presentation as
+                    | InventoryPresentationRow
+                    | undefined;
                   if (!match) return;
                   setSelectedPresentation(match);
                   setAddQtyPresentations(1);
                   setAddNotes("");
                   setAddOpen(true);
                 }}
-                notFoundContent={suggestionsLoading ? "Cargando..." : "Sin resultados"}
+                notFoundContent={
+                  suggestionsLoading ? "Cargando..." : "Sin resultados"
+                }
                 disabled={isClosed}
               />
             </Space>
