@@ -46,19 +46,29 @@ export default function RecipesPage() {
   const [listQuery, setListQuery] = useState("");
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [recipeTotals, setRecipeTotals] = useState<Record<number, number>>({});
-  const [recipeTotalsLoading, setRecipeTotalsLoading] = useState<Set<number>>(new Set());
+  const [recipeTotalsLoading, setRecipeTotalsLoading] = useState<Set<number>>(
+    new Set(),
+  );
 
   // crear/editar receta
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<InventoryRecipeRow | null>(null);
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
-  const formRecipeType = Form.useWatch("recipeType", form) as "pos" | "internal" | undefined;
-  const formPosProductId = Form.useWatch("posProductId", form) as number | null | undefined;
+  const formRecipeType = Form.useWatch("recipeType", form) as
+    | "pos"
+    | "internal"
+    | undefined;
+  const formPosProductId = Form.useWatch("posProductId", form) as
+    | number
+    | null
+    | undefined;
 
   // detalle receta (líneas)
   const [detailOpen, setDetailOpen] = useState(false);
-  const [detailRecipe, setDetailRecipe] = useState<InventoryRecipeRow | null>(null);
+  const [detailRecipe, setDetailRecipe] = useState<InventoryRecipeRow | null>(
+    null,
+  );
   const [lines, setLines] = useState<InventoryRecipeLineRow[]>([]);
   const [linesLoading, setLinesLoading] = useState(false);
 
@@ -70,9 +80,16 @@ export default function RecipesPage() {
   const [presentationsLoading, setPresentationsLoading] = useState(false);
   const [lineForm] = Form.useForm();
   const [lineSaving, setLineSaving] = useState(false);
-  const lineType = Form.useWatch("lineType", lineForm) as "item" | "sub" | undefined;
-  const lineItemId = Form.useWatch("inventoryItemId", lineForm) as number | undefined;
-  const linePresentationId = Form.useWatch("presentationId", lineForm) as number | undefined;
+  const lineType = Form.useWatch("lineType", lineForm) as
+    | "item"
+    | "sub"
+    | undefined;
+  const lineItemId = Form.useWatch("inventoryItemId", lineForm) as
+    | number
+    | undefined;
+  const linePresentationId = Form.useWatch("presentationId", lineForm) as
+    | number
+    | undefined;
 
   // búsqueda POS
   const [posQuery, setPosQuery] = useState("");
@@ -158,7 +175,7 @@ export default function RecipesPage() {
           } catch {
             updates[r.id] = 0;
           }
-        })
+        }),
       );
       if (!alive) return;
       setRecipeTotals((prev) => ({ ...prev, ...updates }));
@@ -186,19 +203,21 @@ export default function RecipesPage() {
         posProductCode: editing.posProductCode ?? null,
         name: editing.name ?? "",
       });
-      if (editing.posProductId) {
+      const posId = editing.posProductId;
+      if (typeof posId === "number") {
         setPosOptions((prev) => {
-          if (prev.some((p) => p.id === editing.posProductId)) return prev;
+          if (prev.some((p) => p.id === posId)) return prev;
           return [
             {
-              id: editing.posProductId,
-              name: editing.name ?? `Producto #${editing.posProductId}`,
+              id: posId, // ✅ ahora siempre number
+              name: editing.name ?? `Producto #${posId}`,
               code: editing.posProductCode ?? undefined,
             },
             ...prev,
           ];
         });
       }
+
       return;
     }
 
@@ -247,11 +266,14 @@ export default function RecipesPage() {
         if (!alive) return;
         setPresentationsByItem((prev) => ({ ...prev, [lineItemId]: list }));
 
-        if (linePresentationId && list.some((p) => p.id === linePresentationId)) return;
+        if (linePresentationId && list.some((p) => p.id === linePresentationId))
+          return;
 
         const defaultPresentation =
           list.find((p) => p.isDefaultPurchase) ?? list[0] ?? null;
-        lineForm.setFieldsValue({ presentationId: defaultPresentation?.id ?? null });
+        lineForm.setFieldsValue({
+          presentationId: defaultPresentation?.id ?? null,
+        });
       } catch {
         if (!alive) return;
         setPresentationsByItem((prev) => ({ ...prev, [lineItemId]: [] }));
@@ -264,7 +286,14 @@ export default function RecipesPage() {
     return () => {
       alive = false;
     };
-  }, [detailOpen, lineType, lineItemId, linePresentationId, restaurantId, lineForm]);
+  }, [
+    detailOpen,
+    lineType,
+    lineItemId,
+    linePresentationId,
+    restaurantId,
+    lineForm,
+  ]);
 
   useEffect(() => {
     if (!formOpen || formRecipeType !== "pos") {
@@ -297,7 +326,7 @@ export default function RecipesPage() {
 
   const itemOptions = useMemo(
     () => items.map((i) => ({ label: `${i.code} — ${i.name}`, value: i.id })),
-    [items]
+    [items],
   );
 
   const subRecipeOptions = useMemo(() => {
@@ -333,7 +362,7 @@ export default function RecipesPage() {
           disabled: hasRecipe,
         };
       }),
-    [posOptions, existingByPosId]
+    [posOptions, existingByPosId],
   );
 
   const presentationOptions = useMemo(() => {
@@ -355,7 +384,9 @@ export default function RecipesPage() {
     return list.find((p) => p.id === linePresentationId) ?? null;
   }, [lineItemId, linePresentationId, presentationsByItem]);
 
-  const baseUnitLabel = lineItemId ? itemById.get(lineItemId)?.unit?.code ?? null : null;
+  const baseUnitLabel = lineItemId
+    ? (itemById.get(lineItemId)?.unit?.code ?? null)
+    : null;
   const qtyHelp = baseUnitLabel
     ? selectedPresentation?.contentInBaseUnit
       ? `Cantidad en unidad base (${baseUnitLabel}). Presentación: ${selectedPresentation.name} = ${selectedPresentation.contentInBaseUnit} ${baseUnitLabel} base.`
@@ -363,12 +394,20 @@ export default function RecipesPage() {
     : "Cantidad en la unidad base del insumo.";
 
   const moneyFmt = useMemo(
-    () => new Intl.NumberFormat("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-    []
+    () =>
+      new Intl.NumberFormat("es-MX", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+    [],
   );
   const qtyFmt = useMemo(
-    () => new Intl.NumberFormat("es-MX", { minimumFractionDigits: 0, maximumFractionDigits: 4 }),
-    []
+    () =>
+      new Intl.NumberFormat("es-MX", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 4,
+      }),
+    [],
   );
   const percentFmt = useMemo(
     () =>
@@ -377,7 +416,7 @@ export default function RecipesPage() {
         minimumFractionDigits: 0,
         maximumFractionDigits: 2,
       }),
-    []
+    [],
   );
 
   function normalizeMerma(value?: number | null) {
@@ -390,13 +429,22 @@ export default function RecipesPage() {
 
   function getPresentationCost(presentation?: InventoryPresentationRow | null) {
     if (!presentation) return null;
-    if (presentation.defaultSupplierLastCost !== null && presentation.defaultSupplierLastCost !== undefined) {
+    if (
+      presentation.defaultSupplierLastCost !== null &&
+      presentation.defaultSupplierLastCost !== undefined
+    ) {
       return Number(presentation.defaultSupplierLastCost);
     }
-    if (presentation.detail?.standardCost !== null && presentation.detail?.standardCost !== undefined) {
+    if (
+      presentation.detail?.standardCost !== null &&
+      presentation.detail?.standardCost !== undefined
+    ) {
       return Number(presentation.detail.standardCost);
     }
-    if (presentation.detail?.lastCost !== null && presentation.detail?.lastCost !== undefined) {
+    if (
+      presentation.detail?.lastCost !== null &&
+      presentation.detail?.lastCost !== undefined
+    ) {
       return Number(presentation.detail.lastCost);
     }
     return null;
@@ -415,7 +463,8 @@ export default function RecipesPage() {
     const mermaFrac = normalizeMerma(line.wastePercent ?? line.wastePct);
     const presentationCost = getPresentationCost(line.presentation);
     const content = Number(line.presentation.contentInBaseUnit || 0);
-    const unitCost = presentationCost && content > 0 ? presentationCost / content : null;
+    const unitCost =
+      presentationCost && content > 0 ? presentationCost / content : null;
     const qty = Number(line.qtyBase || 0);
     const costUtil = unitCost !== null ? qty * unitCost : null;
     const costTotal = costUtil !== null ? costUtil * (1 + mermaFrac) : null;
@@ -441,10 +490,17 @@ export default function RecipesPage() {
       title: "Tipo",
       width: 120,
       render: (_, r) => (
-        <Tag color={r.posProductId ? "blue" : "gold"}>{r.posProductId ? "POS" : "Interna"}</Tag>
+        <Tag color={r.posProductId ? "blue" : "gold"}>
+          {r.posProductId ? "POS" : "Interna"}
+        </Tag>
       ),
     },
-    { title: "POS Product ID", dataIndex: "posProductId", width: 140, render: (v) => v ?? "—" },
+    {
+      title: "POS Product ID",
+      dataIndex: "posProductId",
+      width: 140,
+      render: (v) => v ?? "—",
+    },
     { title: "Nombre", dataIndex: "name" },
     {
       title: "Costo total",
@@ -455,7 +511,12 @@ export default function RecipesPage() {
         return total === undefined ? "—" : moneyFmt.format(total);
       },
     },
-    { title: "Activo", dataIndex: "isActive", width: 90, render: (v) => (v === false ? "No" : "Sí") },
+    {
+      title: "Activo",
+      dataIndex: "isActive",
+      width: 90,
+      render: (v) => (v === false ? "No" : "Sí"),
+    },
     {
       title: "Acciones",
       width: 300,
@@ -470,7 +531,15 @@ export default function RecipesPage() {
           >
             Editar
           </Button>
-          <Button size="small" type="primary" onClick={() => { setDetailRecipe(r); setDetailOpen(true); loadLines(r.id); }}>
+          <Button
+            size="small"
+            type="primary"
+            onClick={() => {
+              setDetailRecipe(r);
+              setDetailOpen(true);
+              loadLines(r.id);
+            }}
+          >
             Líneas
           </Button>
           {(() => {
@@ -484,7 +553,13 @@ export default function RecipesPage() {
                 onConfirm={() => handleDelete(r)}
                 disabled={hasLines}
               >
-                <Tooltip title={hasLines ? "No se puede eliminar: tiene líneas" : "Eliminar receta"}>
+                <Tooltip
+                  title={
+                    hasLines
+                      ? "No se puede eliminar: tiene líneas"
+                      : "Eliminar receta"
+                  }
+                >
                   <Button
                     size="small"
                     danger
@@ -514,8 +589,8 @@ export default function RecipesPage() {
     try {
       const saved = await upsertRecipe(restaurantId, {
         id: editing?.id,
-        posProductId: isPos ? v.posProductId ?? null : null,
-        posProductCode: isPos ? v.posProductCode ?? null : null,
+        posProductId: isPos ? (v.posProductId ?? null) : null,
+        posProductCode: isPos ? (v.posProductCode ?? null) : null,
         name: v.name,
         isActive: true,
       });
@@ -540,9 +615,12 @@ export default function RecipesPage() {
     const v = await lineForm.validateFields();
 
     const isSub = v.lineType === "sub";
-    if (isSub && !v.subRecipeId) return message.error("Selecciona una sub-receta");
-    if (!isSub && !v.inventoryItemId) return message.error("Selecciona un insumo");
-    if (!isSub && !v.presentationId) return message.error("Selecciona una presentación");
+    if (isSub && !v.subRecipeId)
+      return message.error("Selecciona una sub-receta");
+    if (!isSub && !v.inventoryItemId)
+      return message.error("Selecciona un insumo");
+    if (!isSub && !v.presentationId)
+      return message.error("Selecciona una presentación");
 
     setLineSaving(true);
     try {
@@ -646,7 +724,9 @@ export default function RecipesPage() {
         if (!r.presentation) return r.subRecipe ? "Sub-receta" : "—";
         const baseUnit = r.item?.unit?.code ? ` ${r.item.unit.code}` : "";
         const label = `${r.presentation.name}${
-          r.presentation.presentationLabel ? ` (${r.presentation.presentationLabel})` : ""
+          r.presentation.presentationLabel
+            ? ` (${r.presentation.presentationLabel})`
+            : ""
         }`;
         const content = r.presentation.contentInBaseUnit
           ? ` — ${r.presentation.contentInBaseUnit}${baseUnit}`
@@ -660,7 +740,9 @@ export default function RecipesPage() {
       render: (_, r) => {
         if (r.subRecipe) return "—";
         const { rendimientoFrac } = getLineCosts(r);
-        return rendimientoFrac === null ? "—" : percentFmt.format(rendimientoFrac);
+        return rendimientoFrac === null
+          ? "—"
+          : percentFmt.format(rendimientoFrac);
       },
     },
     {
@@ -721,7 +803,14 @@ export default function RecipesPage() {
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 8 }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        paddingTop: 8,
+      }}
+    >
       <Space wrap>
         <Input.Search
           placeholder="Buscar recetas…"
@@ -738,10 +827,18 @@ export default function RecipesPage() {
         >
           Nueva receta
         </Button>
-        <Button onClick={() => load() } loading={loading}>Refrescar</Button>
+        <Button onClick={() => load()} loading={loading}>
+          Refrescar
+        </Button>
       </Space>
 
-      <Table rowKey="id" loading={loading} columns={cols} dataSource={rows} pagination={{ pageSize: 20 }} />
+      <Table
+        rowKey="id"
+        loading={loading}
+        columns={cols}
+        dataSource={rows}
+        pagination={{ pageSize: 20 }}
+      />
 
       <Drawer
         title={editing?.id ? `Editar receta #${editing.id}` : "Nueva receta"}
@@ -764,7 +861,9 @@ export default function RecipesPage() {
           <Form.Item
             label="Tipo"
             name="recipeType"
-            rules={[{ required: true, message: "Selecciona el tipo de receta" }]}
+            rules={[
+              { required: true, message: "Selecciona el tipo de receta" },
+            ]}
           >
             <Select
               options={[
@@ -775,7 +874,10 @@ export default function RecipesPage() {
                 if (value !== "pos") {
                   setPosQuery("");
                   setPosOptions([]);
-                  form.setFieldsValue({ posProductId: null, posProductCode: null });
+                  form.setFieldsValue({
+                    posProductId: null,
+                    posProductCode: null,
+                  });
                 }
               }}
             />
@@ -784,7 +886,9 @@ export default function RecipesPage() {
             <Form.Item
               label="Producto POS"
               name="posProductId"
-              rules={[{ required: true, message: "Selecciona un producto POS" }]}
+              rules={[
+                { required: true, message: "Selecciona un producto POS" },
+              ]}
             >
               <Select
                 showSearch
@@ -840,13 +944,13 @@ export default function RecipesPage() {
           <Form.Item name="posProductCode" hidden>
             <Input />
           </Form.Item>
-          <Form.Item label="Nombre" name="name" rules={[{ required: true }]}
-          >
+          <Form.Item label="Nombre" name="name" rules={[{ required: true }]}>
             <Input placeholder="Ej. Salsa base" />
           </Form.Item>
         </Form>
         <div style={{ opacity: 0.65, marginTop: 12 }}>
-          * Si tu receta tiene más campos (yield, unidad, etc.), dime el modelo final y lo ampliamos.
+          * Si tu receta tiene más campos (yield, unidad, etc.), dime el modelo
+          final y lo ampliamos.
         </div>
       </Drawer>
 
@@ -881,9 +985,17 @@ export default function RecipesPage() {
               )}
             />
 
-            <div style={{ borderTop: "1px solid rgba(0,0,0,0.06)", paddingTop: 12 }}>
+            <div
+              style={{
+                borderTop: "1px solid rgba(0,0,0,0.06)",
+                paddingTop: 12,
+              }}
+            >
               <Form layout="inline" form={lineForm}>
-                <Form.Item label="Tipo" name="lineType" rules={[{ required: true }]}
+                <Form.Item
+                  label="Tipo"
+                  name="lineType"
+                  rules={[{ required: true }]}
                 >
                   <Select
                     options={[
@@ -895,18 +1007,27 @@ export default function RecipesPage() {
                 </Form.Item>
 
                 {lineType !== "sub" ? (
-                  <Form.Item label="Insumo" name="inventoryItemId" rules={[{ required: true }]}>
+                  <Form.Item
+                    label="Insumo"
+                    name="inventoryItemId"
+                    rules={[{ required: true }]}
+                  >
                     <Select
                       showSearch
                       optionFilterProp="label"
                       placeholder="Selecciona insumo"
                       options={itemOptions}
-                      onChange={() => lineForm.setFieldsValue({ presentationId: null })}
+                      onChange={() =>
+                        lineForm.setFieldsValue({ presentationId: null })
+                      }
                       style={{ width: 320 }}
                     />
                   </Form.Item>
                 ) : (
-                  <Form.Item label="Sub-receta" name="subRecipeId" rules={[{ required: true }]}
+                  <Form.Item
+                    label="Sub-receta"
+                    name="subRecipeId"
+                    rules={[{ required: true }]}
                   >
                     <Select
                       showSearch
@@ -919,11 +1040,16 @@ export default function RecipesPage() {
                 )}
 
                 {lineType !== "sub" ? (
-                <Form.Item
-                  label="Presentación"
-                  name="presentationId"
-                  rules={[{ required: true, message: "Selecciona una presentación" }]}
-                >
+                  <Form.Item
+                    label="Presentación"
+                    name="presentationId"
+                    rules={[
+                      {
+                        required: true,
+                        message: "Selecciona una presentación",
+                      },
+                    ]}
+                  >
                     <Select
                       showSearch
                       optionFilterProp="label"
@@ -942,13 +1068,26 @@ export default function RecipesPage() {
                   rules={[{ required: true }]}
                   extra={qtyHelp}
                 >
-                  <InputNumber min={0} style={{ width: 140 }} placeholder="Ej. 0.2" />
+                  <InputNumber
+                    min={0}
+                    style={{ width: 140 }}
+                    placeholder="Ej. 0.2"
+                  />
                 </Form.Item>
                 <Form.Item label="Merma %" name="wastePercent">
-                  <InputNumber min={0} max={100} style={{ width: 120 }} placeholder="Ej. 5" />
+                  <InputNumber
+                    min={0}
+                    max={100}
+                    style={{ width: 120 }}
+                    placeholder="Ej. 5"
+                  />
                 </Form.Item>
                 <Form.Item>
-                  <Button type="primary" loading={lineSaving} onClick={submitLine}>
+                  <Button
+                    type="primary"
+                    loading={lineSaving}
+                    onClick={submitLine}
+                  >
                     Agregar
                   </Button>
                 </Form.Item>

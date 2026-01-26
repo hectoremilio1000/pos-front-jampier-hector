@@ -1,16 +1,6 @@
 // /pos-admin/src/pages/Billing/Account.tsx
 import { useEffect, useMemo, useState } from "react";
-import {
-  Button,
-  Card,
-  Descriptions,
-  Drawer,
-  Progress,
-  Space,
-  Table,
-  Tag,
-  message,
-} from "antd";
+import { Card, Descriptions, Progress, Space, Table, Tag, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 
@@ -48,7 +38,7 @@ type SubRow = {
 
 export default function Account() {
   const { user } = useAuth();
-  const { subscription, loading, refresh } = useSubscription();
+  const { subscription, loading } = useSubscription();
   const restaurantId = user?.restaurant?.id;
 
   const [history, setHistory] = useState<SubRow[]>([]);
@@ -64,7 +54,7 @@ export default function Account() {
     const used = total - left;
     const percent = Math.min(
       100,
-      Math.max(0, Math.round((used / total) * 100))
+      Math.max(0, Math.round((used / total) * 100)),
     );
     return { left, total, percent };
   }, [subscription]);
@@ -127,7 +117,7 @@ export default function Account() {
       if (!restaurantId) return;
       try {
         const { data } = await apiCenter.get(
-          `/subscriptions?restaurantId=${restaurantId}`
+          `/subscriptions?restaurantId=${restaurantId}`,
         );
         setHistory(data ?? []);
       } catch (e) {
@@ -197,7 +187,6 @@ export default function Account() {
       <Card title="Historial de suscripciones">
         <Table rowKey="id" dataSource={history} columns={columns} />
       </Card>
-
     </Space>
   );
 }
