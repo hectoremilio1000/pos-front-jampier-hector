@@ -71,7 +71,7 @@ export default function FiscalCutSettings() {
     setLoading(true);
     try {
       const { data } = await apiCash.get<SettingDTO>(
-        `/settings/${restaurantId}`
+        `/settings/${restaurantId}`,
       );
       if (data?.fiscalCutHour) setValue(dayjs(data.fiscalCutHour, "HH:mm"));
       else setValue(null);
@@ -79,7 +79,9 @@ export default function FiscalCutSettings() {
       const createdAt = data?.createdAt ?? null;
       const updatedAt = data?.updatedAt ?? null;
       const isFresh =
-        createdAt && updatedAt ? String(createdAt) === String(updatedAt) : false;
+        createdAt && updatedAt
+          ? String(createdAt) === String(updatedAt)
+          : false;
       const configured = !isFresh;
       setSettingsSaved(configured);
       setIsConfigured(configured);
@@ -87,7 +89,7 @@ export default function FiscalCutSettings() {
       setPrintMode(normalizePrintMode(data?.printMode));
       setReceiptDelivery(normalizeReceiptDelivery());
       setConfirmPrint(
-        data?.confirmPrint === undefined ? true : Boolean(data.confirmPrint)
+        data?.confirmPrint === undefined ? true : Boolean(data.confirmPrint),
       );
     } catch (err: any) {
       if (err?.response?.status === 404) {
@@ -135,8 +137,7 @@ export default function FiscalCutSettings() {
   }, [restaurantId]);
 
   const needsSetup =
-    Boolean(restaurantId) &&
-    (settingsSaved === false || hasFolios === false);
+    Boolean(restaurantId) && (settingsSaved === false || hasFolios === false);
 
   const steps = [
     {
@@ -150,7 +151,11 @@ export default function FiscalCutSettings() {
             guarda la configuración.
           </div>
           <div className="mt-4 flex flex-wrap gap-8">
-            <Button onClick={() => generalRef.current?.scrollIntoView({ behavior: "smooth" })}>
+            <Button
+              onClick={() =>
+                generalRef.current?.scrollIntoView({ behavior: "smooth" })
+              }
+            >
               Ir a Configuración general
             </Button>
             <Button
@@ -180,7 +185,11 @@ export default function FiscalCutSettings() {
             Crea al menos un folio para numerar cuentas e impresiones.
           </div>
           <div className="mt-4">
-            <Button onClick={() => foliosRef.current?.scrollIntoView({ behavior: "smooth" })}>
+            <Button
+              onClick={() =>
+                foliosRef.current?.scrollIntoView({ behavior: "smooth" })
+              }
+            >
               Ir a Folios de cuenta
             </Button>
           </div>
@@ -191,7 +200,7 @@ export default function FiscalCutSettings() {
 
   const currentStepIndex = Math.max(
     0,
-    steps.findIndex((s) => !s.done)
+    steps.findIndex((s) => !s.done),
   );
 
   return (
@@ -217,8 +226,8 @@ export default function FiscalCutSettings() {
               status: step.done
                 ? "finish"
                 : idx === currentStepIndex
-                ? "process"
-                : "wait",
+                  ? "process"
+                  : "wait",
             }))}
           />
         </div>
@@ -227,95 +236,95 @@ export default function FiscalCutSettings() {
 
       <div ref={generalRef}>
         <Card title="Configuración general">
-        {loading ? (
-          <Spin />
-        ) : (
-          <>
-            <div>
-              <div className="text-sm font-semibold text-slate-700">Corte Z</div>
-              <div className="mt-2 flex items-center gap-4">
-                <span className="text-sm text-slate-600">Hora de corte:</span>
-                <div>
-                  <TimePicker
-                    value={value}
-                    onChange={(t) => setValue(t)}
-                    format="HH:mm"
-                    minuteStep={5}
-                    allowClear={false}
-                    placeholder="Sin configurar"
-                  />
-                  {isConfigured === false && (
-                    <div className="mt-1 text-xs text-slate-500">
-                      Sin configurar. Sugerido: 05:00.
-                    </div>
-                  )}
+          {loading ? (
+            <Spin />
+          ) : (
+            <>
+              <div>
+                <div className="text-sm font-semibold text-slate-700">
+                  Corte Z
                 </div>
-              </div>
-            </div>
-
-            <Divider className="my-6" />
-
-            <div>
-              <div className="text-sm font-semibold text-slate-700">
-                Impresión
-              </div>
-              <div className="mt-3 grid gap-4 md:grid-cols-2">
-                <div>
-                  <div className="text-sm text-slate-500 mb-1">
-                    Modo de impresión
-                  </div>
-                  <Select
-                    value={printMode}
-                    onChange={(v) => setPrintMode(v as PrintMode)}
-                    className="w-full"
-                    options={[
-                      { label: "QR", value: "qr" },
-                      { label: "Impresión", value: "impresion" },
-                      { label: "Mixto", value: "mixto" },
-                    ]}
-                  />
-                </div>
-                <div>
-                  <div className="text-sm text-slate-500 mb-1">
-                    Entrega de recibo
-                  </div>
-                  <Select
-                    value={receiptDelivery}
-                    onChange={(v) => setReceiptDelivery(v as ReceiptDelivery)}
-                    className="w-full"
-                    disabled
-                    options={[
-                      { label: "Email", value: "email" },
-                    ]}
-                  />
-                </div>
-                <div className="flex items-center gap-3">
-                  <Switch checked={confirmPrint} onChange={setConfirmPrint} />
+                <div className="mt-2 flex items-center gap-4">
+                  <span className="text-sm text-slate-600">Hora de corte:</span>
                   <div>
-                    <div className="text-sm text-slate-700">
-                      Pedir confirmación antes de mandar a imprimir
+                    <TimePicker
+                      value={value}
+                      onChange={(t) => setValue(t)}
+                      format="HH:mm"
+                      minuteStep={5}
+                      allowClear={false}
+                      placeholder="Sin configurar"
+                    />
+                    {isConfigured === false && (
+                      <div className="mt-1 text-xs text-slate-500">
+                        Sin configurar. Sugerido: 05:00.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <Divider className="my-6" />
+
+              <div>
+                <div className="text-sm font-semibold text-slate-700">
+                  Impresión
+                </div>
+                <div className="mt-3 grid gap-4 md:grid-cols-2">
+                  <div>
+                    <div className="text-sm text-slate-500 mb-1">
+                      Modo de impresión
                     </div>
-                    <div className="text-xs text-slate-500">
-                      Evita impresiones accidentales. Aplica a comandas y
-                      cuentas.
+                    <Select
+                      value={printMode}
+                      onChange={(v) => setPrintMode(v as PrintMode)}
+                      className="w-full"
+                      options={[
+                        { label: "QR", value: "qr" },
+                        { label: "Impresión", value: "impresion" },
+                        { label: "Mixto", value: "mixto" },
+                      ]}
+                    />
+                  </div>
+                  <div>
+                    <div className="text-sm text-slate-500 mb-1">
+                      Entrega de recibo
+                    </div>
+                    <Select
+                      value={receiptDelivery}
+                      onChange={(v) => setReceiptDelivery(v as ReceiptDelivery)}
+                      className="w-full"
+                      disabled
+                      options={[{ label: "Email", value: "email" }]}
+                    />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Switch checked={confirmPrint} onChange={setConfirmPrint} />
+                    <div>
+                      <div className="text-sm text-slate-700">
+                        Pedir confirmación antes de mandar a imprimir
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        Evita impresiones accidentales. Aplica a comandas y
+                        cuentas.
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="text-right mt-6">
-              <Button
-                type="primary"
-                onClick={save}
-                loading={saving}
-                disabled={!value}
-              >
-                Guardar
-              </Button>
-            </div>
-          </>
-        )}
+              <div className="text-right mt-6">
+                <Button
+                  type="primary"
+                  onClick={save}
+                  loading={saving}
+                  disabled={!value}
+                >
+                  Guardar
+                </Button>
+              </div>
+            </>
+          )}
         </Card>
       </div>
 

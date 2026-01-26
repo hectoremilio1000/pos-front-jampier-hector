@@ -11,7 +11,7 @@ import {
 } from "@/utils/authStorage";
 
 interface Restaurant {
-  id: number | string;
+  id: number;
   name: string;
   address?: string | null;
   currency?: string | null;
@@ -77,7 +77,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (import.meta.env.DEV) {
         console.groupCollapsed(
           "%c[/login] OK",
-          "color:#4caf50;font-weight:bold;"
+          "color:#4caf50;font-weight:bold;",
         );
         console.log("status:", res.status);
         console.log("data:", res.data);
@@ -191,7 +191,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (import.meta.env.DEV) {
         console.groupCollapsed(
           "%c[/login] ERROR",
-          "color:#f44336;font-weight:bold;"
+          "color:#f44336;font-weight:bold;",
         );
         console.log("status:", err?.response?.status);
         console.log("data:", err?.response?.data);

@@ -3,7 +3,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Button, Modal, Table, Tag, Typography, message, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import apiOrder from "@/components/apis/apiOrder";
-import { QRCodeCanvas } from "qrcode.react";
 
 const { Text } = Typography;
 
@@ -130,26 +129,9 @@ const ConsultarItemModal: React.FC<Props> = ({
   onClose,
   mesa,
   detalle_cheque,
-  orderCurrent,
 }) => {
   const [items, setItems] = useState<OrderItem[]>(detalle_cheque || []);
   const [loading, setLoading] = useState(false);
-  const [qrVisible, setQrVisible] = useState(false);
-
-  const order = orderCurrent ?? null;
-
-  const canViewQr = String(order?.status ?? "").toLowerCase() === "printed";
-  const restaurantId = order?.restaurantId;
-  const orderId = order?.id;
-
-  const publicPath =
-    restaurantId && orderId ? `/${restaurantId}/qrscan/${orderId}` : null;
-
-  const publicUrl = useMemo(() => {
-    if (!publicPath) return null;
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
-    return `${origin}${publicPath}`;
-  }, [publicPath]);
 
   const money = (n: number) =>
     new Intl.NumberFormat("es-MX", {
@@ -395,7 +377,7 @@ const ConsultarItemModal: React.FC<Props> = ({
         footer={null}
         width={1200}
         style={{ top: 10 }}
-        destroyOnClose
+        destroyOnHidden
       >
         {/* contenedor con scroll + footer fijo */}
         <div className="flex flex-col h-[75vh]">
@@ -417,85 +399,27 @@ const ConsultarItemModal: React.FC<Props> = ({
             style={{ padding: 12 }}
           >
             <div className="flex justify-end">
-              <div className="flex flex-col items-end gap-2">
-                <Button
-                  type="primary"
-                  onClick={() => setQrVisible(true)}
-                  disabled={!canViewQr || !publicUrl}
-                >
-                  Ver QR
-                </Button>
+              <div className="text-right">
+                <div className="flex gap-6 justify-end">
+                  <span className="text-gray-500">Subtotal</span>
+                  <span className="font-medium">{money(totals.subtotal)}</span>
+                </div>
 
-                <div className="text-right">
-                  <div className="flex gap-6 justify-end">
-                    <span className="text-gray-500">Subtotal</span>
-                    <span className="font-medium">
-                      {money(totals.subtotal)}
-                    </span>
-                  </div>
+                <div className="flex gap-6 justify-end">
+                  <span className="text-gray-500">IVA</span>
+                  <span className="font-medium">{money(totals.iva)}</span>
+                </div>
 
-                  <div className="flex gap-6 justify-end">
-                    <span className="text-gray-500">IVA</span>
-                    <span className="font-medium">{money(totals.iva)}</span>
-                  </div>
-
-                  <div className="flex gap-6 justify-end">
-                    <span className="text-gray-500">Total</span>
-                    <span className="text-lg font-semibold">
-                      {money(totals.total)}
-                    </span>
-                  </div>
+                <div className="flex gap-6 justify-end">
+                  <span className="text-gray-500">Total</span>
+                  <span className="text-lg font-semibold">
+                    {money(totals.total)}
+                  </span>
                 </div>
               </div>
             </div>
-
-            {!canViewQr && (
-              <div className="text-right text-xs text-gray-500 mt-2">
-                El QR solo está disponible cuando la orden está en status{" "}
-                <b>printed</b>.
-              </div>
-            )}
           </div>
         </div>
-      </Modal>
-
-      {/* Modal QR */}
-      <Modal
-        open={qrVisible}
-        title="QR de la cuenta"
-        onCancel={() => setQrVisible(false)}
-        footer={null}
-        destroyOnClose
-      >
-        {publicUrl ? (
-          <div className="flex flex-col items-center gap-4">
-            <QRCodeCanvas value={publicUrl} size={220} includeMargin />
-
-            <div className="w-full">
-              <div className="text-xs text-gray-500 mb-1">Link público:</div>
-              <div className="break-all text-sm">{publicUrl}</div>
-
-              <div className="flex justify-end mt-3">
-                <Button
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(publicUrl);
-                      message.success("Link copiado");
-                    } catch {
-                      message.error("No se pudo copiar el link");
-                    }
-                  }}
-                >
-                  Copiar link
-                </Button>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div>
-            No hay link público disponible (falta restaurantId / orderId).
-          </div>
-        )}
       </Modal>
     </>
   );

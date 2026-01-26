@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Card, Input, Modal, Pagination, message } from "antd";
-import { FaPrint, FaQrcode, FaTable } from "react-icons/fa";
+import { Button, Card, Input, Modal, Pagination, Tag, message } from "antd";
+import { FaPrint, FaTable } from "react-icons/fa";
 import { QRCodeCanvas } from "qrcode.react";
 import CapturaComandaModal from "@/components/CapturaComandaModal";
 
 import { MdAdsClick, MdPointOfSale, MdTableBar } from "react-icons/md";
-import { GiForkKnifeSpoon } from "react-icons/gi";
 import RegistroChequeModal from "@/components/RegistroChequeModal";
 import apiOrder from "@/components/apis/apiOrder";
 import ConsultarItemModal from "@/components/ConsultarItemModal";
@@ -139,7 +138,7 @@ interface OrderItem {
 function getRestaurantIdFromJwt(): number {
   try {
     const t = sessionStorage.getItem("kiosk_restaurant_id") || "";
-    console.log(t);
+
     return Number(t);
   } catch {
     return 0;
@@ -163,7 +162,9 @@ const CLOSED_SALE_STATUSES = new Set([
 ]);
 
 const normalizeStatus = (status?: string | null) =>
-  String(status || "").trim().toLowerCase();
+  String(status || "")
+    .trim()
+    .toLowerCase();
 
 const isClosedSaleStatus = (status?: string | null) => {
   const normalized = normalizeStatus(status);
@@ -218,6 +219,12 @@ const ControlComandero: React.FC = () => {
     restaurant?: { localBaseUrl?: string | null } | null;
     restaurantId?: number | null;
     status?: string | null;
+
+    // 👇 NUEVO
+    printCount?: number;
+    print_count?: number;
+    folioSeries?: string | null;
+    folioNumber?: number | null;
   };
 
   const [orderCurrent, setOrderCurrent] = useState<OrderSummary | null>(null);
@@ -228,13 +235,12 @@ const ControlComandero: React.FC = () => {
   const [detalle_cheque_consulta, setDetalle_cheque_consulta] = useState<
     OrderItem[]
   >([]);
-  const [settingsImpresion, setSettingsImpresion] = useState<
-    "qr" | "impresion" | "hibrido" | null
-  >(null);
   const [cheques, setCheques] = useState<OrderSummary[]>([]);
+  const [invoicePreviewVisible, setInvoicePreviewVisible] = useState(false);
+  const [invoicePreviewOrder, setInvoicePreviewOrder] =
+    useState<OrderSummary | null>(null);
 
   const rid = getRestaurantIdFromJwt();
-  const apiUrlAuth = import.meta.env.VITE_API_URL_AUTH;
 
   // ---- NUEVO: helper para imprimir por área de impresión ----
   type NPrintJobPayload = {
@@ -335,7 +341,7 @@ const ControlComandero: React.FC = () => {
           qty: items.reduce((sum, item) => sum + Number(item.qty || 0), 0),
         };
       }),
-    [salesOrders]
+    [salesOrders],
   );
 
   const fetchAreas = async () => {
@@ -400,21 +406,11 @@ const ControlComandero: React.FC = () => {
     confirmPrint: true,
     receiptDelivery: "email",
   });
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      if (!cancelled) {
-        setSettingsImpresion("hibrido");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  const [receiptOpen, setReceiptOpen] = useState(false);
-  const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
-  const [receiptEmail, setReceiptEmail] = useState("");
+
+  // --- NUEVO: reimpresión con aprobación ---
+  const [printApprovalVisible, setPrintApprovalVisible] = useState(false);
+  const [printManagerPassword, setPrintManagerPassword] = useState("");
+  const [printSubmitting, setPrintSubmitting] = useState(false);
 
   const fetchAreasImpresions = async () => {
     try {
@@ -447,6 +443,237 @@ const ControlComandero: React.FC = () => {
       });
     }
   };
+
+  // ====== Aprobaciones (pos-auth) ======
+  async function requestApprovalToken(
+    action: string,
+    password: string,
+    targetId: number,
+  ) {
+    const restaurantId = Number(rid || 0);
+    if (!restaurantId) throw new Error("restaurantId faltante");
+    const apiUrlAuth = import.meta.env.VITE_API_URL_AUTH;
+    const res = await fetch(`${apiUrlAuth}/approvals/issue-by-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        restaurantId,
+        stationId: null, // comandero no está amarrado a station/caja
+        password,
+        action,
+        targetId,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = data?.error || data?.message || "Aprobación rechazada";
+      throw new Error(err);
+    }
+    return String(data?.approval_token || "");
+  }
+
+  // ====== Impresión (API Order) ======
+  async function doInitialPrintOnOrderApi(orderId: number) {
+    const res = await apiOrder.post(
+      `/orders/${orderId}/firstPrint`,
+      {},
+      { validateStatus: () => true },
+    );
+    if (!res || res.status < 200 || res.status >= 300) {
+      const err =
+        (res?.data &&
+          (res.data.details || res.data.error || res.data.message)) ||
+        "Impresión (primera) falló";
+      throw new Error(err);
+    }
+    return res.data as { folioSeries: string; folioNumber: number };
+  }
+
+  async function doPrintOnOrderApi(orderId: number, approvalToken: string) {
+    const res = await apiOrder.post(
+      `/orders/${orderId}/print`,
+      {},
+      {
+        headers: { "X-Approval": `Bearer ${approvalToken}` },
+        validateStatus: () => true,
+      },
+    );
+    if (!res || res.status < 200 || res.status >= 300) {
+      const err =
+        (res?.data &&
+          (res.data.details || res.data.error || res.data.message)) ||
+        "Impresión falló";
+      throw new Error(err);
+    }
+    return res.data as { folioSeries: string; folioNumber: number };
+  }
+
+  // ====== Envío a impresora local (Print Proxy) ======
+  const NPRINT_TICKET_TEMPLATE_ID = 2;
+
+  type NPrintTicketItem = {
+    codigo: string;
+    descripcion: string;
+    cantidad: number;
+    precio_unitario: number;
+    importe: number;
+  };
+
+  type NPrintTicketData = {
+    numero: string;
+    fecha: string;
+    cliente: {
+      nombre: string;
+      direccion: string;
+      rfc: string;
+    };
+    items: NPrintTicketItem[];
+    subtotal: number;
+    iva: number;
+    total: number;
+  };
+
+  function formatDate(d: Date | string | number) {
+    const dt = new Date(d);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(
+      dt.getHours(),
+    )}:${pad(dt.getMinutes())}`;
+  }
+
+  function buildNPrintTicketPayload(params: {
+    printerName: string;
+    order: OrderSummary;
+    folioSeries: string;
+    folioNumber: number;
+    subtotal: number;
+    iva: number;
+    total: number;
+  }): Array<{
+    printerName: string;
+    templateId: number;
+    data: NPrintTicketData;
+  }> {
+    const {
+      printerName,
+      order,
+      folioSeries,
+      folioNumber,
+      subtotal,
+      iva,
+      total,
+    } = params;
+
+    const numero = `${folioSeries}-${String(folioNumber).padStart(3, "0")}`;
+
+    const createdAt =
+      (order as any)?.createdAt || (order as any)?.created_at || new Date();
+
+    const fecha = formatDate(createdAt);
+
+    // 👇 cliente (si no tienes customer en esta vista, lo dejamos “Público”)
+    const clienteNombre =
+      (order as any)?.customerName ||
+      (order as any)?.customer?.name ||
+      "Público en general";
+
+    const clienteDireccion = (order as any)?.customer?.address ?? "";
+    const clienteRfc = (order as any)?.customer?.rfc ?? "";
+
+    // items: usa los items de la orden (mapeo simple)
+    const itemsPayload: NPrintTicketItem[] = (order.items ?? []).map(
+      (it, idx) => {
+        const cantidad = Number(it.qty ?? 0) || 1;
+        const importe = Math.round(Number(it.total ?? 0) * 100) / 100;
+        const precio_unitario =
+          cantidad > 0 ? Math.round((importe / cantidad) * 100) / 100 : 0;
+
+        return {
+          codigo: `L${idx + 1}`,
+          descripcion: it.product?.name ?? `Producto #${it.productId}`,
+          cantidad,
+          precio_unitario,
+          importe,
+        };
+      },
+    );
+
+    return [
+      {
+        printerName,
+        templateId: NPRINT_TICKET_TEMPLATE_ID,
+        data: {
+          numero,
+          fecha,
+          cliente: {
+            nombre: clienteNombre,
+            direccion: clienteDireccion,
+            rfc: clienteRfc,
+          },
+          items: itemsPayload,
+          subtotal,
+          iva,
+          total,
+        },
+      },
+    ];
+  }
+
+  async function sendTicketToPrintProxy(opts: {
+    localBaseUrl: string;
+    printerName: string;
+    order: OrderSummary;
+    folioSeries: string;
+    folioNumber: number;
+    subtotal: number;
+    iva: number;
+    total: number;
+  }) {
+    const cleanBase = String(opts.localBaseUrl || "").replace(/\/$/, "");
+    if (!cleanBase) throw new Error("localBaseUrl faltante");
+
+    const payload = buildNPrintTicketPayload({
+      printerName: opts.printerName,
+      order: opts.order,
+      folioSeries: opts.folioSeries,
+      folioNumber: opts.folioNumber,
+      subtotal: opts.subtotal,
+      iva: opts.iva,
+      total: opts.total,
+    });
+
+    const res = await fetch(`${cleanBase}/nprint/printers/print`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      let detail = "";
+      try {
+        detail = await res.text();
+      } catch {}
+      throw new Error(
+        `Error al enviar a impresora (${res.status})${detail ? `: ${detail}` : ""}`,
+      );
+    }
+
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  function getDefaultPrinterName(): string | null {
+    const preferred =
+      areasImpresions.find((a) => a.printerDefault && a.printerName)
+        ?.printerName ||
+      areasImpresions.find((a) => a.printerName)?.printerName ||
+      null;
+    return preferred || null;
+  }
 
   const groupItemsByArea = (items: OrderItem[]) => {
     const areaMap = new Map<number, OrderItem[]>();
@@ -541,49 +768,7 @@ const ControlComandero: React.FC = () => {
     }
   }
 
-  const hasLocalPrinters = useMemo(
-    () => areasImpresions.some((a) => !!a.printerName),
-    [areasImpresions],
-  );
-
-  const buildReceiptUrl = (orderId: number, restaurantId: number) => {
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
-    return `${origin}/${restaurantId}/qrscan/${orderId}`;
-  };
-
-  const openReceiptModal = (
-    orderId: number,
-    restaurantId: number,
-    mode?: ReceiptDelivery,
-  ) => {
-    const url = buildReceiptUrl(orderId, restaurantId);
-    setReceiptUrl(url);
-    setReceiptEmail("");
-    setReceiptMode(mode ?? printSettings.receiptDelivery);
-    setReceiptOpen(true);
-  };
-
-  const openReceiptUrl = () => {
-    if (!receiptUrl) return;
-    window.open(receiptUrl, "_blank");
-  };
-
-  const sendReceiptEmail = () => {
-    if (!receiptUrl) return;
-    const email = receiptEmail.trim();
-    if (!email) {
-      message.warning("Escribe un correo válido");
-      return;
-    }
-    const subject = encodeURIComponent("Tu recibo");
-    const body = encodeURIComponent(
-      `Gracias por tu visita.\n\nPuedes ver tu recibo aquí:\n${receiptUrl}`,
-    );
-    window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
-  };
-
   const transmitRef = useRef<Transmit | null>(null);
-  const subCleanupRef = useRef<() => void>(() => {});
 
   /** handler central de eventos del canal */
   const onOrdersEvent = useCallback(
@@ -632,62 +817,45 @@ const ControlComandero: React.FC = () => {
   );
   useEffect(() => {
     if (!isJwtValid()) return;
+    if (!rid) return;
+    if (!shiftId) return;
 
-    // instancia única
     if (!transmitRef.current) {
       transmitRef.current = new Transmit({
         baseUrl: apiOrder.defaults.baseURL || "/api",
         beforeSubscribe: (request) => {
-          const anyReq = request as any;
-          // Si es Request (tiene headers.set), muta en sitio
-          if (anyReq.headers && typeof anyReq.headers.set === "function") {
-            const token = sessionStorage.getItem("kiosk_jwt") || "";
-            if (token) anyReq.headers.set("Authorization", `Bearer ${token}`);
-            const shift = String(shiftId || "");
-            if (shift) anyReq.headers.set("X-Shift-Id", shift);
-          } else {
-            // Si es RequestInit, re-asigna headers
-            const headers = new Headers((request as RequestInit).headers || {});
-            const token = sessionStorage.getItem("kiosk_jwt") || "";
-            if (token) headers.set("Authorization", `Bearer ${token}`);
-            const shift = String(shiftId || "");
-            if (shift) headers.set("X-Shift-Id", shift);
-            (request as RequestInit).headers = headers;
-          }
-        },
+          const token = sessionStorage.getItem("kiosk_jwt") || "";
+          const shift = String(shiftId || "");
 
-        maxReconnectAttempts: 10,
-        onSubscribeFailed: (res) => {
-          console.error("Transmit subscribe failed", res?.status);
+          // ✅ Si es un Request real, NO puedes asignar request.headers. Clona y retorna.
+          if (request instanceof Request) {
+            const headers = new Headers(request.headers);
+            if (token) headers.set("Authorization", `Bearer ${token}`);
+            if (shift) headers.set("X-Shift-Id", shift);
+            return new Request(request, { headers });
+          }
+
+          // ✅ Si es RequestInit (objeto), ahí sí puedes setear headers
+          const init = request as RequestInit;
+          const headers = new Headers(init.headers || {});
+          if (token) headers.set("Authorization", `Bearer ${token}`);
+          if (shift) headers.set("X-Shift-Id", shift);
+          init.headers = headers;
+          return init;
         },
       });
     }
 
-    if (!rid) return;
-
-    // crea suscripción al canal del restaurante
     const sub = transmitRef.current.subscription(`restaurants/${rid}/orders`);
+
     const off = sub.onMessage(onOrdersEvent);
-
-    sub.create().catch((e) => console.error("Transmit create error", e));
-
-    // cleanup en unmount
-    subCleanupRef.current = () => {
-      try {
-        off && off();
-      } catch {}
-      try {
-        sub.delete();
-      } catch {}
-    };
+    sub.create();
 
     return () => {
-      try {
-        subCleanupRef.current();
-      } catch {}
+      off?.();
+      sub.delete();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isJwtValid]);
+  }, [isJwtValid, rid, shiftId, onOrdersEvent]);
 
   const navigate = useNavigate();
   function cerrarSesion() {
@@ -774,6 +942,32 @@ const ControlComandero: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shiftId, isJwtValid]);
 
+  const invoiceItems = invoicePreviewOrder?.items ?? [];
+  const invoiceTotals = useMemo(() => {
+    const subtotal = invoiceItems.reduce((acc, item) => {
+      const qty = Number(item.qty) || 0;
+      const price = Number(item.basePrice ?? item.unitPrice) || 0;
+      return acc + qty * price;
+    }, 0);
+    const total = invoiceItems.reduce(
+      (acc, item) => acc + (Number(item.total) || 0),
+      0,
+    );
+    return {
+      subtotal,
+      tax: total - subtotal,
+      total,
+    };
+  }, [invoiceItems]);
+
+  const invoiceOrigin =
+    typeof window !== "undefined" ? window.location.origin : "";
+  const invoiceRestaurantId = invoicePreviewOrder?.restaurantId ?? rid;
+  const invoiceUrl =
+    invoiceRestaurantId && invoiceOrigin
+      ? `${invoiceOrigin}/invoices/generate/${invoiceRestaurantId}`
+      : null;
+
   // ---------- NUEVO: UI para "No hay turno" ----------
   if (!ready) {
     return (
@@ -828,17 +1022,28 @@ const ControlComandero: React.FC = () => {
     (paginaActual - 1) * viewPaginate,
     paginaActual * viewPaginate,
   );
+
   const statusOrderCurrent = String(
-    (orderCurrent as any)?.status || ""
+    (orderCurrent as any)?.status || "",
   ).toLowerCase();
-  const isOrderPrinted = statusOrderCurrent === "printed";
-  const canOpenReceipt =
-    !!orderCurrent &&
-    (printSettings.printMode === "qr" ||
-      printSettings.printMode === "mixto" ||
-      isOrderPrinted);
-  const shouldShowQrReceipt =
-    printSettings.printMode === "qr" || printSettings.printMode === "mixto";
+
+  // 👉 nuevo: usa printCount (acepta snake/camel)
+  const printCountCurrent = Number(
+    (orderCurrent as any)?.printCount ??
+      (orderCurrent as any)?.print_count ??
+      0,
+  );
+
+  const isOrderPrinted =
+    statusOrderCurrent === "printed" || printCountCurrent > 0;
+
+  const printMode = printSettings.printMode;
+  const printButtonLabel =
+    printMode === "impresion" ? "Imprimir-Local" : "Imprimir-QR";
+  const printButtonTitle =
+    printMode === "impresion"
+      ? "Envía la orden a la impresora local"
+      : "Genera el ticket con QR (y también imprime si aplica)";
 
   const handleCapturaModal = () => {
     const status = String((orderCurrent as any)?.status || "").toLowerCase();
@@ -850,84 +1055,220 @@ const ControlComandero: React.FC = () => {
     setModalComandaVisible(true);
   };
 
-  const handleImprimirModal = async () => {
-    setAccionesChequeVisible(false);
-    if (!isPrintEnabled) {
-      message.warning("El modo actual no permite imprimir.");
-      return;
+  const openInvoicePreview = (order: OrderSummary | null) => {
+    if (!order) return;
+
+    setInvoicePreviewOrder(order);
+    setInvoicePreviewVisible(true);
+  };
+  function calcInvoiceTotalsFromOrder(order: OrderSummary) {
+    const items = Array.isArray(order.items) ? order.items : [];
+
+    const subtotal = items.reduce((acc, item) => {
+      const qty = Number(item.qty) || 0;
+      const base = Number(item.basePrice ?? 0) || 0;
+      return acc + qty * base;
+    }, 0);
+
+    const total = items.reduce((acc, item) => {
+      const lineTotal = Number(item.total);
+      if (Number.isFinite(lineTotal)) return acc + lineTotal;
+
+      // fallback si item.total viene raro:
+      const qty = Number(item.qty) || 0;
+      const unit = Number(item.unitPrice ?? item.basePrice ?? 0) || 0;
+      return acc + qty * unit;
+    }, 0);
+
+    const tax = total - subtotal;
+
+    return {
+      subtotal: Math.round(subtotal * 100) / 100,
+      tax: Math.round(tax * 100) / 100,
+      total: Math.round(total * 100) / 100,
+    };
+  }
+
+  const openPrintApprovalFlow = () => {
+    setPrintManagerPassword("");
+    setPrintApprovalVisible(true);
+  };
+
+  const runInitialPrint = async (order: OrderSummary, orderId: number) => {
+    setPrintSubmitting(true);
+    try {
+      const r = await doInitialPrintOnOrderApi(orderId);
+
+      try {
+        await fetchCheques();
+      } catch {}
+
+      if (printMode === "qr") {
+        openInvoicePreview(order);
+        return;
+      }
+
+      const localBaseUrl =
+        order?.restaurant?.localBaseUrl ??
+        cheques.find((c) => c.id === orderId)?.restaurant?.localBaseUrl ??
+        null;
+
+      if (!localBaseUrl) {
+        message.warning(
+          "No se encontró la URL local de impresión (restaurant.localBaseUrl).",
+        );
+        openInvoicePreview(order);
+        return;
+      }
+
+      const printerName = getDefaultPrinterName();
+      if (!printerName) {
+        message.warning("No hay impresora configurada (printerName).");
+        openInvoicePreview(order);
+        return;
+      }
+
+      const totals = calcInvoiceTotalsFromOrder(order);
+      const subtotal = totals.subtotal;
+      const iva = totals.tax;
+      const total = totals.total;
+
+      await sendTicketToPrintProxy({
+        localBaseUrl,
+        printerName,
+        order,
+        folioSeries: r.folioSeries,
+        folioNumber: r.folioNumber,
+        subtotal,
+        iva,
+        total,
+      });
+
+      message.success("Cuenta enviada a la impresora");
+      openInvoicePreview(order);
+    } catch (e: any) {
+      message.error(String(e?.message || "No se pudo imprimir"));
+    } finally {
+      setPrintSubmitting(false);
     }
-    const orderId = orderIdCurrent ?? orderCurrent?.id ?? null;
-    const items = orderCurrent?.items ?? [];
-    if (!orderId) {
+  };
+
+  const handlePrintAction = async () => {
+    setAccionesChequeVisible(false);
+
+    const order = orderCurrent;
+    const orderId = orderIdCurrent ?? order?.id ?? null;
+    const items = order?.items ?? [];
+
+    if (!order || !orderId) {
       message.error("No hay orden seleccionada.");
       return;
     }
-
     if (!items.length) {
       message.warning("La orden no tiene productos para imprimir.");
       return;
     }
 
-    const tableName = orderCurrent?.tableName ?? "";
-    const localBaseUrl =
-      orderCurrent?.restaurant?.localBaseUrl ??
-      cheques.find((c) => c.id === orderId)?.restaurant?.localBaseUrl ??
-      null;
-
-    if (!localBaseUrl) {
-      message.warning(
-        "No se encontró la URL local de impresión (restaurant.localBaseUrl).",
-      );
+    const pc = Number(
+      (order as any)?.printCount ?? (order as any)?.print_count ?? 0,
+    );
+    if (pc > 0) {
+      openPrintApprovalFlow();
       return;
     }
 
-    const payloads = buildLocalPrintPayloads({ items, orderId, tableName });
-    if (!payloads.length) {
-      message.warning(
-        "No hay áreas de impresión configuradas para estos ítems.",
-      );
+    if (printSettings.confirmPrint) {
+      Modal.confirm({
+        title: "Imprimir cuenta",
+        content: "¿Seguro que deseas imprimir esta cuenta?",
+        okText: "Imprimir",
+        cancelText: "Cancelar",
+        onOk: () => runInitialPrint(order, orderId),
+      });
       return;
     }
 
-    try {
-      const cleanBase = localBaseUrl.replace(/\/$/, "");
-      const response = await fetch(`${cleanBase}/nprint/printers/print`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payloads),
-      });
-      const body = await response.json().catch(() => null);
-      console.log("Impresión simulada", {
-        payloads,
-        response: body ?? response,
-      });
-      message.success("Solicitud de impresión enviada (ver consola).");
-    } catch (error) {
-      console.error("No se pudo solicitar la impresión", error);
-      message.error("No se pudo solicitar la impresión.");
-    }
+    await runInitialPrint(order, orderId);
   };
 
-  const isPrintEnabled =
-    settingsImpresion === "hibrido" || settingsImpresion === "impresion";
-  const isQrEnabled =
-    settingsImpresion === "hibrido" || settingsImpresion === "qr";
-
-  const handleQrAction = () => {
-    setAccionesChequeVisible(false);
-    if (!isQrEnabled) {
-      message.warning("El modo actual no permite mostrar el QR.");
+  const handlePrintApprovalConfirm = async () => {
+    const order = orderCurrent;
+    const orderId = orderIdCurrent ?? order?.id ?? null;
+    if (!order || !orderId) {
+      message.error("No hay orden seleccionada.");
       return;
     }
-    const orderId = orderIdCurrent ?? orderCurrent?.id ?? null;
-    const restaurantId = orderCurrent?.restaurantId ?? rid;
-
-    if (!orderId || !restaurantId) {
-      message.warning("Esta orden no tiene identificación para mostrar el QR.");
+    if (!printManagerPassword) {
+      message.error("Ingresa la contraseña del administrador");
       return;
     }
 
-    openReceiptModal(orderId, Number(restaurantId), "qr");
+    setPrintSubmitting(true);
+    try {
+      const approval = await requestApprovalToken(
+        "order.print",
+        printManagerPassword,
+        orderId,
+      );
+
+      const r = await doPrintOnOrderApi(orderId, approval);
+
+      try {
+        await fetchCheques();
+      } catch {}
+
+      setPrintApprovalVisible(false);
+      setPrintManagerPassword("");
+
+      if (printMode === "qr") {
+        message.info("Reimpresión sin impresora (modo QR)");
+        openInvoicePreview(order);
+        return;
+      }
+
+      const localBaseUrl =
+        order?.restaurant?.localBaseUrl ??
+        cheques.find((c) => c.id === orderId)?.restaurant?.localBaseUrl ??
+        null;
+
+      if (!localBaseUrl) {
+        message.warning(
+          "No se encontró la URL local de impresión (restaurant.localBaseUrl).",
+        );
+        openInvoicePreview(order);
+        return;
+      }
+
+      const printerName = getDefaultPrinterName();
+      if (!printerName) {
+        message.warning("No hay impresora configurada (printerName).");
+        openInvoicePreview(order);
+        return;
+      }
+
+      const totals = calcInvoiceTotalsFromOrder(order);
+      const subtotal = totals.subtotal;
+      const iva = totals.tax;
+      const total = totals.total;
+
+      await sendTicketToPrintProxy({
+        localBaseUrl,
+        printerName,
+        order,
+        folioSeries: r.folioSeries,
+        folioNumber: r.folioNumber,
+        subtotal,
+        iva,
+        total,
+      });
+
+      message.success("Cuenta reimpresa (enviada a la impresora)");
+      openInvoicePreview(order);
+    } catch (e: any) {
+      message.error(String(e?.message || "No se pudo reimprimir"));
+    } finally {
+      setPrintSubmitting(false);
+    }
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1068,10 +1409,7 @@ const ControlComandero: React.FC = () => {
             >
               <MdTableBar /> Abrir Mesa
             </Button>
-            <Button
-              className="bg-white"
-              onClick={() => setMapVisible(true)}
-            >
+            <Button className="bg-white" onClick={() => setMapVisible(true)}>
               <MdTableBar /> Mapa de mesas
             </Button>
             <Button
@@ -1136,6 +1474,36 @@ const ControlComandero: React.FC = () => {
             </div>
           </div>
         </div>
+        {/* ✅ Reimpresión: modal de contraseña admin */}
+        <Modal
+          title="Reimprimir cuenta"
+          open={printApprovalVisible}
+          onCancel={() => {
+            if (!printSubmitting) {
+              setPrintApprovalVisible(false);
+              setPrintManagerPassword("");
+            }
+          }}
+          onOk={handlePrintApprovalConfirm}
+          okText={printSubmitting ? "Validando..." : "Autorizar y reimprimir"}
+          cancelText="Cancelar"
+          confirmLoading={printSubmitting}
+        >
+          <p className="text-sm text-gray-600">
+            Esta cuenta ya fue impresa. Para reimprimir, ingresa la contraseña
+            del administrador.
+          </p>
+          <Input.Password
+            autoFocus
+            value={printManagerPassword}
+            onChange={(e) => setPrintManagerPassword(e.target.value)}
+            placeholder="Contraseña administrador"
+            onPressEnter={() => {
+              if (!printSubmitting) handlePrintApprovalConfirm();
+            }}
+          />
+        </Modal>
+
         <Modal
           title={"Acciones Orden"}
           footer={false}
@@ -1144,75 +1512,57 @@ const ControlComandero: React.FC = () => {
         >
           <div className="w-full">
             <div className="w-full">
-              <div className="w-full">
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                  <button
-                    className={`flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 ${
-                      isOrderPrinted
-                        ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                        : "bg-gray-300 text-gray-800"
-                    }`}
-                    onClick={() => handleCapturaModal()}
-                    disabled={isOrderPrinted}
-                  >
-                    <MdAdsClick className="text-[25px] " />
-                    Capturar
-                  </button>
-                  <button
-                    className={`flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 ${
-                      isOrderPrinted
-                        ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                        : "bg-gray-300 text-gray-800"
-                    }`}
-                    onClick={() => handleImprimirModal()}
-                    disabled={!isPrintEnabled}
-                    title={
-                      !settingsImpresion
-                        ? "Cargando modo de impresión..."
-                        : !isPrintEnabled
-                          ? "Activa sólo en modo impresión/híbrido"
-                          : undefined
-                    }
-                    style={{
-                      cursor: isPrintEnabled ? "pointer" : "not-allowed",
-                    }}
-                  >
-                    <FaPrint className="text-[22px]" />
-                    Imprimir
-                  </button>
-                  <button
-                    className="flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 bg-blue-600 text-white"
-                    onClick={() => handleQrAction()}
-                    disabled={!isQrEnabled}
-                    title={
-                      !settingsImpresion
-                        ? "Cargando modo de impresión..."
-                        : !isQrEnabled
-                          ? "Activa sólo en modo QR/híbrido"
-                          : undefined
-                    }
-                    style={{ cursor: isQrEnabled ? "pointer" : "not-allowed" }}
-                  >
-                    <FaQrcode className="text-[22px]" />
-                    QR
-                  </button>
-                  <button
-                    className="flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 bg-blue-600 text-white"
-                    onClick={() => {
-                      setAccionesChequeVisible(false);
-                      setDetalle_cheque_consulta(orderCurrent?.items ?? []);
-                      setModalConsultaVisible(true);
-                    }}
-                  >
-                    <MdAdsClick className="text-[25px]" />
-                    Ver detalle
-                  </button>
-                </div>
-                <div className="text-xs text-gray-500 mt-2">
-                  Modo de impresión:{" "}
-                  {settingsImpresion ? settingsImpresion : "cargando..."}
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <button
+                  className={`flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 ${
+                    isOrderPrinted
+                      ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                      : "bg-gray-300 text-gray-800"
+                  }`}
+                  onClick={() => handleCapturaModal()}
+                  disabled={isOrderPrinted}
+                >
+                  <MdAdsClick className="text-[25px] " />
+                  Capturar
+                </button>
+                <button
+                  className={`flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 ${
+                    // 👇 solo deshabilita visualmente si estás procesando (opcional)
+                    printSubmitting
+                      ? "bg-gray-200 text-gray-500 cursor-wait"
+                      : isOrderPrinted
+                        ? "bg-amber-100 text-amber-900 hover:bg-amber-200 cursor-pointer"
+                        : "bg-gray-300 text-gray-800 hover:bg-gray-400 cursor-pointer"
+                  }`}
+                  onClick={() => {
+                    if (!printSubmitting) handlePrintAction();
+                  }}
+                  title={
+                    isOrderPrinted
+                      ? "Reimprimir (requiere contraseña de administrador)"
+                      : printButtonTitle
+                  }
+                >
+                  <FaPrint className="text-[22px]" />
+                  {isOrderPrinted ? "Reimprimir" : printButtonLabel}
+                </button>
+                <button
+                  className="flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 bg-blue-600 text-white"
+                  onClick={() => {
+                    setAccionesChequeVisible(false);
+                    setDetalle_cheque_consulta(orderCurrent?.items ?? []);
+                    setModalConsultaVisible(true);
+                  }}
+                >
+                  <MdAdsClick className="text-[25px]" />
+                  Ver detalle
+                </button>
+              </div>
+              <div className="text-xs text-gray-500 mt-2">
+                Modo: {printSettings.printMode || "cargando..."} ·{" "}
+                {isOrderPrinted
+                  ? "Esta orden ya fue impresa (reimpresión requiere admin)"
+                  : "Primera impresión"}
               </div>
             </div>
           </div>
@@ -1246,7 +1596,6 @@ const ControlComandero: React.FC = () => {
           mandarComanda={mandarComanda}
         />
         <ConsultarItemModal
-          orderCurrent={orderCurrent}
           visible={modalConsultaVisible}
           mesa={mesaReciente}
           detalle_cheque={detalle_cheque_consulta}
@@ -1255,52 +1604,111 @@ const ControlComandero: React.FC = () => {
             setDetalle_cheque_consulta([]);
           }}
         />
+
         <Modal
-          title="Aprobación — Reabrir orden"
-          open={reopenApprovalVisible}
-          onCancel={() => setReopenApprovalVisible(false)}
-          onOk={handleReopenApprovalConfirm}
-          confirmLoading={reopenSubmitting}
-          okText="Reabrir"
+          title="Ticket y QR"
+          open={invoicePreviewVisible}
+          onCancel={() => {
+            setInvoicePreviewVisible(false);
+            setInvoicePreviewOrder(null);
+          }}
+          footer={[
+            <Button
+              key="close-preview"
+              onClick={() => {
+                setInvoicePreviewVisible(false);
+                setInvoicePreviewOrder(null);
+              }}
+            >
+              Cerrar
+            </Button>,
+          ]}
+          width={900}
+          centered
         >
-          <Input.Password
-            value={reopenManagerPassword}
-            onChange={(e) => setReopenManagerPassword(e.target.value)}
-            placeholder="Contraseña de administrador"
-          />
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-[3fr,2fr] gap-4">
+              <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-4">
+                <div className="text-center text-lg font-semibold">
+                  Ticket de orden
+                </div>
+                <div className="flex justify-between text-sm text-gray-500 mt-2">
+                  <span>Orden</span>
+                  <span>#{invoicePreviewOrder?.id ?? "—"}</span>
+                </div>
+                <div className="flex justify-between text-sm text-gray-500">
+                  <span>Mesa</span>
+                  <span>{invoicePreviewOrder?.tableName ?? "—"}</span>
+                </div>
+
+                <div className="border-t border-dashed my-3" />
+
+                <div className="space-y-3">
+                  {invoiceItems.length ? (
+                    invoiceItems.map((item, index) => (
+                      <div
+                        key={item.id ?? `${item.productId}-${index}`}
+                        className="space-y-1"
+                      >
+                        <div className="flex justify-between text-sm font-medium">
+                          <span className="capitalize">
+                            {item.qty ?? 0} x {item.product?.name ?? "Producto"}
+                          </span>
+                          <span>{formatMoney(Number(item.total) || 0)}</span>
+                        </div>
+                        {item.notes ? (
+                          <div className="text-xs text-gray-500">
+                            {item.notes}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-sm text-gray-500">
+                      No hay productos registrados en esta orden.
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-t border-dashed my-3" />
+
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between text-gray-600">
+                    <span>Subtotal</span>
+                    <span>{formatMoney(invoiceTotals.subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-600">
+                    <span>IVA</span>
+                    <span>{formatMoney(invoiceTotals.tax)}</span>
+                  </div>
+                  <div className="flex justify-between font-semibold text-base">
+                    <span>Total</span>
+                    <span>{formatMoney(invoiceTotals.total)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-4 flex flex-col items-center gap-4">
+                {invoiceUrl ? (
+                  <>
+                    <QRCodeCanvas value={invoiceUrl} size={180} includeMargin />
+                    <div className="text-center text-sm text-gray-600">
+                      Escanea para generar facturas
+                    </div>
+                    <div className="text-xs text-gray-500 text-center break-all">
+                      {invoiceUrl}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm text-gray-500 text-center">
+                    No hay restaurante asociado para generar facturas.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </Modal>
-        <Modal
-          title="Entrega de recibo"
-          open={receiptOpen}
-          onCancel={() => setReceiptOpen(false)}
-          footer={null}
-        >
-          {receiptMode === "qr" && receiptUrl ? (
-            <div className="flex flex-col items-center gap-3">
-              <QRCodeCanvas value={receiptUrl} size={220} includeMargin />
-              <div className="break-all text-sm">{receiptUrl}</div>
-              <Button onClick={openReceiptUrl}>Abrir link</Button>
-            </div>
-          ) : null}
-          {receiptMode === "email" && receiptUrl ? (
-            <div className="flex flex-col gap-3">
-              <Input
-                placeholder="correo@cliente.com"
-                value={receiptEmail}
-                onChange={(e) => setReceiptEmail(e.target.value)}
-              />
-              <Button type="primary" onClick={sendReceiptEmail}>
-                Enviar por email
-              </Button>
-              <Button onClick={openReceiptUrl}>Abrir link</Button>
-            </div>
-          ) : null}
-          {receiptMode === "none" ? (
-            <div className="text-sm text-gray-500">
-              No hay entrega de recibo configurada.
-            </div>
-          )}
-        </Modal>
+
         <Modal
           title="Mapa de mesas"
           open={mapVisible}
@@ -1310,9 +1718,16 @@ const ControlComandero: React.FC = () => {
           centered
         >
           <div className="text-sm text-gray-500 mb-3">
-            Area: {areaSeleccionadaNombre !== "Todas" ? areaSeleccionadaNombre : "Todas"}
+            Area:{" "}
+            {areaSeleccionadaNombre !== "Todas"
+              ? areaSeleccionadaNombre
+              : "Todas"}
           </div>
-          <MesaMapPicker areaId={mapAreaId ?? null} selectedTableId={null} readOnly />
+          <MesaMapPicker
+            areaId={mapAreaId ?? null}
+            selectedTableId={null}
+            readOnly
+          />
         </Modal>
         <Modal
           title="Mis ventas"
@@ -1323,9 +1738,7 @@ const ControlComandero: React.FC = () => {
           centered
         >
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <div className="text-sm text-gray-500">
-              Turno: {shiftId ?? "—"}
-            </div>
+            <div className="text-sm text-gray-500">Turno: {shiftId ?? "—"}</div>
             <div className="flex flex-wrap gap-2">
               <Button
                 type={salesView === "closed" ? "primary" : "default"}
