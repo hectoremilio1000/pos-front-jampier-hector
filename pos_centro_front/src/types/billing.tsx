@@ -39,20 +39,21 @@ export type SubscriptionRow = {
   id: number;
   restaurantId: number;
   planId: number;
-  planPriceId: number | null; // ← clave: permitir null
-  status: SubscriptionStatus | string; // ← por si del backend llega string "libre"
+  planPriceId: number | null;
+  status: SubscriptionStatus | string;
   startDate: string;
   currentPeriodStart: string;
   currentPeriodEnd: string;
+
+  createdAt?: string | null; // ✅ agregar
 
   // Opcionales/compat
   paidAt?: string | null;
   stripePaymentId?: string | null;
   priceOverride?: number | null;
-  recurringDiscountPercent?: number; // opcional: puede no venir en responses viejas
-  recurringDiscount?: number; // opcional
+  recurringDiscountPercent?: number;
+  recurringDiscount?: number;
 
-  // anidados (opcionales)
   planPrice?: PlanPrice;
   plan?: { name: string };
   restaurant?: { id: number; name: string };

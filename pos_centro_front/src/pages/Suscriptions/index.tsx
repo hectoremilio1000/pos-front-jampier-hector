@@ -60,7 +60,10 @@ export default function Subscriptions() {
   const [open, setOpen] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentBySub, setPaymentBySub] = useState<
-    Record<number, { status: "paid" | "pending" | "overdue"; invoice: InvoiceRow | null }>
+    Record<
+      number,
+      { status: "paid" | "pending" | "overdue"; invoice: InvoiceRow | null }
+    >
   >({});
 
   // filtros
@@ -95,10 +98,12 @@ export default function Subscriptions() {
     }>
   >([]);
   const [activeSub, setActiveSub] = useState<SubscriptionRow | null>(null);
-  const [cfdiLoading, setCfdiLoading] = useState(false);
+  // const [cfdiLoading, setCfdiLoading] = useState(false);
   const [noteModalOpen, setNoteModalOpen] = useState(false);
   const [payInvoice, setPayInvoice] = useState<InvoiceRow | null>(null);
-  const [paymentsInvoice, setPaymentsInvoice] = useState<InvoiceRow | null>(null);
+  const [paymentsInvoice, setPaymentsInvoice] = useState<InvoiceRow | null>(
+    null,
+  );
   const periodLabel = (start?: string | null, end?: string | null) => {
     if (!start || !end) return "—";
     const fmt = new Intl.DateTimeFormat("es-MX", {
@@ -138,7 +143,7 @@ export default function Subscriptions() {
       }
       const qs = new URLSearchParams(params).toString();
       const { data } = await apiCenter.get(
-        `/subscriptions${qs ? `?${qs}` : ""}`
+        `/subscriptions${qs ? `?${qs}` : ""}`,
       );
       setRows(data);
     } catch (e) {
@@ -165,14 +170,12 @@ export default function Subscriptions() {
 
   const pickLatestInvoice = (items: InvoiceRow[]) => {
     if (!items.length) return null;
-    return items
-      .slice()
-      .sort((a, b) => {
-        const da = new Date(a.dueAt || a.periodEnd || a.createdAt || 0).getTime();
-        const db = new Date(b.dueAt || b.periodEnd || b.createdAt || 0).getTime();
-        if (da === db) return Number(b.id) - Number(a.id);
-        return db - da;
-      })[0];
+    return items.slice().sort((a, b) => {
+      const da = new Date(a.dueAt || a.periodEnd || a.createdAt || 0).getTime();
+      const db = new Date(b.dueAt || b.periodEnd || b.createdAt || 0).getTime();
+      if (da === db) return Number(b.id) - Number(a.id);
+      return db - da;
+    })[0];
   };
 
   const computePaymentStatus = (invoice: InvoiceRow | null) => {
@@ -202,18 +205,19 @@ export default function Subscriptions() {
           .map(async (s) => {
             try {
               const { data } = await apiCenter.get(
-                `/invoices?subscriptionId=${s.id}`
+                `/invoices?subscriptionId=${s.id}`,
               );
               const items = normalizeInvoices(data);
               const last = pickLatestInvoice(items);
               const status = computePaymentStatus(last);
-              if (!status) return [s.id as number, { status: "pending", invoice: null }];
+              if (!status)
+                return [s.id as number, { status: "pending", invoice: null }];
               return [s.id as number, { status, invoice: last }];
             } catch (e) {
               console.error(e);
               return [s.id as number, { status: "pending", invoice: null }];
             }
-          })
+          }),
       );
       setPaymentBySub(Object.fromEntries(entries));
     } finally {
@@ -233,7 +237,8 @@ export default function Subscriptions() {
     try {
       const params = new URLSearchParams();
       if (sub.id) params.set("subscriptionId", String(sub.id));
-      if (sub.restaurantId) params.set("restaurantId", String(sub.restaurantId));
+      if (sub.restaurantId)
+        params.set("restaurantId", String(sub.restaurantId));
       const { data } = await apiCenter.get(`/invoices?${params.toString()}`);
       const norm: InvoiceRow[] = normalizeInvoices(data);
       setInvoices(norm);
@@ -241,7 +246,7 @@ export default function Subscriptions() {
         norm.map(async (inv) => {
           try {
             const { data: payData } = await apiCenter.get(
-              `/invoices/${inv.id}/payments`
+              `/invoices/${inv.id}/payments`,
             );
             const paid = Number(payData?.invoice?.paid ?? 0);
             const balance = Number(payData?.invoice?.balance ?? 0);
@@ -256,7 +261,7 @@ export default function Subscriptions() {
               },
             ];
           }
-        })
+        }),
       );
       setInvoiceSummaries(Object.fromEntries(summaries));
     } catch (e) {
@@ -270,11 +275,11 @@ export default function Subscriptions() {
   const subscriptionTotals = useMemo(() => {
     const total = invoices.reduce(
       (acc, inv) => acc + Number(inv.amountDue ?? 0),
-      0
+      0,
     );
     const paid = invoices.reduce(
       (acc, inv) => acc + Number(invoiceSummaries[inv.id]?.paid ?? 0),
-      0
+      0,
     );
     const balance = Math.max(0, +(total - paid).toFixed(2));
     return { total, paid, balance };
@@ -288,7 +293,7 @@ export default function Subscriptions() {
       const rows = await Promise.all(
         invoices.map(async (inv) => {
           const { data: payData } = await apiCenter.get(
-            `/invoices/${inv.id}/payments`
+            `/invoices/${inv.id}/payments`,
           );
           const items = Array.isArray(payData?.items) ? payData.items : [];
           return items.map((p: any) => ({
@@ -302,7 +307,7 @@ export default function Subscriptions() {
             status: String(p.status ?? ""),
             reference: p.reference ?? null,
           }));
-        })
+        }),
       );
       setSubPaymentsRows(rows.flat());
     } catch (e) {
@@ -322,7 +327,7 @@ export default function Subscriptions() {
       cancelText: "Cancelar",
       async onOk() {
         try {
-          setCfdiLoading(true);
+          // setCfdiLoading(true);
           await apiCenter.post("/saas/invoices/issue", {
             restaurantId: invoice.restaurantId,
             invoiceId: invoice.id,
@@ -334,7 +339,7 @@ export default function Subscriptions() {
             e?.response?.data?.error || "No se pudo emitir la factura CFDI";
           message.error(msg);
         } finally {
-          setCfdiLoading(false);
+          // setCfdiLoading(false);
         }
       },
     });
@@ -373,7 +378,9 @@ export default function Subscriptions() {
       width: 90,
       render: (_, r) =>
         r.planPrice ? (
-          <Tag>{formatInterval(r.planPrice.interval, r.planPrice.intervalCount)}</Tag>
+          <Tag>
+            {formatInterval(r.planPrice.interval, r.planPrice.intervalCount)}
+          </Tag>
         ) : (
           "-"
         ),
@@ -403,9 +410,9 @@ export default function Subscriptions() {
         const leftDays = Math.max(
           Math.floor(
             (new Date(r.currentPeriodEnd).getTime() - Date.now()) /
-              (1000 * 60 * 60 * 24)
+              (1000 * 60 * 60 * 24),
           ),
-          0
+          0,
         );
         const nearing = (v === "active" || v === "trialing") && leftDays <= 7;
         return (
@@ -422,7 +429,8 @@ export default function Subscriptions() {
                       : "default"
             }
           >
-            {subscriptionStatusLabel(v)} {nearing ? `· vence en ${leftDays}d` : ""}
+            {subscriptionStatusLabel(v)}{" "}
+            {nearing ? `· vence en ${leftDays}d` : ""}
           </Tag>
         );
       },
@@ -514,7 +522,7 @@ export default function Subscriptions() {
       .sort(
         (a, b) =>
           new Date(b.createdAt || 0).getTime() -
-          new Date(a.createdAt || 0).getTime()
+          new Date(a.createdAt || 0).getTime(),
       );
   }, [filteredRows]);
 
@@ -617,7 +625,9 @@ export default function Subscriptions() {
           <Text type="secondary">Pagado:</Text>
           <Text>{money(subscriptionTotals.paid, invoices[0]?.currency)}</Text>
           <Text type="warning">Saldo:</Text>
-          <Text>{money(subscriptionTotals.balance, invoices[0]?.currency)}</Text>
+          <Text>
+            {money(subscriptionTotals.balance, invoices[0]?.currency)}
+          </Text>
           <Button
             size="small"
             onClick={openSubscriptionPayments}
@@ -634,12 +644,12 @@ export default function Subscriptions() {
             { title: "ID", dataIndex: "id" },
             {
               title: "Periodo",
-              render: (_, r) =>
-                periodLabel(r.periodStart, r.periodEnd),
+              render: (_, r) => periodLabel(r.periodStart, r.periodEnd),
             },
             {
               title: "Importe",
-              render: (_, r) => `$${Number(r.amountDue ?? 0).toFixed(2)} ${r.currency}`,
+              render: (_, r) =>
+                `$${Number(r.amountDue ?? 0).toFixed(2)} ${r.currency}`,
             },
             {
               title: "Estado",
@@ -678,7 +688,10 @@ export default function Subscriptions() {
             {
               title: "Saldo",
               render: (_, r) =>
-                money(invoiceSummaries[r.id]?.balance ?? r.amountDue, r.currency),
+                money(
+                  invoiceSummaries[r.id]?.balance ?? r.amountDue,
+                  r.currency,
+                ),
             },
             {
               title: "Acciones",
