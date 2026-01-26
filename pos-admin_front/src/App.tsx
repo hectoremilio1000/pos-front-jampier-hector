@@ -43,6 +43,8 @@ import InventorySuppliersPage from "./pages/Inventarios/Suppliers/SuppliersPage"
 import InventoryCountsPage from "./pages/Inventarios/Counts/CountsPage";
 import InventoryDiffsPage from "./pages/Inventarios/Diffs/DiffsPage";
 import InventoryBOMPage from "./pages/Inventarios/BOM/BOMPage";
+import InventoryWastesPage from "./pages/Inventarios/Wastes/WastesPage";
+import InventoryMovementsPage from "./pages/Inventarios/Movements/MovementsPage";
 
 function App() {
   return (
@@ -99,6 +101,8 @@ function App() {
             <Route path="almacenes" element={<InventoryWarehousesPage />} />
             <Route path="proveedores" element={<InventorySuppliersPage />} />
             <Route path="conteos" element={<InventoryCountsPage />} />
+            <Route path="mermas" element={<InventoryWastesPage />} />
+            <Route path="movimientos" element={<InventoryMovementsPage />} />
             <Route path="diferencias" element={<InventoryDiffsPage />} />
             <Route path="bom" element={<InventoryBOMPage />} />
           </Route>

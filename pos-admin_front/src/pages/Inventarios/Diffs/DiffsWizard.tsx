@@ -34,13 +34,15 @@ type CompareMode = "theoretical" | "count";
 const movementOptions = [
   { label: "Compras", value: "purchase", help: "Entradas por compras recibidas." },
   { label: "Ventas", value: "sale_consumption", help: "Salidas por consumo de recetas." },
-  { label: "Ajustes", value: "stock_count_adjustment", help: "Ajustes por conteo fisico." },
+  { label: "Ajustes", value: "manual_adjustment", help: "Ajustes manuales de inventario." },
+  { label: "Mermas", value: "waste", help: "Salidas por mermas aplicadas." },
 ];
 
 const movementLabelMap: Record<string, string> = {
   purchase: "Compras",
   sale_consumption: "Ventas",
-  stock_count_adjustment: "Ajustes",
+  manual_adjustment: "Ajustes",
+  waste: "Mermas",
 };
 
 function formatQty(value: number | null | undefined) {

@@ -257,6 +257,45 @@ export type StockCountDetail = StockCountRow & {
   items: StockCountItemRow[];
 };
 
+export type InventoryWasteRow = {
+  id: Id;
+  restaurantId?: Id;
+  warehouseId: Id;
+  inventoryItemId: Id;
+  qtyBase: number;
+  unitCost?: number | null;
+  totalCost?: number | null;
+  reasonText: string;
+  notes?: string | null;
+  status: "pending" | "applied" | "void" | string;
+  reportedAt?: string;
+  appliedMovementId?: Id | null;
+  warehouse?: WarehouseRow | null;
+  item?: InventoryItemRow | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type InventoryMovementRow = {
+  id: Id;
+  restaurantId?: Id;
+  warehouseId: Id;
+  inventoryItemId: Id;
+  presentationId?: Id | null;
+  movementType: string;
+  quantityBase: number;
+  unitCost?: number | null;
+  totalCost?: number | null;
+  movementAt: string;
+  referenceType?: string | null;
+  referenceId?: Id | null;
+  notes?: string | null;
+  warehouse?: WarehouseRow | null;
+  item?: InventoryItemRow | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type InventoryCutRow = {
   inventoryItemId: Id;
   code?: string | null;
@@ -1246,6 +1285,125 @@ export function deleteStockCount(restaurantId: Id, countId: Id): Promise<{ ok: t
     method: "DELETE",
     restaurantId,
     qs: { restaurantId },
+  });
+}
+
+/** ===== Mermas ===== */
+export function listInventoryWastes(
+  restaurantId: Id,
+  opts: {
+    status?: string;
+    warehouseId?: Id | null;
+    inventoryItemId?: Id | null;
+    q?: string;
+  } = {}
+): Promise<InventoryWasteRow[]> {
+  return http<InventoryWasteRow[]>("/inventory/wastes", {
+    restaurantId,
+    qs: {
+      restaurantId,
+      status: opts.status,
+      warehouseId: opts.warehouseId,
+      inventoryItemId: opts.inventoryItemId,
+      q: opts.q,
+    },
+  });
+}
+
+export function createInventoryWaste(
+  restaurantId: Id,
+  payload: {
+    warehouseId: Id;
+    inventoryItemId: Id;
+    qtyBase: number;
+    reasonText: string;
+    notes?: string | null;
+    reportedAt?: string;
+  }
+): Promise<InventoryWasteRow> {
+  return http<InventoryWasteRow>("/inventory/wastes", {
+    method: "POST",
+    restaurantId,
+    qs: { restaurantId },
+    body: payload,
+  });
+}
+
+export function updateInventoryWaste(
+  restaurantId: Id,
+  wasteId: Id,
+  payload: {
+    warehouseId?: Id;
+    inventoryItemId?: Id;
+    qtyBase?: number;
+    reasonText?: string;
+    notes?: string | null;
+    reportedAt?: string;
+  }
+): Promise<InventoryWasteRow> {
+  return http<InventoryWasteRow>(`/inventory/wastes/${wasteId}`, {
+    method: "PUT",
+    restaurantId,
+    qs: { restaurantId },
+    body: payload,
+  });
+}
+
+export function applyInventoryWaste(
+  restaurantId: Id,
+  wasteId: Id
+): Promise<InventoryWasteRow> {
+  return http<InventoryWasteRow>(`/inventory/wastes/${wasteId}/apply`, {
+    method: "POST",
+    restaurantId,
+    qs: { restaurantId },
+  });
+}
+
+export function listInventoryMovements(
+  restaurantId: Id,
+  opts: {
+    movementId?: Id | null;
+    movementType?: string;
+    warehouseId?: Id | null;
+    inventoryItemId?: Id | null;
+    startAt?: string;
+    endAt?: string;
+    limit?: number;
+  } = {}
+): Promise<InventoryMovementRow[]> {
+  return http<InventoryMovementRow[]>("/inventory/movements", {
+    restaurantId,
+    qs: {
+      restaurantId,
+      movementId: opts.movementId,
+      movementType: opts.movementType,
+      warehouseId: opts.warehouseId,
+      inventoryItemId: opts.inventoryItemId,
+      startAt: opts.startAt,
+      endAt: opts.endAt,
+      limit: opts.limit,
+    },
+  });
+}
+
+export function createInventoryAdjustment(
+  restaurantId: Id,
+  payload: {
+    warehouseId: Id;
+    inventoryItemId: Id;
+    qtyBase: number;
+    direction: "in" | "out";
+    reasonText: string;
+    notes?: string | null;
+    movementAt?: string;
+  }
+): Promise<InventoryMovementRow> {
+  return http<InventoryMovementRow>("/inventory/movements", {
+    method: "POST",
+    restaurantId,
+    qs: { restaurantId },
+    body: payload,
   });
 }
 

@@ -45,7 +45,9 @@ export default function InventariosPage() {
     { key: "almacenes", label: "Almacenes" },
     { key: "proveedores", label: "Proveedores" },
     { key: "conteos", label: "Conteos físicos" },
-    { key: "diferencias", label: "Diferencias" },
+    { key: "mermas", label: "Mermas" },
+    { key: "movimientos", label: "Movimientos" },
+    { key: "diferencias", label: "Inventario final" },
   ];
 
   // Si caes exactamente en /inventario, manda a /inventario/insumos
