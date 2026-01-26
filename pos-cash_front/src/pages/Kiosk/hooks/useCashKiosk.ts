@@ -114,26 +114,33 @@ export type KPIs = {
 };
 type CashStation = {
   id: number;
-  mode: number;
-  name: number;
-  code: number;
+
+  // casi seguro vienen como string (código de estación y nombre)
+  mode?: string | number | null;
+  name: string;
+  code: string;
+
+  // 👇 campos de impresión (opcionales, porque puede no existir impresora)
+  printerName?: string | null;
+  printerStatus?: string | null;
+  printerAvailability?: string | null;
 };
 
 export function useCashKiosk() {
   const [loading, setLoading] = useState(true);
   const [openingCash, setOpeningCash] = useState<number>(0);
   const [shiftId, setShiftId] = useState<string | null>(
-    sessionStorage.getItem("cash_shift_id")
+    sessionStorage.getItem("cash_shift_id"),
   );
   const [stationId, setStationId] = useState<string | null>(
-    sessionStorage.getItem("cash_station_id")
+    sessionStorage.getItem("cash_station_id"),
   );
   const [stationCurrent, setStationCurrent] = useState<CashStation | null>();
   const [sessionId, setSessionId] = useState<string | null>(
-    sessionStorage.getItem("cash_session_id")
+    sessionStorage.getItem("cash_session_id"),
   );
   const [restaurantId, setRestaurantId] = useState<string | null>(
-    sessionStorage.getItem("restaurantId")
+    sessionStorage.getItem("restaurantId"),
   );
 
   const [orders, setOrders] = useState<CashOrder[]>([]);
@@ -162,7 +169,7 @@ export function useCashKiosk() {
 
   const selectedOrder = useMemo(
     () => orders.find((o) => o.id === selectedOrderId) || null,
-    [orders, selectedOrderId]
+    [orders, selectedOrderId],
   );
 
   const getContext = useCallback(() => {
@@ -178,7 +185,7 @@ export function useCashKiosk() {
       setStationCurrent(res.data);
     } catch (error) {
       message.error(
-        "ocurrio un error al traer la informacion de la caja, vuelva a emparejar e iniciar session"
+        "ocurrio un error al traer la informacion de la caja, vuelva a emparejar e iniciar session",
       );
     }
   };
@@ -223,7 +230,7 @@ export function useCashKiosk() {
     const { restaurantId, stationCode } = getContext();
     if (!restaurantId || !stationCode) {
       return message.error(
-        "Falta restaurantId/stationCode. Reempareja el dispositivo."
+        "Falta restaurantId/stationCode. Reempareja el dispositivo.",
       );
     }
     try {
@@ -252,7 +259,7 @@ export function useCashKiosk() {
       await fetchKPIs();
     } catch (e: any) {
       message.error(
-        String(e?.response?.data?.error || "No se pudo abrir el turno")
+        String(e?.response?.data?.error || "No se pudo abrir el turno"),
       );
     } finally {
       setLoading(false);
@@ -296,7 +303,7 @@ export function useCashKiosk() {
             discountReason: it.discountReason,
             discountAppliedBy: it.discountAppliedBy,
           })),
-        }))
+        })),
       );
     } catch {
       setOrders([]);
@@ -362,8 +369,8 @@ export function useCashKiosk() {
                   discountAppliedBy: it.discountAppliedBy,
                 })),
               }
-            : o
-        )
+            : o,
+        ),
       );
       setSelectedOrderId(orderId);
     } finally {
@@ -439,7 +446,7 @@ export function useCashKiosk() {
       // 👉 ORDER CHANGED (items nuevos, totales actualizados, movimiento de mesa/alias)
       if (msg.type === "order_changed") {
         const changedId = Number(
-          msg.orderId ?? (msg.order && msg.order.id) ?? 0
+          msg.orderId ?? (msg.order && msg.order.id) ?? 0,
         );
         if (!changedId) return;
 
@@ -471,7 +478,7 @@ export function useCashKiosk() {
             qty: Number(it.qty ?? 0),
             unitPrice: Number(it.unitPrice ?? 0),
             basePrice: Number(
-              it.basePrice ?? it.base_price ?? it.unitPrice ?? 0
+              it.basePrice ?? it.base_price ?? it.unitPrice ?? 0,
             ),
             taxRate: Number(it.taxRate ?? it.tax_rate ?? 0),
             total:
@@ -555,7 +562,7 @@ export function useCashKiosk() {
               area: nextArea,
               areaName: nextAreaName,
             };
-          })
+          }),
         );
 
         return;
@@ -564,7 +571,7 @@ export function useCashKiosk() {
       // 👉 ORDER CLOSED (emitido por /orders/:id/pay o /orders/:id/close)
       if (msg.type === "order_closed") {
         const closedId = Number(
-          msg.orderId ?? (msg.order && msg.order.id) ?? 0
+          msg.orderId ?? (msg.order && msg.order.id) ?? 0,
         );
         if (!closedId) return;
 
@@ -573,7 +580,7 @@ export function useCashKiosk() {
 
         // 2) si estaba seleccionada, limpia la selección
         setSelectedOrderId((current) =>
-          current === closedId ? null : current
+          current === closedId ? null : current,
         );
 
         // 3) refresca KPIs (caja)
@@ -584,7 +591,7 @@ export function useCashKiosk() {
         return;
       }
     },
-    [fetchOrderById, setOrders, setSelectedOrderId, fetchKPIs]
+    [fetchOrderById, setOrders, setSelectedOrderId, fetchKPIs],
   );
 
   useEffect(() => {
@@ -666,7 +673,7 @@ export function useCashKiosk() {
       setSelectedOrderId(null);
       await fetchKPIs();
     },
-    [fetchKPIs]
+    [fetchKPIs],
   );
 
   const recordCashMovement = useCallback(
@@ -675,7 +682,7 @@ export function useCashKiosk() {
       await fetchKPIs();
       message.success("Movimiento registrado");
     },
-    [fetchKPIs]
+    [fetchKPIs],
   );
 
   useEffect(() => {

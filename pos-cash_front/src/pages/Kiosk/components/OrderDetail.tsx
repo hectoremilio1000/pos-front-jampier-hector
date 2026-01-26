@@ -76,7 +76,7 @@ type NPrintJob = {
 export default function OrderDetail() {
   const {
     selectedOrder,
-    orders,
+    // orders,
     restaurantId,
     stationId,
     setOrders,
@@ -471,8 +471,8 @@ export default function OrderDetail() {
     }, [items, selectedOrder]);
 
   // ====== Helpers ticket ======
-  const orderIndex =
-    (orders?.findIndex((o: any) => o.id === selectedOrder?.id) ?? -1) + 1;
+  // const orderIndex =
+  //   (orders?.findIndex((o: any) => o.id === selectedOrder?.id) ?? -1) + 1;
 
   function lineAmount(x: CashOrderItem): number {
     const qty = Number(x.qty ?? 0);
@@ -535,12 +535,12 @@ export default function OrderDetail() {
     return rows;
   }
 
-  function escapeHtml(s: string) {
-    return String(s)
-      .replace("&", "&amp;")
-      .replace("<", "&lt;")
-      .replace(">", "&gt;");
-  }
+  // function escapeHtml(s: string) {
+  //   return String(s)
+  //     .replace("&", "&amp;")
+  //     .replace("<", "&lt;")
+  //     .replace(">", "&gt;");
+  // }
 
   function formatDate(d: Date | string | number) {
     const dt = new Date(d);
@@ -550,113 +550,113 @@ export default function OrderDetail() {
     )} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
   }
 
-  function buildTicketHtml() {
-    const rows = buildTicketRows(items);
-    const createdAt =
-      (selectedOrder as any)?.createdAt ||
-      (selectedOrder as any)?.created_at ||
-      new Date();
+  // function buildTicketHtml() {
+  //   const rows = buildTicketRows(items);
+  //   const createdAt =
+  //     (selectedOrder as any)?.createdAt ||
+  //     (selectedOrder as any)?.created_at ||
+  //     new Date();
 
-    const startStr = formatDate(createdAt);
-    const endStr = formatDate(Date.now());
+  //   const startStr = formatDate(createdAt);
+  //   const endStr = formatDate(Date.now());
 
-    const restaurantName =
-      selectedOrder?.restaurant?.name ?? "Cantina La Llorona";
-    const restaurantAddress =
-      selectedOrder?.restaurant?.address_line1 ?? "Dirección del restaurante";
-    const restaurantRfc = selectedOrder?.restaurant?.rfc ?? "RFC: —";
-    const restaurantPhone = selectedOrder?.restaurant?.phone ?? "Tel: —";
-    const waiterName =
-      (selectedOrder?.waiter as any)?.fullName ??
-      (selectedOrder?.waiter as any)?.name ??
-      "-";
+  //   const restaurantName =
+  //     selectedOrder?.restaurant?.name ?? "Cantina La Llorona";
+  //   const restaurantAddress =
+  //     selectedOrder?.restaurant?.address_line1 ?? "Dirección del restaurante";
+  //   const restaurantRfc = selectedOrder?.restaurant?.rfc ?? "RFC: —";
+  //   const restaurantPhone = selectedOrder?.restaurant?.phone ?? "Tel: —";
+  //   const waiterName =
+  //     (selectedOrder?.waiter as any)?.fullName ??
+  //     (selectedOrder?.waiter as any)?.name ??
+  //     "-";
 
-    return `
-  <!doctype html>
-  <html>
-  <head>
-  <meta charset="utf-8">
-  <title>Ticket Orden #${selectedOrder?.id ?? "-"}</title>
-  <style>
-    @page { size: 80mm auto; margin: 1mm; }
-    * { box-sizing: border-box; }
-    body { font-family: "Courier New"; font-size: 14px; margin: 0; padding: 0; width: 78mm; line-heigh: 1.5 }
-    .ticket { width: 100%; padding: 2mm 0.5mm; }
-    .center { text-align: center; }
-    .bold { font-weight: 700; }
-    .sep { margin: 4px 0; border-top: 1px dashed #000; }
-    .row { display: flex; gap: 4px; }
-    .row .qty { width: 12mm; text-align: left; }
-    .row .desc { flex: 1; white-space: pre-wrap; }
-    .row .amt { width: 22mm; text-align: right; }
-    .mb2 { margin-bottom: 2px; }
-    .small { font-size: 14px; }
-  </style>
-  </head>
-  <body>
-    <div class="ticket">
-      <div class="center bold">${escapeHtml(restaurantName)}</div>
-      <div class="center small">${escapeHtml(restaurantAddress)}</div>
-      <div class="center small">${escapeHtml(restaurantRfc)} · ${escapeHtml(restaurantPhone)}</div>
+  //   return `
+  // <!doctype html>
+  // <html>
+  // <head>
+  // <meta charset="utf-8">
+  // <title>Ticket Orden #${selectedOrder?.id ?? "-"}</title>
+  // <style>
+  //   @page { size: 80mm auto; margin: 1mm; }
+  //   * { box-sizing: border-box; }
+  //   body { font-family: "Courier New"; font-size: 14px; margin: 0; padding: 0; width: 78mm; line-heigh: 1.5 }
+  //   .ticket { width: 100%; padding: 2mm 0.5mm; }
+  //   .center { text-align: center; }
+  //   .bold { font-weight: 700; }
+  //   .sep { margin: 4px 0; border-top: 1px dashed #000; }
+  //   .row { display: flex; gap: 4px; }
+  //   .row .qty { width: 12mm; text-align: left; }
+  //   .row .desc { flex: 1; white-space: pre-wrap; }
+  //   .row .amt { width: 22mm; text-align: right; }
+  //   .mb2 { margin-bottom: 2px; }
+  //   .small { font-size: 14px; }
+  // </style>
+  // </head>
+  // <body>
+  //   <div class="ticket">
+  //     <div class="center bold">${escapeHtml(restaurantName)}</div>
+  //     <div class="center small">${escapeHtml(restaurantAddress)}</div>
+  //     <div class="center small">${escapeHtml(restaurantRfc)} · ${escapeHtml(restaurantPhone)}</div>
 
-      <div class="sep"></div>
+  //     <div class="sep"></div>
 
-      <div class="small">
-        Mesa: <span class="bold">${escapeHtml(String(selectedOrder?.tableName ?? "-"))}</span><br/>
-        Mesero: <span class="bold">${escapeHtml(String(waiterName))}</span><br/>
-        Personas: <span class="bold">${escapeHtml(String(selectedOrder?.persons ?? "-"))}</span><br/>
-        Orden: <span className="bold">${orderIndex > 0 ? orderIndex : "-"}</span> / ${orders?.length ?? "-"}<br/>
-        Inicio: <span class="bold">${startStr}</span><br/>
-        Fin: <span class="bold">${endStr}</span>
-      </div>
+  //     <div class="small">
+  //       Mesa: <span class="bold">${escapeHtml(String(selectedOrder?.tableName ?? "-"))}</span><br/>
+  //       Mesero: <span class="bold">${escapeHtml(String(waiterName))}</span><br/>
+  //       Personas: <span class="bold">${escapeHtml(String(selectedOrder?.persons ?? "-"))}</span><br/>
+  //       Orden: <span className="bold">${orderIndex > 0 ? orderIndex : "-"}</span> / ${orders?.length ?? "-"}<br/>
+  //       Inicio: <span class="bold">${startStr}</span><br/>
+  //       Fin: <span class="bold">${endStr}</span>
+  //     </div>
 
-      <div class="sep"></div>
+  //     <div class="sep"></div>
 
-      <div class="row bold mb2">
-        <div class="qty">Cant</div>
-        <div class="desc">Descripción</div>
-        <div class="amt">Importe</div>
-      </div>
+  //     <div class="row bold mb2">
+  //       <div class="qty">Cant</div>
+  //       <div class="desc">Descripción</div>
+  //       <div class="amt">Importe</div>
+  //     </div>
 
-      ${rows
-        .map(
-          (r) => `
-        <div class="row">
-          <div class="qty">${r.qty}</div>
-          <div class="desc">${escapeHtml(r.desc)}</div>
-          <div class="amt">${money(r.amount)}</div>
-        </div>`,
-        )
-        .join("")}
+  //     ${rows
+  //       .map(
+  //         (r) => `
+  //       <div class="row">
+  //         <div class="qty">${r.qty}</div>
+  //         <div class="desc">${escapeHtml(r.desc)}</div>
+  //         <div class="amt">${money(r.amount)}</div>
+  //       </div>`,
+  //       )
+  //       .join("")}
 
-      <div class="sep"></div>
+  //     <div class="sep"></div>
 
-      <div class="row">
-        <div class="desc bold">Subtotal (base)</div>
-        <div class="amt">${money(baseSubtotal)}</div>
-      </div>
-      <div class="row">
-        <div class="desc bold">Impuestos</div>
-        <div class="amt">${money(taxTotal)}</div>
-      </div>
-      <div class="row">
-        <div class="desc bold">Total</div>
-        <div class="amt">${money(grandTotal)}</div>
-      </div>
+  //     <div class="row">
+  //       <div class="desc bold">Subtotal (base)</div>
+  //       <div class="amt">${money(baseSubtotal)}</div>
+  //     </div>
+  //     <div class="row">
+  //       <div class="desc bold">Impuestos</div>
+  //       <div class="amt">${money(taxTotal)}</div>
+  //     </div>
+  //     <div class="row">
+  //       <div class="desc bold">Total</div>
+  //       <div class="amt">${money(grandTotal)}</div>
+  //     </div>
 
-      <div class="sep"></div>
-      <div class="center small">Gracias por su visita</div>
-    </div>
-    <script>
-      window.onload = () => {
-        window.print();
-        setTimeout(() => window.close(), 300);
-      };
-    </script>
-  </body>
-  </html>
-  `.trim();
-  }
+  //     <div class="sep"></div>
+  //     <div class="center small">Gracias por su visita</div>
+  //   </div>
+  //   <script>
+  //     window.onload = () => {
+  //       window.print();
+  //       setTimeout(() => window.close(), 300);
+  //     };
+  //   </script>
+  // </body>
+  // </html>
+  // `.trim();
+  // }
 
   // 👉 NUEVO: construir payload para nprint usando los mismos datos de la cuenta
   function buildNPrintJobPayload(opts?: {
@@ -772,32 +772,32 @@ export default function OrderDetail() {
 
   // ⛔ Opcional: si ya NO quieres imprimir en navegador, puedes dejar estos helpers,
   // pero SIN usarlos más abajo. Si quieres, luego los eliminamos.
-  function printViaIframe(html: string) {
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "0";
-    document.body.appendChild(iframe);
-    const doc = iframe.contentWindow?.document;
-    if (doc) {
-      doc.open();
-      doc.write(html);
-      doc.close();
-      setTimeout(() => {
-        document.body.removeChild(iframe);
-      }, 1200);
-    } else {
-      document.body.removeChild(iframe);
-    }
-  }
+  // function printViaIframe(html: string) {
+  //   const iframe = document.createElement("iframe");
+  //   iframe.style.position = "fixed";
+  //   iframe.style.right = "0";
+  //   iframe.style.bottom = "0";
+  //   iframe.style.width = "0";
+  //   iframe.style.height = "0";
+  //   iframe.style.border = "0";
+  //   document.body.appendChild(iframe);
+  //   const doc = iframe.contentWindow?.document;
+  //   if (doc) {
+  //     doc.open();
+  //     doc.write(html);
+  //     doc.close();
+  //     setTimeout(() => {
+  //       document.body.removeChild(iframe);
+  //     }, 1200);
+  //   } else {
+  //     document.body.removeChild(iframe);
+  //   }
+  // }
 
-  function handlePrintPreview() {
-    const html = buildTicketHtml();
-    printViaIframe(html);
-  }
+  // function handlePrintPreview() {
+  //   const html = buildTicketHtml();
+  //   printViaIframe(html);
+  // }
 
   // ====== Recibo (email / QR opcional) ======
   function buildReceiptUrl(orderId: number, restaurantId: number) {
@@ -815,9 +815,7 @@ export default function OrderDetail() {
       message.warning("Primero imprime la orden para generar el recibo.");
       return;
     }
-    const rid = Number(
-      restaurantId || selectedOrder.restaurant?.id || 0
-    );
+    const rid = Number(restaurantId || selectedOrder.restaurant?.id || 0);
     const oid = Number(selectedOrder.id || 0);
     if (!rid || !oid) {
       message.error("No hay orden seleccionada.");
@@ -847,7 +845,7 @@ export default function OrderDetail() {
     }
     const subject = encodeURIComponent("Tu recibo");
     const body = encodeURIComponent(
-      `Gracias por tu visita.\n\nPuedes ver tu recibo aquí:\n${receiptUrl}`
+      `Gracias por tu visita.\n\nPuedes ver tu recibo aquí:\n${receiptUrl}`,
     );
     window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
   }
@@ -909,9 +907,7 @@ export default function OrderDetail() {
   const configuredPrintMode = (printSettings?.printMode ||
     "mixto") as PrintMode;
   const effectivePrintMode =
-    configuredPrintMode !== "qr" && !hasPrinter
-      ? "qr"
-      : configuredPrintMode;
+    configuredPrintMode !== "qr" && !hasPrinter ? "qr" : configuredPrintMode;
 
   // ====== Cancelación ======
 
