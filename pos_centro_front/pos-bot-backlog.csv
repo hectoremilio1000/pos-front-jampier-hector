@@ -1,0 +1,24 @@
+Title,Description,Status,Project,Labels,Estimate
+"[30m] Crear estructura /app/bot (folders)","Crear carpeta bot con subcarpetas: intents, dialog, actions, reports, memory, rag, llm. Actualizar imports en controller.",Backlog,Bot & AI,"bot,backend,structure",1
+"[45m] Mover chatLLM a llm/llm_client.ts","Extraer lógica de OpenAI/Vertex a bot/llm/llm_client.ts y exportar chatLLM. Ajustar imports en helpers.",Backlog,Bot & AI,"bot,backend,llm",2
+"[30m] Mover prompts a llm/prompts.ts","Separar system prompts (intent/qa) para edición rápida.",Backlog,Bot & AI,"bot,llm",1
+"[45m] Separar intents a intents/","Mover classifyIntent, intent_types, normalizeRelativeDates a app/bot/intents.",Backlog,Bot & AI,"bot,intents",2
+"[45m] Crear dialog_manager.ts","Agregar orquestador que decide: estado -> intent -> action/report/qa.",Backlog,Bot & AI,"bot,dialog",2
+"[30m] Implementar state awaiting_report_date","Si usuario pide reporte sin fecha, guardar state y preguntar fecha. Limpia state si cambia tema.",Backlog,Bot & AI,"bot,dialog",1
+"[30m] Agregar parser de fecha simple en estado","Si state=awaiting_report_date y mensaje trae fecha, ejecutar reporte sin re-clasificar.",Backlog,Bot & AI,"bot,dialog",1
+"[45m] Crear actions/registry.ts","Definir registry de acciones: cancel_order, reopen_order, close_shift (placeholders).",Backlog,Bot & AI,"bot,actions",2
+"[60m] Acción: cancel_order (confirmación)","Implementar cancel_order con confirmación explícita. Llamar pos_order_api. Guardar audit log.",Backlog,Bot & AI,"bot,actions,pos",3
+"[45m] Acción: reopen_order","Implementar reopen_order con confirmación y log.",Backlog,Bot & AI,"bot,actions,pos",2
+"[45m] Acción: close_shift","Implementar close_shift (pos_cash_api) con confirmación y log.",Backlog,Bot & AI,"bot,actions,pos",2
+"[30m] Crear tabla bot_action_logs","Migración: guardar action_name, params, user_phone, restaurant_id, result, created_at.",Backlog,Bot & AI,"bot,db",1
+"[30m] Crear tabla bot_user_profiles","Migración: phone, restaurant_id, vision, goals, brand_tone, updated_at.",Backlog,Bot & AI,"bot,db,memory",1
+"[45m] Guardar visión/objetivo del usuario","Si detecta intención 'vision', guardar en bot_user_profiles.",Backlog,Bot & AI,"bot,memory",2
+"[30m] Recuperar perfil en respuestas","Agregar contexto de visión/tono a qaAnswer cuando exista perfil.",Backlog,Bot & AI,"bot,memory",1
+"[60m] RAG base: tabla bot_documents","Migración: documents (id, restaurant_id, name, source, created_at).",Backlog,Bot & AI,"bot,rag,db",3
+"[60m] RAG base: tabla bot_document_chunks","Migración: chunks con content, embedding, doc_id.",Backlog,Bot & AI,"bot,rag,db",3
+"[45m] Endpoint para subir documento","Crear endpoint /api/bot/docs/upload (archivo o texto).",Backlog,Bot & AI,"bot,rag,api",2
+"[45m] Retriever simple (top-k)","Buscar chunks relevantes y enviarlos como contexto a qaAnswer.",Backlog,Bot & AI,"bot,rag,llm",2
+"[30m] Métricas de intents","Guardar cada intent en tabla stats y endpoint /api/bot/stats/intents.",Backlog,Bot & AI,"bot,metrics",1
+"[30m] Dashboard simple de fallos","Endpoint /api/bot/stats/errors con conteo por error.",Backlog,Bot & AI,"bot,metrics",1
+"[30m] Simulador: mostrar intent detectado","En UI, mostrar intent y payload devuelto por bot.",Backlog,Bot & AI,"frontend,simulator",1
+"[30m] Simulador: mostrar tiempo respuesta","Medir latencia y mostrar ms por mensaje.",Backlog,Bot & AI,"frontend,simulator",1

@@ -1,0 +1,70 @@
+Title,Description,Priority,Status,Assignee,Labels,Estimate,Created,Completed
+[30m] Crear estructura /app/bot (folders),"Project: Bot & AI
+
+Crear carpeta bot con subcarpetas: intents, dialog, actions, reports, memory, rag, llm. Actualizar imports en controller.",,Backlog,,"bot,backend,structure, Project:Bot & AI",1,,
+[45m] Mover chatLLM a llm/llm_client.ts,"Project: Bot & AI
+
+Extraer lógica de OpenAI/Vertex a bot/llm/llm_client.ts y exportar chatLLM. Ajustar imports en helpers.",,Backlog,,"bot,backend,llm, Project:Bot & AI",2,,
+[30m] Mover prompts a llm/prompts.ts,"Project: Bot & AI
+
+Separar system prompts (intent/qa) para edición rápida.",,Backlog,,"bot,llm, Project:Bot & AI",1,,
+[45m] Separar intents a intents/,"Project: Bot & AI
+
+Mover classifyIntent, intent_types, normalizeRelativeDates a app/bot/intents.",,Backlog,,"bot,intents, Project:Bot & AI",2,,
+[45m] Crear dialog_manager.ts,"Project: Bot & AI
+
+Agregar orquestador que decide: estado -> intent -> action/report/qa.",,Backlog,,"bot,dialog, Project:Bot & AI",2,,
+[30m] Implementar state awaiting_report_date,"Project: Bot & AI
+
+Si usuario pide reporte sin fecha, guardar state y preguntar fecha. Limpia state si cambia tema.",,Backlog,,"bot,dialog, Project:Bot & AI",1,,
+[30m] Agregar parser de fecha simple en estado,"Project: Bot & AI
+
+Si state=awaiting_report_date y mensaje trae fecha, ejecutar reporte sin re-clasificar.",,Backlog,,"bot,dialog, Project:Bot & AI",1,,
+[45m] Crear actions/registry.ts,"Project: Bot & AI
+
+Definir registry de acciones: cancel_order, reopen_order, close_shift (placeholders).",,Backlog,,"bot,actions, Project:Bot & AI",2,,
+[60m] Acción: cancel_order (confirmación),"Project: Bot & AI
+
+Implementar cancel_order con confirmación explícita. Llamar pos_order_api. Guardar audit log.",,Backlog,,"bot,actions,pos, Project:Bot & AI",3,,
+[45m] Acción: reopen_order,"Project: Bot & AI
+
+Implementar reopen_order con confirmación y log.",,Backlog,,"bot,actions,pos, Project:Bot & AI",2,,
+[45m] Acción: close_shift,"Project: Bot & AI
+
+Implementar close_shift (pos_cash_api) con confirmación y log.",,Backlog,,"bot,actions,pos, Project:Bot & AI",2,,
+[30m] Crear tabla bot_action_logs,"Project: Bot & AI
+
+Migración: guardar action_name, params, user_phone, restaurant_id, result, created_at.",,Backlog,,"bot,db, Project:Bot & AI",1,,
+[30m] Crear tabla bot_user_profiles,"Project: Bot & AI
+
+Migración: phone, restaurant_id, vision, goals, brand_tone, updated_at.",,Backlog,,"bot,db,memory, Project:Bot & AI",1,,
+[45m] Guardar visión/objetivo del usuario,"Project: Bot & AI
+
+Si detecta intención 'vision', guardar en bot_user_profiles.",,Backlog,,"bot,memory, Project:Bot & AI",2,,
+[30m] Recuperar perfil en respuestas,"Project: Bot & AI
+
+Agregar contexto de visión/tono a qaAnswer cuando exista perfil.",,Backlog,,"bot,memory, Project:Bot & AI",1,,
+[60m] RAG base: tabla bot_documents,"Project: Bot & AI
+
+Migración: documents (id, restaurant_id, name, source, created_at).",,Backlog,,"bot,rag,db, Project:Bot & AI",3,,
+[60m] RAG base: tabla bot_document_chunks,"Project: Bot & AI
+
+Migración: chunks con content, embedding, doc_id.",,Backlog,,"bot,rag,db, Project:Bot & AI",3,,
+[45m] Endpoint para subir documento,"Project: Bot & AI
+
+Crear endpoint /api/bot/docs/upload (archivo o texto).",,Backlog,,"bot,rag,api, Project:Bot & AI",2,,
+[45m] Retriever simple (top-k),"Project: Bot & AI
+
+Buscar chunks relevantes y enviarlos como contexto a qaAnswer.",,Backlog,,"bot,rag,llm, Project:Bot & AI",2,,
+[30m] Métricas de intents,"Project: Bot & AI
+
+Guardar cada intent en tabla stats y endpoint /api/bot/stats/intents.",,Backlog,,"bot,metrics, Project:Bot & AI",1,,
+[30m] Dashboard simple de fallos,"Project: Bot & AI
+
+Endpoint /api/bot/stats/errors con conteo por error.",,Backlog,,"bot,metrics, Project:Bot & AI",1,,
+[30m] Simulador: mostrar intent detectado,"Project: Bot & AI
+
+En UI, mostrar intent y payload devuelto por bot.",,Backlog,,"frontend,simulator, Project:Bot & AI",1,,
+[30m] Simulador: mostrar tiempo respuesta,"Project: Bot & AI
+
+Medir latencia y mostrar ms por mensaje.",,Backlog,,"frontend,simulator, Project:Bot & AI",1,,
