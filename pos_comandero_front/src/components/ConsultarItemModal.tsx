@@ -129,6 +129,7 @@ const ConsultarItemModal: React.FC<Props> = ({
   onClose,
   mesa,
   detalle_cheque,
+  orderCurrent,
 }) => {
   const [items, setItems] = useState<OrderItem[]>(detalle_cheque || []);
   const [loading, setLoading] = useState(false);
@@ -368,11 +369,21 @@ const ConsultarItemModal: React.FC<Props> = ({
     }
   }
 
+  const mesaLabel =
+    orderCurrent?.tableName ||
+    (typeof mesa === "number" ? `Mesa ${mesa}` : String(mesa || "—"));
+  const personsLabel =
+    typeof orderCurrent?.persons === "number"
+      ? `${orderCurrent.persons}`
+      : "—";
+  const orderIdLabel =
+    typeof orderCurrent?.id === "number" ? `#${orderCurrent.id}` : "—";
+
   return (
     <>
       <Modal
         open={visible}
-        title={`Consultar productos — MESA: ${mesa}`}
+        title="Consultar productos"
         onCancel={onClose}
         footer={null}
         width={1200}
@@ -381,6 +392,22 @@ const ConsultarItemModal: React.FC<Props> = ({
       >
         {/* contenedor con scroll + footer fijo */}
         <div className="flex flex-col h-[75vh]">
+          <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+            <div className="flex flex-wrap items-center gap-4">
+              <div>
+                <span className="text-gray-500">Mesa:</span>{" "}
+                <span className="font-semibold">{mesaLabel}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Comensales:</span>{" "}
+                <span className="font-semibold">{personsLabel}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Orden:</span>{" "}
+                <span className="font-semibold">{orderIdLabel}</span>
+              </div>
+            </div>
+          </div>
           <div className="flex-1 overflow-auto">
             <Table<Row>
               className="w-full"
