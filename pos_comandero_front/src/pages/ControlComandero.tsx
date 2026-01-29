@@ -203,7 +203,8 @@ const formatMoney = (value: number) =>
   })}`;
 
 const ControlComandero: React.FC = () => {
-  const { isJwtValid, shiftId, refreshShift } = useKioskAuth(); // 👈 del provider
+  const { isJwtValid, shiftId, refreshShift, restaurantId: ridFromCtx } =
+    useKioskAuth(); // 👈 del provider
   const [ready, setReady] = useState(false);
   const initRef = useRef(false);
   type OrderSummary = {
@@ -240,7 +241,8 @@ const ControlComandero: React.FC = () => {
   const [invoicePreviewOrder, setInvoicePreviewOrder] =
     useState<OrderSummary | null>(null);
 
-  const rid = getRestaurantIdFromJwt();
+  const rid = Number(ridFromCtx || getRestaurantIdFromJwt() || 0);
+  const jwtOk = isJwtValid();
 
   // ---- NUEVO: helper para imprimir por área de impresión ----
   type NPrintJobPayload = {
@@ -386,7 +388,7 @@ const ControlComandero: React.FC = () => {
           (c) => (c.area?.name ?? "Sin área") === areaSeleccionadaNombre,
         );
 
-  const fetchCheques = async () => {
+  const fetchCheques = useCallback(async () => {
     try {
       const res = await apiOrder.get("/orders", {
         params: { shift: shiftId },
@@ -398,7 +400,7 @@ const ControlComandero: React.FC = () => {
       message.error("Error al cargar las órdenes");
       return null;
     }
-  };
+  }, [shiftId]);
 
   const [areasImpresions, setAreasImpresions] = useState<AreaImpresion[]>([]);
   const [printSettings, setPrintSettings] = useState<PrintSettings>({
@@ -769,6 +771,16 @@ const ControlComandero: React.FC = () => {
   }
 
   const transmitRef = useRef<Transmit | null>(null);
+  const orderIdCurrentRef = useRef<number | null>(null);
+  const orderCurrentIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    orderIdCurrentRef.current = orderIdCurrent;
+  }, [orderIdCurrent]);
+
+  useEffect(() => {
+    orderCurrentIdRef.current = orderCurrent?.id ?? null;
+  }, [orderCurrent?.id]);
 
   /** handler central de eventos del canal */
   const onOrdersEvent = useCallback(
@@ -779,7 +791,9 @@ const ControlComandero: React.FC = () => {
         if (!Number.isFinite(id)) return;
 
         setCheques((prev) => prev.filter((c) => c.id !== id));
-        if (orderIdCurrent === id) {
+        const currentId =
+          orderIdCurrentRef.current ?? Number(orderCurrentIdRef.current || 0);
+        if (currentId === id) {
           setAccionesChequeVisible(false);
         }
 
@@ -803,7 +817,9 @@ const ControlComandero: React.FC = () => {
         if (!found) return;
 
         // si justo estás viendo esa orden, refresca states para que el modal pinte el botón
-        if (orderIdCurrent === id) {
+        const currentId =
+          orderIdCurrentRef.current ?? Number(orderCurrentIdRef.current || 0);
+        if (currentId === id) {
           setOrderCurrent(found);
         }
 
@@ -811,31 +827,64 @@ const ControlComandero: React.FC = () => {
         setDetalle_cheque_consulta(found.items ?? []);
       }
 
-      // (futuro) puedes manejar order_created / order_changed aquí
+      if (msg.type === "order_changed") {
+        const id = Number(msg.orderId);
+        if (!Number.isFinite(id)) return;
+
+        const updated = await fetchCheques();
+        if (!updated) return;
+
+        const found = updated.find((o: any) => Number(o.id) === id);
+        if (!found) return;
+
+        const currentId =
+          orderIdCurrentRef.current ?? Number(orderCurrentIdRef.current || 0);
+        if (currentId === id) {
+          setOrderCurrent(found);
+          setDetalle_cheque_consulta(found.items ?? []);
+        }
+      }
+
+      // (futuro) puedes manejar order_created aquí
     },
-    [fetchCheques, orderIdCurrent],
+    [fetchCheques],
   );
   useEffect(() => {
-    if (!isJwtValid()) return;
+    if (!jwtOk) return;
     if (!rid) return;
-    if (!shiftId) return;
-
     if (!transmitRef.current) {
+      const baseUrl = apiOrder.defaults.baseURL || "/api";
       transmitRef.current = new Transmit({
-        baseUrl: apiOrder.defaults.baseURL || "/api",
+        baseUrl,
         beforeSubscribe: (request) => {
           const token = sessionStorage.getItem("kiosk_jwt") || "";
           const shift = String(shiftId || "");
 
-          // ✅ Si es un Request real, NO puedes asignar request.headers. Clona y retorna.
+          // ✅ Si es un Request real, muta headers directamente (no se usa retorno).
           if (request instanceof Request) {
-            const headers = new Headers(request.headers);
-            if (token) headers.set("Authorization", `Bearer ${token}`);
-            if (shift) headers.set("X-Shift-Id", shift);
-            return new Request(request, { headers });
+            if (token) request.headers.set("Authorization", `Bearer ${token}`);
+            if (shift) request.headers.set("X-Shift-Id", shift);
+            return;
           }
 
           // ✅ Si es RequestInit (objeto), ahí sí puedes setear headers
+          const init = request as RequestInit;
+          const headers = new Headers(init.headers || {});
+          if (token) headers.set("Authorization", `Bearer ${token}`);
+          if (shift) headers.set("X-Shift-Id", shift);
+          init.headers = headers;
+          return init;
+        },
+        beforeUnsubscribe: (request) => {
+          const token = sessionStorage.getItem("kiosk_jwt") || "";
+          const shift = String(shiftId || "");
+
+          if (request instanceof Request) {
+            if (token) request.headers.set("Authorization", `Bearer ${token}`);
+            if (shift) request.headers.set("X-Shift-Id", shift);
+            return;
+          }
+
           const init = request as RequestInit;
           const headers = new Headers(init.headers || {});
           if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -855,7 +904,7 @@ const ControlComandero: React.FC = () => {
       off?.();
       sub.delete();
     };
-  }, [isJwtValid, rid, shiftId, onOrdersEvent]);
+  }, [jwtOk, rid, shiftId, onOrdersEvent]);
 
   const navigate = useNavigate();
   function cerrarSesion() {
@@ -1599,6 +1648,7 @@ const ControlComandero: React.FC = () => {
           visible={modalConsultaVisible}
           mesa={mesaReciente}
           detalle_cheque={detalle_cheque_consulta}
+          orderCurrent={orderCurrent}
           onClose={() => {
             setModalConsultaVisible(false);
             setDetalle_cheque_consulta([]);
