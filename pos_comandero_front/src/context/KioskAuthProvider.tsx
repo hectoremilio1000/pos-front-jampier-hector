@@ -65,6 +65,7 @@ type Ctx = {
   stationId: number | null;
   deviceType: DeviceType | null;
   shiftId: number | null;
+  printNameLocalStation: string | null;
   user: KioskUser | null;
 
   // pairing
@@ -89,7 +90,7 @@ export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
   // ---------- inicialización SIN efectos (lee sessionStorage en el primer render) ----------
   const [jwt, setJwt] = useState<string | null>(() => getKioskJwtSync());
   const [expMs, setExpMs] = useState<number | null>(() =>
-    normalizeExpToMs(sessionStorage.getItem(K.exp))
+    normalizeExpToMs(sessionStorage.getItem(K.exp)),
   );
   const [restaurantId, setRestaurantId] = useState<number | null>(() => {
     const rid = Number(sessionStorage.getItem(K.restaurantId) || "0");
@@ -99,6 +100,9 @@ export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
     const sid = Number(sessionStorage.getItem(K.stationId) || "0");
     return sid || null;
   });
+  const [printNameLocalStation, setPrintNameLocalStation] = useState<
+    string | null
+  >(null);
   const [deviceType, setDeviceType] = useState<DeviceType | null>(() => {
     return (sessionStorage.getItem(K.deviceType) as DeviceType) || null;
   });
@@ -123,7 +127,7 @@ export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
   // ---------- derivados ----------
   const hasPair = useMemo(
     () => !!sessionStorage.getItem(K.kioskToken) && pairState === "paired",
-    [pairState]
+    [pairState],
   );
   // const isJwtValid = useCallback(() => isExpValidMs(expMs), [expMs]);
 
@@ -183,7 +187,7 @@ export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
       setPairState("paired");
       sessionStorage.setItem(K.pairState, "paired");
     },
-    []
+    [],
   );
 
   const loginWithPin = useCallback(async (pin: string) => {
@@ -220,6 +224,8 @@ export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
       const res = await apiCashKiosk.get(url); // ← usa el JWT del kiosko
 
       const id = res.data?.shift?.id ?? null;
+      const printNameCaja = res.data?.shift?.masterStation?.printerName ?? null;
+      setPrintNameLocalStation(printNameCaja);
       persistShift(id);
       return !!id;
     } catch {
@@ -277,6 +283,7 @@ export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
     pair,
     loginWithPin,
     refreshShift,
+    printNameLocalStation,
     unpair,
     logout,
   };

@@ -7,6 +7,7 @@ import CapturaComandaModal from "@/components/CapturaComandaModal";
 import { MdAdsClick, MdPointOfSale, MdTableBar } from "react-icons/md";
 import RegistroChequeModal from "@/components/RegistroChequeModal";
 import apiOrder from "@/components/apis/apiOrder";
+import apiOrderPublic from "@/components/apis/apiOrderPublic";
 import ConsultarItemModal from "@/components/ConsultarItemModal";
 import MesaMapPicker from "@/components/MesaMapPicker";
 
@@ -138,7 +139,6 @@ interface OrderItem {
 function getRestaurantIdFromJwt(): number {
   try {
     const t = sessionStorage.getItem("kiosk_restaurant_id") || "";
-
     return Number(t);
   } catch {
     return 0;
@@ -203,7 +203,9 @@ const formatMoney = (value: number) =>
   })}`;
 
 const ControlComandero: React.FC = () => {
-  const { isJwtValid, shiftId, refreshShift } = useKioskAuth(); // 👈 del provider
+  const { isJwtValid, shiftId, refreshShift, printNameLocalStation, user } =
+    useKioskAuth(); // 👈 del provider
+  useKioskAuth(); // 👈 del provider
   const [ready, setReady] = useState(false);
   const initRef = useRef(false);
   type OrderSummary = {
@@ -227,6 +229,14 @@ const ControlComandero: React.FC = () => {
     folioNumber?: number | null;
   };
 
+  type RestaurantPrintProfile = {
+    name: string;
+    rfc: string;
+    timeZone: string;
+    addressLine1: string;
+    phone: string;
+  };
+
   const [orderCurrent, setOrderCurrent] = useState<OrderSummary | null>(null);
 
   const [modalVisible, setModalVisible] = useState(false);
@@ -241,6 +251,39 @@ const ControlComandero: React.FC = () => {
     useState<OrderSummary | null>(null);
 
   const rid = getRestaurantIdFromJwt();
+  const [restaurantProfile, setRestaurantProfile] =
+    useState<RestaurantPrintProfile | null>(null);
+  console.log(rid);
+  useEffect(() => {
+    if (!rid) {
+      setRestaurantProfile(null);
+      return;
+    }
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await apiOrderPublic.get(`/public/restaurants/${rid}`);
+        console.log(res);
+        if (cancelled) return;
+        const data = res.data || {};
+        setRestaurantProfile({
+          name: data.name ?? data.nombre ?? "",
+          rfc: data.taxId ?? data.rfc ?? "",
+          timeZone: data.timeZone ?? data.cp ?? "",
+          addressLine1:
+            data.address_line1 ?? data.address ?? data.direccion ?? "",
+          phone: data.phone ?? data.telefono ?? "",
+        });
+      } catch (error) {
+        console.error("No se pudo cargar los datos del restaurante", error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [rid]);
 
   // ---- NUEVO: helper para imprimir por área de impresión ----
   type NPrintJobPayload = {
@@ -255,6 +298,10 @@ const ControlComandero: React.FC = () => {
         qty: number;
         notes: string | null;
         course: number;
+        compositeProductId: string | null;
+        isModifier: boolean;
+        isCompositeProductMain: boolean;
+        half: Mitad;
       }[];
     };
   };
@@ -510,111 +557,168 @@ const ControlComandero: React.FC = () => {
   }
 
   // ====== Envío a impresora local (Print Proxy) ======
-  const NPRINT_TICKET_TEMPLATE_ID = 2;
 
-  type NPrintTicketItem = {
-    codigo: string;
-    descripcion: string;
-    cantidad: number;
-    precio_unitario: number;
-    importe: number;
-  };
-
-  type NPrintTicketData = {
-    numero: string;
-    fecha: string;
-    cliente: {
-      nombre: string;
-      direccion: string;
-      rfc: string;
-    };
-    items: NPrintTicketItem[];
-    subtotal: number;
-    iva: number;
-    total: number;
-  };
-
-  function formatDate(d: Date | string | number) {
-    const dt = new Date(d);
+  function formatDateTime(value?: string | number | Date) {
+    const date = value ? new Date(value) : new Date();
+    if (Number.isNaN(date.getTime())) return "";
     const pad = (n: number) => String(n).padStart(2, "0");
-    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(
-      dt.getHours(),
-    )}:${pad(dt.getMinutes())}`;
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+      date.getDate(),
+    )} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(
+      date.getSeconds(),
+    )}`;
   }
 
-  function buildNPrintTicketPayload(params: {
-    printerName: string;
+  function formatTotalEnLetra(total: number) {
+    if (!Number.isFinite(total)) return "";
+    const entero = Math.floor(total);
+    const centavos = Math.round((total - entero) * 100)
+      .toString()
+      .padStart(2, "0");
+    return `SON: ${entero.toLocaleString("es-MX")} PESOS ${centavos}/100 M.N.`;
+  }
+
+  type PrintConsumoPayload = {
+    printerName: string | null;
+    data: {
+      restaurante: {
+        nombre: string;
+        rfc: string;
+        cp: string;
+        direccion: string;
+        tel: string;
+      };
+      orden: {
+        mesa: string;
+        mesero: string;
+        personas: number;
+        orden: string;
+        folio: string;
+        fechaCreacion: string;
+        fechaImpresion: string;
+        cajero: string;
+      };
+      cliente: {
+        nombre: string;
+        direccion: string;
+      };
+      items: {
+        descripcion: string;
+        cantidad: number;
+        precio_unitario: number;
+        importe: number;
+      }[];
+      totales: {
+        subtotal: number;
+        iva: number;
+        total: number;
+        totalEnLetra: string;
+      };
+    };
+  };
+
+  function buildConsumoPrintPayload(params: {
+    printerName: string | null;
     order: OrderSummary;
     folioSeries: string;
     folioNumber: number;
-    subtotal: number;
-    iva: number;
-    total: number;
-  }): Array<{
-    printerName: string;
-    templateId: number;
-    data: NPrintTicketData;
-  }> {
+    totals: { subtotal: number; iva: number; total: number };
+    restaurantProfile: RestaurantPrintProfile | null;
+    mesero: string;
+  }): PrintConsumoPayload[] {
     const {
       printerName,
       order,
       folioSeries,
       folioNumber,
-      subtotal,
-      iva,
-      total,
+      totals,
+      restaurantProfile,
+      mesero,
     } = params;
 
-    const numero = `${folioSeries}-${String(folioNumber).padStart(3, "0")}`;
+    const folioSeriesClean = String(folioSeries || "").trim();
+    const folioNumberExists =
+      typeof folioNumber === "number" && !Number.isNaN(folioNumber);
+    const folioNumberStr = folioNumberExists
+      ? String(folioNumber).padStart(3, "0")
+      : "";
+    const folioLabel = folioSeriesClean
+      ? `${folioSeriesClean}${folioNumberStr}`.trim()
+      : folioNumberExists
+        ? String(folioNumber)
+        : `#${order.id}`;
+
+    const mesaLabel =
+      String(
+        order.tableName || order.area?.name || order.service?.name || "",
+      ).trim() || `Mesa ${order.id}`;
+    const ordenLabel =
+      order.tableName?.trim() ||
+      (folioSeriesClean
+        ? `${folioSeriesClean} ${folioNumberStr}`.trim()
+        : `Orden ${order.id}`);
 
     const createdAt =
-      (order as any)?.createdAt || (order as any)?.created_at || new Date();
+      (order as any)?.createdAt ??
+      (order as any)?.created_at ??
+      (order as any)?.openedAt ??
+      undefined;
+    const fechaCreacion = formatDateTime(createdAt);
+    const fechaImpresion = formatDateTime(new Date());
 
-    const fecha = formatDate(createdAt);
-
-    // 👇 cliente (si no tienes customer en esta vista, lo dejamos “Público”)
     const clienteNombre =
       (order as any)?.customerName ||
       (order as any)?.customer?.name ||
       "Público en general";
+    const clienteDireccion =
+      (order as any)?.customer?.address ||
+      (order as any)?.customer?.direccion ||
+      "";
 
-    const clienteDireccion = (order as any)?.customer?.address ?? "";
-    const clienteRfc = (order as any)?.customer?.rfc ?? "";
+    const restaurantData = {
+      nombre: restaurantProfile?.name || "",
+      rfc: restaurantProfile?.rfc || "",
+      cp: restaurantProfile?.timeZone || "",
+      direccion: restaurantProfile?.addressLine1 || "",
+      tel: restaurantProfile?.phone || "",
+    };
 
-    // items: usa los items de la orden (mapeo simple)
-    const itemsPayload: NPrintTicketItem[] = (order.items ?? []).map(
-      (it, idx) => {
-        const cantidad = Number(it.qty ?? 0) || 1;
-        const importe = Math.round(Number(it.total ?? 0) * 100) / 100;
-        const precio_unitario =
-          cantidad > 0 ? Math.round((importe / cantidad) * 100) / 100 : 0;
-
-        return {
-          codigo: `L${idx + 1}`,
-          descripcion: it.product?.name ?? `Producto #${it.productId}`,
-          cantidad,
-          precio_unitario,
-          importe,
-        };
-      },
-    );
+    const itemsPayload = (order.items ?? []).map((item) => ({
+      descripcion: item.product?.name ?? `Producto #${item.productId}`,
+      cantidad: Number(item.qty) || 0,
+      precio_unitario:
+        Number(item.unitPrice ?? item.basePrice ?? 0) ||
+        Number(item.total) ||
+        0,
+      importe: Number(item.total) || 0,
+    }));
 
     return [
       {
         printerName,
-        templateId: NPRINT_TICKET_TEMPLATE_ID,
         data: {
-          numero,
-          fecha,
+          restaurante: restaurantData,
+          orden: {
+            mesa: mesaLabel,
+            mesero: mesero || "",
+            personas: Number(order.persons || 0),
+            orden: ordenLabel,
+            folio: folioLabel,
+            fechaCreacion,
+            fechaImpresion,
+            cajero: "",
+          },
           cliente: {
             nombre: clienteNombre,
             direccion: clienteDireccion,
-            rfc: clienteRfc,
           },
           items: itemsPayload,
-          subtotal,
-          iva,
-          total,
+          totales: {
+            subtotal: totals.subtotal,
+            iva: totals.iva,
+            total: totals.total,
+            totalEnLetra: formatTotalEnLetra(totals.total),
+          },
         },
       },
     ];
@@ -622,31 +726,15 @@ const ControlComandero: React.FC = () => {
 
   async function sendTicketToPrintProxy(opts: {
     localBaseUrl: string;
-    printerName: string;
-    order: OrderSummary;
-    folioSeries: string;
-    folioNumber: number;
-    subtotal: number;
-    iva: number;
-    total: number;
+    payload: PrintConsumoPayload[];
   }) {
     const cleanBase = String(opts.localBaseUrl || "").replace(/\/$/, "");
     if (!cleanBase) throw new Error("localBaseUrl faltante");
 
-    const payload = buildNPrintTicketPayload({
-      printerName: opts.printerName,
-      order: opts.order,
-      folioSeries: opts.folioSeries,
-      folioNumber: opts.folioNumber,
-      subtotal: opts.subtotal,
-      iva: opts.iva,
-      total: opts.total,
-    });
-
-    const res = await fetch(`${cleanBase}/nprint/printers/print`, {
+    const res = await fetch(`${cleanBase}/nprint/printers/print-consumo`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(opts.payload),
     });
 
     if (!res.ok) {
@@ -727,6 +815,10 @@ const ControlComandero: React.FC = () => {
             qty: it.qty,
             notes: it.notes,
             course: it.course,
+            compositeProductId: it.compositeProductId,
+            isModifier: it.isModifier,
+            isCompositeProductMain: it.isCompositeProductMain,
+            half: it.half,
           })),
         },
       });
@@ -747,7 +839,7 @@ const ControlComandero: React.FC = () => {
     }
     const cleanBase = baseUrl.replace(/\/$/, "");
     try {
-      const res = await fetch(`${cleanBase}/nprint/printers/print`, {
+      const res = await fetch(`${cleanBase}/nprint/printers/print-comanda`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payloads),
@@ -880,12 +972,10 @@ const ControlComandero: React.FC = () => {
         if (!isJwtValid()) return; // ahora sí, corta si sigue inválido
       }
 
-      if (!shiftId) {
-        const ok = await refreshShift();
-        if (!ok) {
-          setReady(false); // mostrará la vista "No hay turno"
-          return;
-        }
+      const ok = await refreshShift();
+      if (!ok) {
+        setReady(false); // mostrará la vista "No hay turno"
+        return;
       }
       try {
         setReady(true);
@@ -1084,7 +1174,7 @@ const ControlComandero: React.FC = () => {
 
     return {
       subtotal: Math.round(subtotal * 100) / 100,
-      tax: Math.round(tax * 100) / 100,
+      iva: Math.round(tax * 100) / 100,
       total: Math.round(total * 100) / 100,
     };
   }
@@ -1129,19 +1219,21 @@ const ControlComandero: React.FC = () => {
       }
 
       const totals = calcInvoiceTotalsFromOrder(order);
-      const subtotal = totals.subtotal;
-      const iva = totals.tax;
-      const total = totals.total;
+      const targetPrinterName = printNameLocalStation || printerName;
+
+      const payload = buildConsumoPrintPayload({
+        printerName: targetPrinterName,
+        order,
+        folioSeries: r.folioSeries ?? "",
+        folioNumber: r.folioNumber ?? 0,
+        totals,
+        restaurantProfile,
+        mesero: user?.fullName ?? "",
+      });
 
       await sendTicketToPrintProxy({
         localBaseUrl,
-        printerName,
-        order,
-        folioSeries: r.folioSeries,
-        folioNumber: r.folioNumber,
-        subtotal,
-        iva,
-        total,
+        payload,
       });
 
       message.success("Cuenta enviada a la impresora");
@@ -1247,19 +1339,19 @@ const ControlComandero: React.FC = () => {
       }
 
       const totals = calcInvoiceTotalsFromOrder(order);
-      const subtotal = totals.subtotal;
-      const iva = totals.tax;
-      const total = totals.total;
 
+      const payload = buildConsumoPrintPayload({
+        printerName: printNameLocalStation,
+        order,
+        folioSeries: r.folioSeries ?? "",
+        folioNumber: r.folioNumber ?? 0,
+        totals,
+        restaurantProfile,
+        mesero: user?.fullName ?? "",
+      });
       await sendTicketToPrintProxy({
         localBaseUrl,
-        printerName,
-        order,
-        folioSeries: r.folioSeries,
-        folioNumber: r.folioNumber,
-        subtotal,
-        iva,
-        total,
+        payload,
       });
 
       message.success("Cuenta reimpresa (enviada a la impresora)");
