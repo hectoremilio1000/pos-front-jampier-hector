@@ -1,4 +1,4 @@
-// src/apis/apiCash.ts
+// src/components/apis/apiCash.ts
 import axios, { AxiosError } from "axios";
 
 /** ─────────────────────────────────────────────
@@ -36,7 +36,7 @@ async function getFreshJwt(): Promise<string> {
   if (isJwtValid()) return getJwt()!;
   if (!refreshInFlight) {
     refreshInFlight = refreshAccessJwt().finally(
-      () => (refreshInFlight = null)
+      () => (refreshInFlight = null),
     );
   }
   await refreshInFlight;
@@ -81,7 +81,7 @@ apiCash.interceptors.response.use(
       }
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 export default apiCash;

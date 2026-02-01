@@ -1,6 +1,7 @@
 // /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/comandero/src/components/Kiosk/token.ts
 
 import apiKiosk from "@/components/apis/apiKiosk";
+import { getKioskPairToken } from "@/components/Kiosk/session";
 
 type DeviceType = "cashier" | "commander" | "monitor";
 
@@ -28,9 +29,9 @@ type KioskLoginResponse = {
 };
 
 export async function kioskLoginWithPin(
-  pin: string
+  pin: string,
 ): Promise<KioskLoginResponse> {
-  const kt = sessionStorage.getItem("kiosk_token");
+  const kt = getKioskPairToken();
   if (!kt) throw new Error("Dispositivo no emparejado");
 
   const res = await apiKiosk.post(
@@ -39,13 +40,13 @@ export async function kioskLoginWithPin(
     {
       headers: { "X-Kiosk-Token": kt },
       validateStatus: () => true,
-    }
+    },
   );
 
   const data = (res.data || {}) as Partial<KioskLoginResponse>;
   if (res.status !== 200 || !data.jwt || !data.user || !data.device) {
     throw new Error(
-      (res.data && res.data.error) || "PIN incorrecto o servidor no disponible"
+      (res.data && res.data.error) || "PIN incorrecto o servidor no disponible",
     );
   }
 
@@ -65,7 +66,7 @@ export async function kioskLoginWithPin(
 /** Devuelve jwt válido o pide pinProvider() para relogin rápido */
 
 export async function getFreshKioskJwt(
-  pinProvider?: () => Promise<string>
+  pinProvider?: () => Promise<string>,
 ): Promise<string> {
   const ok = isKioskJwtValid();
   const t = getKioskJwtSync();
@@ -82,7 +83,7 @@ export async function kioskPairStart(code: string, deviceType: DeviceType) {
   const res = await apiKiosk.post(
     "/kiosk/pair/start",
     { code, deviceType },
-    { validateStatus: () => true }
+    { validateStatus: () => true },
   );
   const data = res.data || {};
   if (res.status !== 200) {
@@ -110,6 +111,7 @@ export async function kioskPairConfirm(payload: PairConfirmBody) {
     throw new Error(data.error || "No se pudo confirmar el emparejamiento");
   }
   const kt = data.kioskToken as string;
-  sessionStorage.setItem("kiosk_token", kt);
+  localStorage.setItem("kiosk_token", kt);
+  sessionStorage.removeItem("kiosk_token"); // por si venía de antes
   return kt;
 }

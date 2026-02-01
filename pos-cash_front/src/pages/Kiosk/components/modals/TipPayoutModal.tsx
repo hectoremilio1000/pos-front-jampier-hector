@@ -13,6 +13,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import apiCashKiosk from "@/components/apis/apiCashKiosk";
 import { useCash } from "../../context/CashKioskContext";
+import type { Restaurant } from "../../hooks/useCashKiosk";
 
 type Method = { id: number; code: string; name: string; isCash?: boolean };
 
@@ -24,6 +25,7 @@ type PendingOrder = {
   tipCollectedTotal: number;
   tipPaidTotal: number;
   tipPending: number;
+  restaurant: Restaurant;
 };
 
 type PendingResponse = {
@@ -37,6 +39,7 @@ type PendingResponse = {
 };
 
 const money = (n: number) => `$${(Math.round(n * 100) / 100).toFixed(2)}`;
+const PROPINAS_PRINT_ENDPOINT = "print-propinas";
 
 export default function TipPayoutModal({
   open,
@@ -45,10 +48,11 @@ export default function TipPayoutModal({
   open: boolean;
   onClose: () => void;
 }) {
-  const { shiftId } = useCash();
+  const { shiftId, selectedOrder, restaurantProfile, stationCurrent } =
+    useCash();
   const [loading, setLoading] = useState(false);
   const [methods, setMethods] = useState<Method[]>([]);
-  const [orders, setOrders] = useState<PendingOrder[]>([]);
+  const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
   const [waiters, setWaiters] = useState<PendingResponse["waiters"]>([]);
   const [selectedWaiterId, setSelectedWaiterId] = useState<number | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -56,8 +60,87 @@ export default function TipPayoutModal({
 
   const sid = useMemo(
     () => Number(sessionStorage.getItem("cash_shift_id") || shiftId || 0),
-    [shiftId]
+    [shiftId],
   );
+
+  const resolveLocalBaseUrl = (rows: PendingOrder[]): string | null => {
+    if (restaurantProfile?.localBaseUrl) {
+      return restaurantProfile.localBaseUrl;
+    }
+    if (!rows.length) {
+      return selectedOrder?.restaurant?.localBaseUrl ?? null;
+    }
+    const list = pendingOrders || [];
+    for (const row of rows) {
+      const match = list.find((o) => o.orderId === row.orderId);
+      const target = match?.restaurant?.localBaseUrl;
+      if (target) return target;
+    }
+    return selectedOrder?.restaurant?.localBaseUrl ?? null;
+  };
+  const buildPropinasPrintPayload = (rows: PendingOrder[]) =>
+    rows
+      .map((row) => ({
+        orderId: row.orderId,
+        tableName: row.tableName ?? undefined,
+        waiterFullName: row.waiterFullName,
+        amount: Number(row.tipPending || 0),
+        collected: Number(row.tipCollectedTotal || 0),
+        paid: Number(row.tipPaidTotal || 0),
+      }))
+      .filter((entry) => entry.amount > 0);
+
+  const printPropinas = async (rows: PendingOrder[]) => {
+    if (!rows.length) return;
+    const baseUrl = resolveLocalBaseUrl(rows);
+    if (!baseUrl) {
+      message.warning(
+        "No se encontró la URL local para imprimir las propinas.",
+      );
+      return;
+    }
+
+    const payloadEntries = buildPropinasPrintPayload(rows);
+    if (!payloadEntries.length) return;
+
+    const cleanBase = baseUrl.replace(/\/$/, "");
+    const total = payloadEntries.reduce((acc, item) => acc + item.amount, 0);
+    const printerName = stationCurrent?.printerName?.trim();
+    const payload = {
+      ...(printerName ? { printerName } : {}),
+
+      data: {
+        propinas: payloadEntries,
+        total: Number(total.toFixed(2)),
+      },
+    };
+
+    try {
+      const res = await fetch(
+        `${cleanBase}/nprint/printers/${PROPINAS_PRINT_ENDPOINT}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        },
+      );
+
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        console.warn(`[propinas] nprint error ${res.status}: ${detail}`);
+      } else {
+        try {
+          await res.json();
+        } catch {
+          // ignore non-json responses
+        }
+      }
+    } catch (error) {
+      console.warn("[propinas] nprint failed", error);
+    }
+  };
 
   // Carga métodos y pendientes (y establece por defecto el método con isCash)
   useEffect(() => {
@@ -92,16 +175,16 @@ export default function TipPayoutModal({
         // 2) Pendientes de propinas
         const r = await apiCashKiosk.get<PendingResponse>(
           `/tips/pending?shiftId=${sid}`,
-          { validateStatus: () => true }
+          { validateStatus: () => true },
         );
         const payload = r?.data || { orders: [], waiters: [] };
-        setOrders(payload.orders || []);
+        setPendingOrders(payload.orders || []);
         setWaiters(payload.waiters || []);
         setSelectedWaiterId(null);
         setSelectedRowKeys([]);
       } catch (e) {
         message.error("No se pudo cargar propinas pendientes");
-        setOrders([]);
+        setPendingOrders([]);
         setWaiters([]);
       } finally {
         setLoading(false);
@@ -111,9 +194,9 @@ export default function TipPayoutModal({
 
   // Filtro por mesero
   const filtered = useMemo(() => {
-    if (!selectedWaiterId) return orders;
-    return orders.filter((o) => o.waiterId === selectedWaiterId);
-  }, [orders, selectedWaiterId]);
+    if (!selectedWaiterId) return pendingOrders;
+    return pendingOrders.filter((o) => o.waiterId === selectedWaiterId);
+  }, [pendingOrders, selectedWaiterId]);
 
   const columns: ColumnsType<PendingOrder> = [
     {
@@ -192,22 +275,23 @@ export default function TipPayoutModal({
           amount: Number(row.tipPending || 0),
           notes: `Payout automático orden #${row.orderId}`,
         },
-        { validateStatus: () => true }
+        { validateStatus: () => true },
       );
       message.success(`Propina de orden #${row.orderId} pagada`);
+      await printPropinas([row]);
       // refrescar lista
       const r = await apiCashKiosk.get<PendingResponse>(
         `/tips/pending?shiftId=${sid}`,
-        { validateStatus: () => true }
+        { validateStatus: () => true },
       );
       const payload = r?.data || { orders: [], waiters: [] };
-      setOrders(payload.orders || []);
+      setPendingOrders(payload.orders || []);
       setWaiters(payload.waiters || []);
       // mantener filtro si sigue existiendo
       setSelectedRowKeys((prev) => prev.filter((k) => k !== row.orderId));
     } catch (e: any) {
       message.error(
-        String(e?.response?.data?.error || "No se pudo pagar la propina")
+        String(e?.response?.data?.error || "No se pudo pagar la propina"),
       );
     } finally {
       setLoading(false);
@@ -235,22 +319,23 @@ export default function TipPayoutModal({
             amount: Number(row.tipPending || 0),
             notes: `Payout múltiple orden #${row.orderId}`,
           },
-          { validateStatus: () => true }
+          { validateStatus: () => true },
         );
       }
+      await printPropinas(rows);
       message.success(`Pagadas ${rows.length} propina(s)`);
       // refrescar
       const r = await apiCashKiosk.get<PendingResponse>(
         `/tips/pending?shiftId=${sid}`,
-        { validateStatus: () => true }
+        { validateStatus: () => true },
       );
       const payload = r?.data || { orders: [], waiters: [] };
-      setOrders(payload.orders || []);
+      setPendingOrders(payload.orders || []);
       setWaiters(payload.waiters || []);
       setSelectedRowKeys([]);
     } catch (e: any) {
       message.error(
-        String(e?.response?.data?.error || "No se pudo pagar en lote")
+        String(e?.response?.data?.error || "No se pudo pagar en lote"),
       );
     } finally {
       setLoading(false);
@@ -266,10 +351,10 @@ export default function TipPayoutModal({
   };
 
   const totals = useMemo(() => {
-    const base = (selectedWaiterId ? filtered : orders) || [];
+    const base = (selectedWaiterId ? filtered : pendingOrders) || [];
     const pending = base.reduce((a, r) => a + Number(r.tipPending || 0), 0);
     return { pending };
-  }, [filtered, orders, selectedWaiterId]);
+  }, [filtered, pendingOrders, selectedWaiterId]);
 
   return (
     <Modal
@@ -293,7 +378,7 @@ export default function TipPayoutModal({
               options={waiters.map((w) => ({
                 value: w.id,
                 label: `${w.fullName} · ${w.orders} orden(es) · Pendiente ${money(
-                  w.pendingTotal
+                  w.pendingTotal,
                 )}`,
               }))}
             />

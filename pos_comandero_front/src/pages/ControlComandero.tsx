@@ -7,7 +7,7 @@ import CapturaComandaModal from "@/components/CapturaComandaModal";
 import { MdAdsClick, MdPointOfSale, MdTableBar } from "react-icons/md";
 import RegistroChequeModal from "@/components/RegistroChequeModal";
 import apiOrder from "@/components/apis/apiOrder";
-import apiOrderPublic from "@/components/apis/apiOrderPublic";
+import apiKiosk from "@/components/apis/apiKiosk";
 import ConsultarItemModal from "@/components/ConsultarItemModal";
 import MesaMapPicker from "@/components/MesaMapPicker";
 
@@ -135,11 +135,28 @@ interface OrderItem {
   createdAt?: string;
 }
 
+function parseJwt<T = any>(token: string | null): T | null {
+  if (!token) return null;
+  try {
+    const [, payload] = token.split(".");
+    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(json) as T;
+  } catch {
+    return null;
+  }
+}
+
 /** Lee restaurantId del kiosk_jwt */
 function getRestaurantIdFromJwt(): number {
+  const payload = parseJwt<{ restaurantId?: number }>(
+    sessionStorage.getItem("kiosk_jwt"),
+  );
+  if (payload?.restaurantId) return Number(payload.restaurantId);
+
   try {
-    const t = sessionStorage.getItem("kiosk_restaurant_id") || "";
-    return Number(t);
+    const stored = sessionStorage.getItem("kiosk_restaurant_id") || "";
+    const parsed = Number(stored);
+    return Number.isFinite(parsed) ? parsed : 0;
   } catch {
     return 0;
   }
@@ -205,7 +222,7 @@ const formatMoney = (value: number) =>
 const ControlComandero: React.FC = () => {
   const { isJwtValid, shiftId, refreshShift, printNameLocalStation, user } =
     useKioskAuth(); // 👈 del provider
-  useKioskAuth(); // 👈 del provider
+ 
   const [ready, setReady] = useState(false);
   const initRef = useRef(false);
   type OrderSummary = {
@@ -230,11 +247,13 @@ const ControlComandero: React.FC = () => {
   };
 
   type RestaurantPrintProfile = {
+    id: number;
     name: string;
     rfc: string;
     timeZone: string;
     addressLine1: string;
     phone: string;
+    localBaseUrl?: string | null;
   };
 
   const [orderCurrent, setOrderCurrent] = useState<OrderSummary | null>(null);
@@ -253,7 +272,6 @@ const ControlComandero: React.FC = () => {
   const rid = getRestaurantIdFromJwt();
   const [restaurantProfile, setRestaurantProfile] =
     useState<RestaurantPrintProfile | null>(null);
-  console.log(rid);
   useEffect(() => {
     if (!rid) {
       setRestaurantProfile(null);
@@ -263,21 +281,33 @@ const ControlComandero: React.FC = () => {
 
     (async () => {
       try {
-        const res = await apiOrderPublic.get(`/public/restaurants/${rid}`);
-        console.log(res);
-        if (cancelled) return;
-        const data = res.data || {};
-        setRestaurantProfile({
-          name: data.name ?? data.nombre ?? "",
-          rfc: data.taxId ?? data.rfc ?? "",
-          timeZone: data.timeZone ?? data.cp ?? "",
-          addressLine1:
-            data.address_line1 ?? data.address ?? data.direccion ?? "",
-          phone: data.phone ?? data.telefono ?? "",
+        const response = await apiKiosk.get(`/cash/restaurant/${rid}`, {
+          validateStatus: () => true,
         });
+        if (cancelled) return;
+        if (response.status >= 200 && response.status < 300) {
+          const data = response.data || {};
+          setRestaurantProfile({
+            id: Number(data.id),
+            name: data.name ?? "",
+            rfc: data.taxId ?? data.rfc ?? "",
+            timeZone: data.timeZone ?? data.cp ?? "",
+            addressLine1:
+              data.addressLine1 ?? data.address ?? data.direccion ?? "",
+            phone: data.phone ?? data.telefono ?? "",
+            localBaseUrl:
+              data.localBaseUrl ??
+              data.local_base_url ??
+              data.localBaseURL ??
+              null,
+          });
+          return;
+        }
       } catch (error) {
         console.error("No se pudo cargar los datos del restaurante", error);
       }
+      if (cancelled) return;
+      setRestaurantProfile(null);
     })();
 
     return () => {
@@ -580,6 +610,7 @@ const ControlComandero: React.FC = () => {
 
   type PrintConsumoPayload = {
     printerName: string | null;
+    restaurantId: number | null;
     data: {
       restaurante: {
         nombre: string;
@@ -593,7 +624,8 @@ const ControlComandero: React.FC = () => {
         mesero: string;
         personas: number;
         orden: string;
-        folio: string;
+        folioSerie: string;
+        folioNumber: number;
         fechaCreacion: string;
         fechaImpresion: string;
         cajero: string;
@@ -617,6 +649,70 @@ const ControlComandero: React.FC = () => {
     };
   };
 
+  type TicketRow = { qty: number; desc: string; amount: number };
+
+  function lineAmount(item: OrderItem): number {
+    const qty = Number(item.qty ?? 0);
+    const unit = Number(item.unitPrice ?? item.basePrice ?? 0);
+    const total = Number(item.total ?? NaN);
+    if (!Number.isNaN(total)) return total;
+    return qty * unit;
+  }
+
+  function buildTicketRows(source: OrderItem[]): TicketRow[] {
+    const rows: TicketRow[] = [];
+    const consumed = new Set<number>();
+    const getName = (x: OrderItem) =>
+      x.product?.name ??
+      x.product.name ??
+      `Producto #${x.productId ?? x.id ?? "?"}`;
+
+    for (const it of source) {
+      const itemId = it.id ?? 0;
+      if (consumed.has(itemId)) continue;
+
+      const isMain = !!it.isCompositeProductMain;
+      const isMod = !!it.isModifier;
+      const compId = it.compositeProductId ?? null;
+      const qty = Number(it.qty ?? 1);
+
+      if (isMain && compId) {
+        const modifiers = source.filter(
+          (m) =>
+            (m.id ?? 0) !== itemId &&
+            !!m.isModifier &&
+            (m.compositeProductId ?? null) === compId,
+        );
+        consumed.add(itemId);
+        modifiers.forEach((m) => consumed.add(m.id ?? 0));
+
+        rows.push({ qty, desc: getName(it), amount: lineAmount(it) });
+
+        for (const m of modifiers) {
+          const modAmt = lineAmount(m);
+          if (modAmt > 0) {
+            rows.push({ qty, desc: `> ${getName(m)}`, amount: modAmt });
+          }
+        }
+        continue;
+      }
+
+      if (isMod) {
+        consumed.add(itemId);
+        const modAmt = lineAmount(it);
+        if (modAmt > 0) {
+          rows.push({ qty, desc: `> ${getName(it)}`, amount: modAmt });
+        }
+        continue;
+      }
+
+      consumed.add(itemId);
+      rows.push({ qty, desc: getName(it), amount: lineAmount(it) });
+    }
+
+    return rows;
+  }
+
   function buildConsumoPrintPayload(params: {
     printerName: string | null;
     order: OrderSummary;
@@ -636,27 +732,11 @@ const ControlComandero: React.FC = () => {
       mesero,
     } = params;
 
-    const folioSeriesClean = String(folioSeries || "").trim();
-    const folioNumberExists =
-      typeof folioNumber === "number" && !Number.isNaN(folioNumber);
-    const folioNumberStr = folioNumberExists
-      ? String(folioNumber).padStart(3, "0")
-      : "";
-    const folioLabel = folioSeriesClean
-      ? `${folioSeriesClean}${folioNumberStr}`.trim()
-      : folioNumberExists
-        ? String(folioNumber)
-        : `#${order.id}`;
-
     const mesaLabel =
       String(
         order.tableName || order.area?.name || order.service?.name || "",
       ).trim() || `Mesa ${order.id}`;
-    const ordenLabel =
-      order.tableName?.trim() ||
-      (folioSeriesClean
-        ? `${folioSeriesClean} ${folioNumberStr}`.trim()
-        : `Orden ${order.id}`);
+    const ordenLabel = `Orden ${order.id}`;
 
     const createdAt =
       (order as any)?.createdAt ??
@@ -683,19 +763,24 @@ const ControlComandero: React.FC = () => {
       tel: restaurantProfile?.phone || "",
     };
 
-    const itemsPayload = (order.items ?? []).map((item) => ({
-      descripcion: item.product?.name ?? `Producto #${item.productId}`,
-      cantidad: Number(item.qty) || 0,
-      precio_unitario:
-        Number(item.unitPrice ?? item.basePrice ?? 0) ||
-        Number(item.total) ||
-        0,
-      importe: Number(item.total) || 0,
-    }));
+    const ticketRows = buildTicketRows(order.items ?? []);
+    const itemsPayload = ticketRows.map((row) => {
+      const cantidad = Number(row.qty) || 0;
+      const importe = Number(row.amount || 0);
+      const precio_unitario =
+        cantidad > 0 ? Math.round((importe / cantidad) * 100) / 100 : importe;
+      return {
+        descripcion: row.desc,
+        cantidad,
+        precio_unitario,
+        importe,
+      };
+    });
 
     return [
       {
         printerName,
+        restaurantId: restaurantProfile?.id ?? null,
         data: {
           restaurante: restaurantData,
           orden: {
@@ -703,7 +788,8 @@ const ControlComandero: React.FC = () => {
             mesero: mesero || "",
             personas: Number(order.persons || 0),
             orden: ordenLabel,
-            folio: folioLabel,
+            folioSerie: folioSeries,
+            folioNumber: folioNumber,
             fechaCreacion,
             fechaImpresion,
             cajero: "",
