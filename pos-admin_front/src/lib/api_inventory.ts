@@ -361,6 +361,43 @@ export type InventoryCutSummaryRow = {
   createdAt?: string | null;
 };
 
+export type InventoryCutDetailRow = {
+  movementId?: Id | null;
+  movementType: string;
+  movementAt?: string | null;
+  referenceType?: string | null;
+  referenceId?: Id | null;
+  notes?: string | null;
+  inventoryItemId: Id;
+  itemCode?: string | null;
+  itemName?: string | null;
+  qtyBase: number;
+  costTotal: number;
+  orderId?: Id | null;
+  orderItemId?: Id | null;
+  productId?: Id | null;
+  productName?: string | null;
+  productCode?: string | null;
+  purchaseOrderId?: Id | null;
+  purchaseOrderNumber?: number | null;
+  purchaseReceivedAt?: string | null;
+  supplierName?: string | null;
+  wasteId?: Id | null;
+  wasteReason?: string | null;
+  wasteReportedAt?: string | null;
+};
+
+export type InventoryCutDetailResponse = {
+  cutId: Id;
+  compareMode: "theoretical" | "count" | string;
+  range: { start: string; end: string };
+  movementTypes: string[];
+  itemScope: "all" | "selected" | string;
+  itemIds: Id[];
+  totalsByType: Record<string, { qtyBase: number; costTotal: number }>;
+  rowsByType: Record<string, InventoryCutDetailRow[]>;
+};
+
 export type ExternalRefRow = {
   id: Id;
   entityType: string;
@@ -407,6 +444,31 @@ export type PosProductRow = {
   id: Id;
   code?: string | null;
   name: string;
+};
+
+export type ConsumptionEstimateDayRow = {
+  date: string;
+  qtyBase: number;
+};
+
+export type ConsumptionEstimateRow = {
+  inventoryItemId: Id;
+  code?: string | null;
+  name?: string | null;
+  unitCode?: string | null;
+  unitName?: string | null;
+  totalQtyBase: number;
+  byDay?: ConsumptionEstimateDayRow[];
+};
+
+export type ConsumptionEstimateResponse = {
+  ok: boolean;
+  restaurantId: Id;
+  range: { from: string; to: string };
+  lines: number;
+  appliedComponents: number;
+  skipped: { noRecipe: number; noRecipeLines: number };
+  items: ConsumptionEstimateRow[];
 };
 
 function getApiBase(): string {
@@ -551,6 +613,30 @@ export function listInventoryItems(restaurantId: Id, q?: string): Promise<Invent
   return http<InventoryItemRow[]>("/inventory/items", {
     restaurantId,
     qs: { restaurantId, q },
+  });
+}
+
+export function estimateConsumptionBySales(
+  restaurantId: Id,
+  params: {
+    from: string;
+    to: string;
+    itemIds?: Id[];
+    byDay?: boolean;
+    limit?: number;
+  }
+): Promise<ConsumptionEstimateResponse> {
+  const itemIds = params.itemIds?.length ? params.itemIds.join(",") : undefined;
+  return http<ConsumptionEstimateResponse>("/inventory/consumption/estimate", {
+    restaurantId,
+    qs: {
+      restaurantId,
+      from: params.from,
+      to: params.to,
+      itemIds,
+      byDay: params.byDay ? 1 : undefined,
+      limit: params.limit,
+    },
   });
 }
 
@@ -1438,6 +1524,16 @@ export function listInventoryCuts(
   return http<InventoryCutSummaryRow[]>("/inventory/cuts", {
     restaurantId,
     qs: { restaurantId, warehouseId: opts.warehouseId },
+  });
+}
+
+export function getInventoryCutDetail(
+  restaurantId: Id,
+  cutId: Id
+): Promise<InventoryCutDetailResponse> {
+  return http<InventoryCutDetailResponse>(`/inventory/cuts/${cutId}/detail`, {
+    restaurantId,
+    qs: { restaurantId },
   });
 }
 

@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Button,
-  Checkbox,
+  Card,
   DatePicker,
   Modal,
   Radio,
@@ -12,6 +12,8 @@ import {
   Tag,
   Typography,
   message,
+  Alert,
+  Tabs,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useOutletContext } from "react-router-dom";
@@ -21,16 +23,22 @@ import {
   InventoryCutRequest,
   InventoryCutResponse,
   InventoryCutSummaryRow,
+  InventoryCutDetailResponse,
   InventoryItemRow,
   StockCountRow,
-  calcInventoryCut,
   createInventoryCut,
+  getInventoryCutDetail,
   listInventoryCuts,
   listInventoryItems,
   listStockCounts,
 } from "@/lib/api_inventory";
 
 type CompareMode = "theoretical" | "count";
+type WizardError = {
+  title: string;
+  description: string;
+  details?: string;
+};
 
 const movementOptions = [
   {
@@ -57,6 +65,7 @@ const movementLabelMap: Record<string, string> = {
   manual_adjustment: "Ajustes",
   waste: "Mermas",
 };
+const recommendedMovementValues = ["purchase", "sale_consumption"];
 
 function formatQty(value: number | null | undefined) {
   return Number(value ?? 0).toLocaleString(undefined, {
@@ -99,6 +108,8 @@ export default function DiffsWizard() {
 
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState(0);
+  const [wizardError, setWizardError] = useState<WizardError | null>(null);
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
 
   const [initialCountId, setInitialCountId] = useState<number | null>(null);
   const [finalCountId, setFinalCountId] = useState<number | null>(null);
@@ -117,7 +128,15 @@ export default function DiffsWizard() {
     null,
   );
   const [calcLoading, setCalcLoading] = useState(false);
-  const [saveLoading, setSaveLoading] = useState(false);
+
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailData, setDetailData] =
+    useState<InventoryCutDetailResponse | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailCut, setDetailCut] = useState<InventoryCutSummaryRow | null>(
+    null,
+  );
 
   async function loadCounts() {
     setCountsLoading(true);
@@ -168,9 +187,60 @@ export default function DiffsWizard() {
     }
   }
 
+  function clearWizardError() {
+    setWizardError(null);
+    setShowErrorDetails(false);
+  }
+
+  function buildErrorDetails(err: any) {
+    const raw = err?.response?.data
+      ? JSON.stringify(err.response.data, null, 2)
+      : err?.message
+      ? String(err.message)
+      : err
+      ? String(err)
+      : "";
+    if (!raw) return undefined;
+    return raw.length > 2000 ? `${raw.slice(0, 2000)}…` : raw;
+  }
+
+  function setFriendlyError(action: "calcular" | "guardar", err: any) {
+    const details = buildErrorDetails(err);
+    const lower = String(details || "").toLowerCase();
+    let title =
+      action === "calcular"
+        ? "No se pudo calcular el inventario"
+        : "No se pudo guardar el inventario";
+    let description = "Revisa los datos y vuelve a intentar.";
+
+    if (lower.includes("missing") || lower.includes("required")) {
+      description = "Faltan datos requeridos para continuar.";
+    } else if (lower.includes("timeout")) {
+      description = "La operación tardó demasiado. Intenta de nuevo.";
+    } else if (
+      lower.includes("unauthorized") ||
+      lower.includes("forbidden") ||
+      lower.includes("permission")
+    ) {
+      description = "Tu sesión no tiene permisos o expiró.";
+    } else if (
+      lower.includes("syntax") ||
+      lower.includes("select") ||
+      lower.includes("column") ||
+      lower.includes("sql")
+    ) {
+      description = "Hay un problema interno al consultar la base.";
+    }
+
+    setWizardError({ title, description, details });
+    setShowErrorDetails(false);
+    message.error(title);
+  }
+
   function openWizard() {
     setWizardStep(0);
     setPendingCut(null);
+    clearWizardError();
     setWizardOpen(true);
   }
 
@@ -178,6 +248,7 @@ export default function DiffsWizard() {
     setWizardOpen(false);
     setWizardStep(0);
     setPendingCut(null);
+    clearWizardError();
   }
 
   function buildPayload(): InventoryCutRequest {
@@ -248,7 +319,7 @@ export default function DiffsWizard() {
     setWizardStep((s) => Math.max(s - 1, 0));
   }
 
-  async function handleCalc() {
+  async function handleCalcAndSave() {
     const err = validateAllSteps();
     if (err) {
       message.error(err);
@@ -257,31 +328,15 @@ export default function DiffsWizard() {
 
     setCalcLoading(true);
     try {
-      const res = await calcInventoryCut(restaurantId, buildPayload());
+      const res = await createInventoryCut(restaurantId, buildPayload());
       setPendingCut(res);
+      message.success("Corte guardado. No se modificaron existencias.");
+      loadHistory();
+      clearWizardError();
     } catch (e: any) {
-      message.error(e?.message ?? "Error calculando el corte");
+      setFriendlyError("guardar", e);
     } finally {
       setCalcLoading(false);
-    }
-  }
-
-  async function handleSave() {
-    if (!pendingCut) {
-      message.error("Calcula el resumen antes de guardar.");
-      return;
-    }
-
-    setSaveLoading(true);
-    try {
-      await createInventoryCut(restaurantId, buildPayload());
-      message.success("Corte guardado");
-      closeWizard();
-      loadHistory();
-    } catch (e: any) {
-      message.error(e?.message ?? "Error guardando el corte");
-    } finally {
-      setSaveLoading(false);
     }
   }
 
@@ -294,10 +349,12 @@ export default function DiffsWizard() {
   useEffect(() => {
     setFinalCountId(null);
     setPendingCut(null);
+    clearWizardError();
   }, [compareMode, initialCountId]);
 
   useEffect(() => {
     setPendingCut(null);
+    clearWizardError();
   }, [endDate, movementTypes, scope, selectedItemIds, finalCountId]);
 
   useEffect(() => {
@@ -306,6 +363,32 @@ export default function DiffsWizard() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wizardOpen, scope]);
+
+  const openDetail = useCallback(
+    async (row: InventoryCutSummaryRow) => {
+      setDetailCut(row);
+      setDetailOpen(true);
+      setDetailLoading(true);
+      setDetailError(null);
+      try {
+        const data = await getInventoryCutDetail(restaurantId, row.id);
+        setDetailData(data);
+      } catch (e: any) {
+        setDetailError(e?.message ?? "No se pudo cargar el desglose.");
+        setDetailData(null);
+      } finally {
+        setDetailLoading(false);
+      }
+    },
+    [restaurantId]
+  );
+
+  function closeDetail() {
+    setDetailOpen(false);
+    setDetailData(null);
+    setDetailError(null);
+    setDetailCut(null);
+  }
 
   const countOptions = useMemo(
     () =>
@@ -321,43 +404,41 @@ export default function DiffsWizard() {
   const historyColumns = useMemo<ColumnsType<InventoryCutSummaryRow>>(
     () => [
       {
-        title: "Fecha",
+        title: "Fecha inicial",
+        width: 140,
+        render: (_, r) => formatDate(r.rangeStart || null),
+      },
+      {
+        title: "Fecha final",
         width: 140,
         render: (_, r) =>
           formatDate(r.rangeEnd || r.endAt || r.createdAt || null),
       },
       {
-        title: "Conteo inicial",
+        title: "Inicio (cantidad)",
+        width: 140,
+        render: (_, r) => formatQty(r.totals.initialQtyBase),
+      },
+      {
+        title: "Movimientos (neto)",
+        width: 150,
+        render: (_, r) => formatQty(r.totals.movementQtyBase),
+      },
+      {
+        title: "Teórico (esperado)",
+        width: 160,
+        render: (_, r) => formatQty(r.totals.theoreticalQtyBase),
+      },
+      {
+        title: "Final (físico)",
+        width: 140,
         render: (_, r) =>
-          buildCountLabel(
-            r.initialCountId,
-            r.initialCountName,
-            r.initialCountFinishedAt,
-          ),
+          String(r.compareMode) === "count"
+            ? formatQty(r.totals.finalQtyBase)
+            : "—",
       },
       {
-        title: "Final",
-        render: (_, r) => {
-          if (String(r.compareMode) === "count") {
-            return buildCountLabel(
-              r.finalCountId ?? null,
-              r.finalCountName,
-              r.finalCountFinishedAt,
-            );
-          }
-          return `Teorico hasta ${formatDate(r.rangeEnd || r.endAt || r.createdAt || null)}`;
-        },
-      },
-      {
-        title: "Movimientos",
-        width: 170,
-        render: (_, r) =>
-          (r.movementTypes || [])
-            .map((m) => movementLabelMap[m] || m)
-            .join(", ") || "—",
-      },
-      {
-        title: "Diferencia",
+        title: "Diferencia vs conteo",
         width: 120,
         render: (_, r) =>
           String(r.compareMode) === "count"
@@ -365,7 +446,7 @@ export default function DiffsWizard() {
             : "—",
       },
       {
-        title: "Costo dif.",
+        title: "Costo diferencia",
         width: 140,
         render: (_, r) =>
           String(r.compareMode) === "count"
@@ -381,22 +462,283 @@ export default function DiffsWizard() {
           </Tag>
         ),
       },
+      {
+        title: "Acciones",
+        width: 140,
+        render: (_, r) => (
+          <Button size="small" onClick={() => openDetail(r)}>
+            Ver desglose
+          </Button>
+        ),
+      },
     ],
-    [],
+    [openDetail],
   );
+
+  const renderItemCell = (row: any) => (
+    <div style={{ display: "flex", flexDirection: "column" }}>
+      <span>{row.itemName || "-"}</span>
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        {row.itemCode || "sin codigo"}
+      </Typography.Text>
+    </div>
+  );
+
+  const salesColumns: ColumnsType<any> = [
+    {
+      title: "Fecha",
+      width: 120,
+      render: (_, row) => formatDate(row.movementAt || null),
+    },
+    {
+      title: "Orden",
+      width: 120,
+      render: (_, row) =>
+        row.orderId ? `#${row.orderId}` : row.orderItemId ? `Item #${row.orderItemId}` : "—",
+    },
+    {
+      title: "Producto vendido",
+      render: (_, row) =>
+        row.productName ||
+        row.productCode ||
+        (row.productId ? `#${row.productId}` : "—"),
+    },
+    {
+      title: "Insumo",
+      render: (_, row) => renderItemCell(row),
+    },
+    {
+      title: "Cantidad consumida",
+      width: 160,
+      render: (_, row) => formatQty(row.qtyBase),
+    },
+    {
+      title: "Costo",
+      width: 140,
+      render: (_, row) => formatMoney(row.costTotal),
+    },
+  ];
+
+  const purchaseColumns: ColumnsType<any> = [
+    {
+      title: "Fecha",
+      width: 120,
+      render: (_, row) => formatDate(row.purchaseReceivedAt || row.movementAt || null),
+    },
+    {
+      title: "Compra",
+      width: 140,
+      render: (_, row) =>
+        row.purchaseOrderNumber
+          ? `PO #${row.purchaseOrderNumber}`
+          : row.purchaseOrderId
+          ? `#${row.purchaseOrderId}`
+          : "—",
+    },
+    {
+      title: "Proveedor",
+      render: (_, row) => row.supplierName || "—",
+    },
+    {
+      title: "Insumo",
+      render: (_, row) => renderItemCell(row),
+    },
+    {
+      title: "Cantidad recibida",
+      width: 160,
+      render: (_, row) => formatQty(row.qtyBase),
+    },
+    {
+      title: "Costo",
+      width: 140,
+      render: (_, row) => formatMoney(row.costTotal),
+    },
+  ];
+
+  const wasteColumns: ColumnsType<any> = [
+    {
+      title: "Fecha",
+      width: 120,
+      render: (_, row) => formatDate(row.wasteReportedAt || row.movementAt || null),
+    },
+    {
+      title: "Merma",
+      width: 120,
+      render: (_, row) => (row.wasteId ? `#${row.wasteId}` : "—"),
+    },
+    {
+      title: "Motivo",
+      render: (_, row) => row.wasteReason || row.notes || "—",
+    },
+    {
+      title: "Insumo",
+      render: (_, row) => renderItemCell(row),
+    },
+    {
+      title: "Cantidad",
+      width: 120,
+      render: (_, row) => formatQty(row.qtyBase),
+    },
+    {
+      title: "Costo",
+      width: 140,
+      render: (_, row) => formatMoney(row.costTotal),
+    },
+  ];
+
+  const adjustmentColumns: ColumnsType<any> = [
+    {
+      title: "Fecha",
+      width: 120,
+      render: (_, row) => formatDate(row.movementAt || null),
+    },
+    {
+      title: "Motivo / Nota",
+      render: (_, row) => row.notes || "—",
+    },
+    {
+      title: "Insumo",
+      render: (_, row) => renderItemCell(row),
+    },
+    {
+      title: "Cantidad",
+      width: 120,
+      render: (_, row) => formatQty(row.qtyBase),
+    },
+    {
+      title: "Costo",
+      width: 140,
+      render: (_, row) => formatMoney(row.costTotal),
+    },
+  ];
+
+  const detailTabs = useMemo(() => {
+    if (!detailData) return [];
+
+    const order = ["sale_consumption", "purchase", "waste", "manual_adjustment"];
+    const types = detailData.movementTypes.length
+      ? detailData.movementTypes
+      : Object.keys(detailData.rowsByType || {});
+    const orderedTypes = [
+      ...order.filter((t) => types.includes(t)),
+      ...types.filter((t) => !order.includes(t)),
+    ];
+
+    const emptyTextByType: Record<string, string> = {
+      sale_consumption: "No hubo ventas en este periodo.",
+      purchase: "No hubo compras recibidas en este periodo.",
+      waste: "No hubo mermas aplicadas en este periodo.",
+      manual_adjustment: "No hubo ajustes manuales en este periodo.",
+    };
+
+    const columnsByType: Record<string, ColumnsType<any>> = {
+      sale_consumption: salesColumns,
+      purchase: purchaseColumns,
+      waste: wasteColumns,
+      manual_adjustment: adjustmentColumns,
+    };
+
+    return orderedTypes.map((type) => {
+      const rows = detailData.rowsByType?.[type] || [];
+      const totals = detailData.totalsByType?.[type];
+      const title = movementLabelMap[type] || type;
+      const totalText = totals
+        ? `Totales: ${formatQty(totals.qtyBase)} · ${formatMoney(
+            totals.costTotal
+          )}`
+        : "";
+      return {
+        key: type,
+        label: title,
+        children: (
+          <Space direction="vertical" size={8} style={{ width: "100%" }}>
+            {totalText ? (
+              <Typography.Text type="secondary">{totalText}</Typography.Text>
+            ) : null}
+            {rows.length === 0 ? (
+              <Typography.Text type="secondary">
+                {emptyTextByType[type] || "No hubo movimientos en este periodo."}
+              </Typography.Text>
+            ) : (
+              <Table
+                rowKey={(r) => `${type}-${r.movementId || r.inventoryItemId}`}
+                columns={columnsByType[type] || salesColumns}
+                dataSource={rows}
+                pagination={{ pageSize: 8 }}
+              />
+            )}
+          </Space>
+        ),
+      };
+    });
+  }, [detailData, salesColumns, purchaseColumns, wasteColumns, adjustmentColumns]);
+
+  const selectedItemsCount = selectedItemIds.length;
+  const movementSummary =
+    movementTypes.map((m) => movementLabelMap[m] || m).join(", ") || "—";
+
+  function toggleMovement(value: string) {
+    setMovementTypes((prev) =>
+      prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value],
+    );
+  }
+
+  function selectRecommendedMovements() {
+    setMovementTypes([...recommendedMovementValues]);
+  }
+
+  function selectAllMovements() {
+    setMovementTypes(movementOptions.map((o) => o.value));
+  }
+
+  function clearMovements() {
+    setMovementTypes([]);
+  }
 
   const steps = [
     {
-      title: "Productos",
+      title: "Insumos",
       content: (
         <Space direction="vertical" style={{ width: "100%" }}>
           <Typography.Text>
             Define si quieres todos los insumos o solo algunos.
           </Typography.Text>
-          <Radio.Group value={scope} onChange={(e) => setScope(e.target.value)}>
-            <Radio value="all">Todos los insumos</Radio>
-            <Radio value="selected">Seleccionados</Radio>
-          </Radio.Group>
+          <Space wrap>
+            <Card
+              size="small"
+              onClick={() => setScope("all")}
+              style={{
+                width: 240,
+                cursor: "pointer",
+                borderColor: scope === "all" ? "#1677ff" : undefined,
+                background: scope === "all" ? "#f0f6ff" : undefined,
+              }}
+            >
+              <Space direction="vertical" size={4}>
+                <Typography.Text strong>Todos los insumos</Typography.Text>
+                <Typography.Text type="secondary">
+                  Incluye todo el inventario.
+                </Typography.Text>
+              </Space>
+            </Card>
+            <Card
+              size="small"
+              onClick={() => setScope("selected")}
+              style={{
+                width: 240,
+                cursor: "pointer",
+                borderColor: scope === "selected" ? "#1677ff" : undefined,
+                background: scope === "selected" ? "#f0f6ff" : undefined,
+              }}
+            >
+              <Space direction="vertical" size={4}>
+                <Typography.Text strong>Seleccionados</Typography.Text>
+                <Typography.Text type="secondary">
+                  Elige uno o varios insumos.
+                </Typography.Text>
+              </Space>
+            </Card>
+          </Space>
           {scope === "selected" ? (
             <Select
               mode="multiple"
@@ -418,6 +760,13 @@ export default function DiffsWizard() {
               Se incluiran todos los insumos.
             </Typography.Text>
           )}
+          {scope === "selected" ? (
+            <Typography.Text type="secondary">
+              {selectedItemsCount
+                ? `${selectedItemsCount} insumo(s) seleccionados.`
+                : "Aún no has seleccionado insumos."}
+            </Typography.Text>
+          ) : null}
         </Space>
       ),
     },
@@ -479,21 +828,65 @@ export default function DiffsWizard() {
           <Typography.Text>
             Elige que movimientos se consideran en el corte.
           </Typography.Text>
-          <Checkbox.Group
-            value={movementTypes}
-            onChange={(vals) => setMovementTypes(vals as string[])}
-            options={movementOptions.map((opt) => ({
-              label: opt.label,
-              value: opt.value,
-            }))}
-          />
-          <Space direction="vertical" size={4}>
-            {movementOptions.map((opt) => (
-              <Typography.Text key={opt.value} type="secondary">
-                {opt.label}: {opt.help}
-              </Typography.Text>
-            ))}
+          <Space wrap>
+            <Button size="small" onClick={selectRecommendedMovements}>
+              Recomendado
+            </Button>
+            <Button size="small" onClick={selectAllMovements}>
+              Todos
+            </Button>
+            <Button
+              size="small"
+              onClick={clearMovements}
+              disabled={!movementTypes.length}
+            >
+              Ninguno
+            </Button>
           </Space>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+              gap: 12,
+            }}
+          >
+            {movementOptions.map((opt) => {
+              const selected = movementTypes.includes(opt.value);
+              const recommended = recommendedMovementValues.includes(
+                opt.value,
+              );
+              return (
+                <Card
+                  key={opt.value}
+                  size="small"
+                  onClick={() => toggleMovement(opt.value)}
+                  style={{
+                    cursor: "pointer",
+                    borderColor: selected ? "#1677ff" : undefined,
+                    background: selected ? "#f0f6ff" : undefined,
+                  }}
+                >
+                  <Space direction="vertical" size={4}>
+                    <Space align="center" wrap>
+                      <Typography.Text strong>{opt.label}</Typography.Text>
+                      {recommended ? (
+                        <Tag color="blue">Recomendado</Tag>
+                      ) : null}
+                      <Tag color={selected ? "blue" : "default"}>
+                        {selected ? "Incluido" : "Opcional"}
+                      </Tag>
+                    </Space>
+                    <Typography.Text type="secondary">
+                      {opt.help}
+                    </Typography.Text>
+                  </Space>
+                </Card>
+              );
+            })}
+          </div>
+          <Typography.Text type="secondary">
+            Incluyendo: <b>{movementSummary}</b>
+          </Typography.Text>
         </Space>
       ),
     },
@@ -533,27 +926,20 @@ export default function DiffsWizard() {
           )}
           <Typography.Text>
             Movimientos:{" "}
-            <b>
-              {movementTypes.map((m) => movementLabelMap[m] || m).join(", ") ||
-                "—"}
-            </b>
+            <b>{movementSummary}</b>
           </Typography.Text>
           <Typography.Text>
             Alcance:{" "}
-            <b>{scope === "all" ? "Todos los insumos" : "Seleccionados"}</b>
+            <b>
+              {scope === "all"
+                ? "Todos los insumos"
+                : `${selectedItemsCount} insumo(s) seleccionados`}
+            </b>
           </Typography.Text>
 
           <Space>
-            <Button onClick={handleCalc} loading={calcLoading}>
-              Calcular resumen
-            </Button>
-            <Button
-              type="primary"
-              onClick={handleSave}
-              loading={saveLoading}
-              disabled={!pendingCut}
-            >
-              Guardar corte
+            <Button type="primary" onClick={handleCalcAndSave} loading={calcLoading}>
+              Calcular y guardar
             </Button>
           </Space>
 
@@ -630,6 +1016,45 @@ export default function DiffsWizard() {
         width={760}
       >
         <Space direction="vertical" size={16} style={{ width: "100%" }}>
+          {wizardError ? (
+            <Alert
+              type="error"
+              showIcon
+              message={wizardError.title}
+              description={
+                <div>
+                  <div>{wizardError.description}</div>
+                  {wizardError.details ? (
+                    <div style={{ marginTop: 8 }}>
+                      <Typography.Link
+                        onClick={() => setShowErrorDetails((v) => !v)}
+                      >
+                        {showErrorDetails
+                          ? "Ocultar detalles técnicos"
+                          : "Ver detalles técnicos"}
+                      </Typography.Link>
+                      {showErrorDetails ? (
+                        <pre
+                          style={{
+                            marginTop: 8,
+                            padding: 12,
+                            background: "#fafafa",
+                            border: "1px solid #f0f0f0",
+                            borderRadius: 6,
+                            maxHeight: 200,
+                            overflow: "auto",
+                            whiteSpace: "pre-wrap",
+                          }}
+                        >
+                          {wizardError.details}
+                        </pre>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              }
+            />
+          ) : null}
           <Steps
             current={wizardStep}
             items={steps.map((s) => ({ title: s.title }))}
@@ -646,6 +1071,55 @@ export default function DiffsWizard() {
               </Button>
             ) : null}
           </Space>
+        </Space>
+      </Modal>
+
+      <Modal
+        open={detailOpen}
+        title={
+          detailCut
+            ? `Desglose del corte #${detailCut.id}`
+            : "Desglose del corte"
+        }
+        onCancel={closeDetail}
+        footer={null}
+        width={860}
+      >
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          {detailCut ? (
+            <Typography.Text type="secondary">
+              Periodo: {formatDate(detailCut.rangeStart)} →{" "}
+              {formatDate(detailCut.rangeEnd || detailCut.endAt || detailCut.createdAt)}
+            </Typography.Text>
+          ) : null}
+
+          {detailLoading ? (
+            <Typography.Text type="secondary">
+              Cargando desglose...
+            </Typography.Text>
+          ) : detailError ? (
+            <Alert type="error" showIcon message={detailError} />
+          ) : detailData ? (
+            <Space direction="vertical" size={12} style={{ width: "100%" }}>
+              <Typography.Text type="secondary">
+                Movimientos:{" "}
+                {detailData.movementTypes
+                  .map((m) => movementLabelMap[m] || m)
+                  .join(", ") || "—"}
+              </Typography.Text>
+              <Typography.Text type="secondary">
+                Alcance:{" "}
+                {detailData.itemScope === "selected"
+                  ? "Insumos seleccionados"
+                  : "Todos los insumos"}
+              </Typography.Text>
+              <Tabs items={detailTabs} />
+            </Space>
+          ) : (
+            <Typography.Text type="secondary">
+              Sin datos para mostrar.
+            </Typography.Text>
+          )}
         </Space>
       </Modal>
     </div>

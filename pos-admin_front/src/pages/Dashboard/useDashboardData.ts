@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import apiOrder from "@/components/apis/apiOrder";
 import apiCash from "@/components/apis/apiCash";
 import apiOrderAuth from "@/components/apis/apiOrderAuth";
@@ -13,6 +13,21 @@ export type Kpi = {
   delta?: number;
   icon?: string;
   color?: "green" | "red" | "yellow" | "default";
+};
+
+type ClosedSummary = {
+  salesTotal: number;
+  tickets: number;
+  avgTicket: number;
+  tipsPct: number;
+};
+
+type DashboardKpisResponse = {
+  salesNet: number;
+  openSales: number;
+  cancelledItems?: { qty: number; amount: number };
+  cancelledOrders?: number;
+  updatedAt?: string;
 };
 
 type Station = {
@@ -83,6 +98,8 @@ export type OrderDTO = {
   items?: OrderItem[];
 };
 
+const REALTIME_REFRESH_MS = 30000;
+
 export function useDashboardData(restaurantId?: number) {
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
@@ -92,7 +109,16 @@ export function useDashboardData(restaurantId?: number) {
   const [tables, setTables] = useState<TableDTO[]>([]);
   const [areas, setAreas] = useState<AreaDTO[]>([]);
   const [orders, setOrders] = useState<OrderDTO[]>([]);
-  const [ordersCancel, setOrdersCancel] = useState<OrderDTO[]>([]);
+  const [cancelledOrders, setCancelledOrders] = useState(0);
+  const [cancelledItems, setCancelledItems] = useState({ qty: 0, amount: 0 });
+  const [fiscalCutHour, setFiscalCutHour] = useState("05:00");
+
+  const closedSummaryRef = useRef<ClosedSummary>({
+    salesTotal: 0,
+    tickets: 0,
+    avgTicket: 0,
+    tipsPct: 0,
+  });
 
   const [topProducts, setTopProducts] = useState<
     { name: string; qty: number; amount: number }[]
@@ -154,6 +180,51 @@ export function useDashboardData(restaurantId?: number) {
     return { start, end };
   }
 
+  function buildKpis(summary: ClosedSummary, realtime?: DashboardKpisResponse | null) {
+    const salesNet = Number(realtime?.salesNet ?? summary.salesTotal ?? 0);
+    const openSales = Number(realtime?.openSales ?? 0);
+    const realtimeSales = salesNet + openSales;
+
+    return [
+      {
+        label: "Ventas cerradas",
+        value: Math.round(salesNet),
+        icon: "💵",
+        color: "default",
+      },
+      {
+        label: "Ventas abiertas",
+        value: Math.round(openSales),
+        icon: "🟢",
+        color: "default",
+      },
+      {
+        label: "Ventas en tiempo real",
+        value: Math.round(realtimeSales),
+        icon: "⚡",
+        color: "default",
+      },
+      {
+        label: "Tickets/Mesas",
+        value: summary.tickets,
+        icon: "🍽️",
+        color: "default",
+      },
+      {
+        label: "Ticket promedio",
+        value: Math.round(summary.avgTicket),
+        icon: "📊",
+        color: "default",
+      },
+      {
+        label: "Propina %",
+        value: `${summary.tipsPct.toFixed(1)}%`,
+        icon: "💸",
+        color: "default",
+      },
+    ];
+  }
+
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -185,12 +256,13 @@ export function useDashboardData(restaurantId?: number) {
           ]
         );
 
-        const fiscalCutHour = settingsRes?.fiscalCutHour ?? "05:00";
-        const { start, end } = businessDayRange(fiscalCutHour);
+        const cutHour = settingsRes?.fiscalCutHour ?? "05:00";
+        setFiscalCutHour(cutHour);
+        const { start, end } = businessDayRange(cutHour);
         const dateStart = start.toISOString();
         const dateEnd = end.toISOString();
 
-        const [ordersData, ordersCancelData, ordersCurrent] = await Promise.all([
+        const [ordersData, ordersCurrent, dashboardKpis] = await Promise.all([
           apiOrderAuth
             .get<OrderDTO[]>("/admin/orders", {
               params: {
@@ -198,12 +270,6 @@ export function useDashboardData(restaurantId?: number) {
                 dateEnd,
                 statuses: "paid,settled,closed",
               },
-            })
-            .then((r) => r.data)
-            .catch(() => []),
-          apiOrderAuth
-            .get<OrderDTO[]>("/admin/orders/cancel", {
-              params: { dateStart, dateEnd },
             })
             .then((r) => r.data)
             .catch(() => []),
@@ -216,13 +282,22 @@ export function useDashboardData(restaurantId?: number) {
             })
             .then((r) => r.data)
             .catch(() => []),
+          apiOrderAuth
+            .get<DashboardKpisResponse>("/admin/dashboard/kpis", {
+              params: { dateStart, dateEnd },
+            })
+            .then((r) => r.data)
+            .catch(() => null),
         ]);
 
         setShift(shiftRes);
         setTables(tablesRes);
         setAreas(areasRes);
         setOrders(ordersCurrent);
-        setOrdersCancel(ordersCancelData);
+        setCancelledItems(
+          dashboardKpis?.cancelledItems ?? { qty: 0, amount: 0 }
+        );
+        setCancelledOrders(Number(dashboardKpis?.cancelledOrders ?? 0));
 
         // 1) KPIs (derivados de orders cerradas hoy)
         const closedToday = ordersData.filter((o) =>
@@ -243,32 +318,14 @@ export function useDashboardData(restaurantId?: number) {
           return bases > 0 ? (tips / bases) * 100 : 0;
         })();
 
-        setKpis([
-          {
-            label: "Ventas de hoy",
-            value: Math.round(salesTotal),
-            icon: "💵",
-            color: "default",
-          },
-          {
-            label: "Tickets/Mesas",
-            value: tickets,
-            icon: "🍽️",
-            color: "default",
-          },
-          {
-            label: "Ticket promedio",
-            value: Math.round(avgTicket),
-            icon: "📊",
-            color: "default",
-          },
-          {
-            label: "Propina %",
-            value: `${tipsPct.toFixed(1)}%`,
-            icon: "💸",
-            color: "default",
-          },
-        ]);
+        const summary: ClosedSummary = {
+          salesTotal,
+          tickets,
+          avgTicket,
+          tipsPct,
+        };
+        closedSummaryRef.current = summary;
+        setKpis(buildKpis(summary, dashboardKpis));
 
         // 2) Top productos (si /orders incluye items)
         const prodMap = new Map<
@@ -317,6 +374,46 @@ export function useDashboardData(restaurantId?: number) {
     })();
   }, [restaurantId, user?.restaurant?.id]);
 
+  useEffect(() => {
+    const rid = restaurantId ?? user?.restaurant?.id;
+    if (!rid) return;
+
+    let active = true;
+
+    const refreshRealtime = async () => {
+      try {
+        const { start, end } = businessDayRange(fiscalCutHour);
+        const dateStart = start.toISOString();
+        const dateEnd = end.toISOString();
+
+        const dashboardKpis = await apiOrderAuth
+          .get<DashboardKpisResponse>("/admin/dashboard/kpis", {
+            params: { dateStart, dateEnd },
+          })
+          .then((r) => r.data)
+          .catch(() => null);
+
+        if (!active) return;
+
+        setCancelledItems(
+          dashboardKpis?.cancelledItems ?? { qty: 0, amount: 0 }
+        );
+        setCancelledOrders(Number(dashboardKpis?.cancelledOrders ?? 0));
+        setKpis(buildKpis(closedSummaryRef.current, dashboardKpis));
+      } catch {
+        // dejamos el último estado
+      }
+    };
+
+    refreshRealtime();
+    const intervalId = setInterval(refreshRealtime, REALTIME_REFRESH_MS);
+
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+    };
+  }, [restaurantId, user?.restaurant?.id, fiscalCutHour]);
+
   // Estado operativo derivado
   const state = useMemo(() => {
     const openSessions = shift?.sessions?.filter((s) => s.status === "OPEN") ?? [];
@@ -357,8 +454,8 @@ export function useDashboardData(restaurantId?: number) {
       bartenders: 0,
     };
 
-    return { cashOpen, tables: tablesAgg, staff, ordersCancel };
-  }, [shift, tables, areas, orders]);
+    return { cashOpen, tables: tablesAgg, staff, cancelledOrders, cancelledItems };
+  }, [shift, tables, areas, orders, cancelledOrders, cancelledItems]);
 
   return { loading, kpis, state, topProducts, categories, hourly };
 }

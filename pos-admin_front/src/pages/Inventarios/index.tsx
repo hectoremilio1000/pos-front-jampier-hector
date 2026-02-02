@@ -47,6 +47,7 @@ export default function InventariosPage() {
     { key: "conteos", label: "Conteos físicos" },
     { key: "mermas", label: "Mermas" },
     { key: "movimientos", label: "Movimientos" },
+    { key: "consumo", label: "Ventas (Consumo)" },
     { key: "diferencias", label: "Inventario final" },
   ];
 

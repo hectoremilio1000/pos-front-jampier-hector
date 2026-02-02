@@ -1338,9 +1338,11 @@ export default function OrderDetail() {
                 <Button onClick={handlePrintClick} disabled={!canPrint}>
                   🖨️ {printCount > 0 ? "Reimprimir Cuenta" : "Imprimir Cuenta"}
                 </Button>
+                {/*
                 <Button onClick={openReceiptModal} disabled={!canOpenReceipt}>
                   Recibo
                 </Button>
+                */}
 
                 <Button
                   onClick={openGeneralDiscountModal}
@@ -1349,6 +1351,7 @@ export default function OrderDetail() {
                   Dcto general
                 </Button>
 
+                {/*
                 <Button
                   title="Emitir factura electrónica"
                   onClick={async () => {
@@ -1367,6 +1370,7 @@ export default function OrderDetail() {
                 >
                   Factura
                 </Button>
+                */}
 
                 {canReopen && (
                   <Button onClick={openReopenFlow}>🔓 Reabrir</Button>

@@ -1,5 +1,4 @@
 import { Tag } from "antd";
-import type { OrderDTO } from "../useDashboardData";
 
 type Station = {
   id: number;
@@ -17,14 +16,16 @@ type Session = {
 export default function StatePanel({
   cashOpen,
   staff,
-  ordersCancel,
+  cancelledOrders,
+  cancelledItems,
 }: {
   cashOpen: {
     count: number;
     sessions: Session[];
   };
   staff: { waiters: number; cashiers: number; bartenders: number };
-  ordersCancel: OrderDTO[];
+  cancelledOrders: number;
+  cancelledItems: { qty: number; amount: number };
 }) {
   return (
     <div className="grid grid-cols-1 gap-4">
@@ -50,7 +51,19 @@ export default function StatePanel({
         <div className="text-lg font-bold text-gray-500 mb-1">
           Cuentas canceladas
         </div>
-        <div className="text-lg font-semibold">{ordersCancel.length}</div>
+        <div className="text-lg font-semibold">{cancelledOrders}</div>
+      </div>
+
+      <div className="rounded-xl border bg-white p-4">
+        <div className="text-lg font-bold text-gray-500 mb-1">
+          Productos cancelados
+        </div>
+        <div className="text-lg font-semibold">
+          {cancelledItems.qty} piezas
+        </div>
+        <div className="text-sm text-gray-500">
+          ${cancelledItems.amount.toFixed(2)}
+        </div>
       </div>
 
       <div className="rounded-xl border bg-white p-4">

@@ -45,6 +45,7 @@ import InventoryDiffsPage from "./pages/Inventarios/Diffs/DiffsPage";
 import InventoryBOMPage from "./pages/Inventarios/BOM/BOMPage";
 import InventoryWastesPage from "./pages/Inventarios/Wastes/WastesPage";
 import InventoryMovementsPage from "./pages/Inventarios/Movements/MovementsPage";
+import InventoryConsumptionPage from "./pages/Inventarios/Consumption/ConsumptionPage";
 
 function App() {
   return (
@@ -103,6 +104,7 @@ function App() {
             <Route path="conteos" element={<InventoryCountsPage />} />
             <Route path="mermas" element={<InventoryWastesPage />} />
             <Route path="movimientos" element={<InventoryMovementsPage />} />
+            <Route path="consumo" element={<InventoryConsumptionPage />} />
             <Route path="diferencias" element={<InventoryDiffsPage />} />
             <Route path="bom" element={<InventoryBOMPage />} />
           </Route>
