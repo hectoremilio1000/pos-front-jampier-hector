@@ -33,37 +33,64 @@ const money = (n: number) =>
 type DiscountType = "percent" | "fixed";
 type PrintMode = "qr" | "impresion" | "mixto";
 
-// ====== Config nprint (impresión por API) ======
-
-const NPRINT_TEMPLATE_ID = "2";
-
-type NPrintItem = {
-  codigo: string;
-  descripcion: string;
-  cantidad: number;
-  precio_unitario: number;
-  importe: number;
-};
-
-type NPrintJobData = {
-  numero: string;
-  fecha: string;
-  cliente: {
-    nombre: string;
-    direccion: string;
-    rfc: string;
+type PrintConsumoPayload = {
+  printerName: string | null;
+  restaurantId: number | null;
+  data: {
+    restaurante: {
+      nombre: string;
+      rfc: string;
+      cp: string;
+      direccion: string;
+      tel: string;
+    };
+    orden: {
+      mesa: string;
+      mesero: string;
+      personas: number;
+      orden: string;
+      folioSerie: string | null;
+      folioNumber: number | null;
+      fechaCreacion: string;
+      fechaImpresion: string;
+      cajero: string;
+    };
+    cliente: {
+      nombre: string;
+      direccion: string;
+    };
+    items: {
+      descripcion: string;
+      cantidad: number;
+      precio_unitario: number;
+      importe: number;
+    }[];
+    totales: {
+      subtotal: number;
+      iva: number;
+      total: number;
+      totalEnLetra: string;
+    };
   };
-  items: NPrintItem[];
-  subtotal: number;
-  iva: number;
-  total: number;
 };
 
-type NPrintJob = {
-  printerName: string;
-  templateId: string;
-  data: NPrintJobData;
-};
+function formatPrintDateTime(value?: string | number | Date) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate(),
+  )} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function formatTotalEnLetra(total: number) {
+  if (!Number.isFinite(total)) return "";
+  const entero = Math.floor(total);
+  const centavos = Math.round((total - entero) * 100)
+    .toString()
+    .padStart(2, "0");
+  return `SON: ${entero.toLocaleString("es-MX")} PESOS ${centavos}/100 M.N.`;
+}
 
 // type RefundLine = { paymentMethodId: number; amount: number };
 
@@ -87,6 +114,7 @@ export default function OrderDetail() {
     openPay,
     setOpenPay,
     printSettings,
+    restaurantProfile,
   } = useCash() as any;
 
   // ====== Hooks ======
@@ -542,13 +570,13 @@ export default function OrderDetail() {
   //     .replace(">", "&gt;");
   // }
 
-  function formatDate(d: Date | string | number) {
-    const dt = new Date(d);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(
-      dt.getDate(),
-    )} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-  }
+  // function formatDate(d: Date | string | number) {
+  //   const dt = new Date(d);
+  //   const pad = (n: number) => String(n).padStart(2, "0");
+  //   return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(
+  //     dt.getDate(),
+  //   )} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+  // }
 
   // function buildTicketHtml() {
   //   const rows = buildTicketRows(items);
@@ -658,45 +686,81 @@ export default function OrderDetail() {
   // `.trim();
   // }
 
-  // 👉 NUEVO: construir payload para nprint usando los mismos datos de la cuenta
-  function buildNPrintJobPayload(opts?: {
+  function buildConsumoPrintPayload(opts: {
     folioSeries?: string;
     folioNumber?: number;
-  }): NPrintJob[] {
+  }): PrintConsumoPayload[] {
     if (!selectedOrder) {
       throw new Error("No hay orden seleccionada");
     }
 
-    const rows = buildTicketRows(items);
-
-    const numero =
-      opts?.folioSeries && typeof opts.folioNumber === "number"
-        ? `${opts.folioSeries}-${String(opts.folioNumber).padStart(3, "0")}`
-        : `ORD-${selectedOrder.id}`;
+    const mesaLabel =
+      String(
+        selectedOrder.tableName ||
+          selectedOrder.area?.name ||
+          (selectedOrder as any)?.service?.name ||
+          "",
+      ).trim() || `Mesa ${selectedOrder.id}`;
+    const ordenLabel = `Orden ${selectedOrder.id}`;
 
     const createdAt =
       (selectedOrder as any)?.createdAt ||
       (selectedOrder as any)?.created_at ||
+      (selectedOrder as any)?.openedAt ||
       new Date();
-
-    const fecha = formatDate(createdAt);
+    const fechaCreacion = formatPrintDateTime(createdAt);
+    const fechaImpresion = formatPrintDateTime(new Date());
 
     const clienteNombre =
       (selectedOrder as any)?.customerName ||
       (selectedOrder as any)?.customer?.name ||
       "Público en general";
+    const clienteDireccion =
+      (selectedOrder as any)?.customer?.address ||
+      (selectedOrder as any)?.customer?.direccion ||
+      "";
 
-    const clienteDireccion = (selectedOrder as any)?.customer?.address ?? "";
-    const clienteRfc = (selectedOrder as any)?.customer?.rfc ?? "";
+    const restaurant = selectedOrder.restaurant;
+    const restaurantData = {
+      nombre: restaurantProfile?.name ?? restaurant?.name ?? "",
+      rfc: restaurantProfile?.rfc ?? restaurant?.rfc ?? "",
+      cp:
+        restaurantProfile?.timeZone ??
+        restaurantProfile?.cp ??
+        restaurantProfile?.postalCode ??
+        (restaurant as any)?.timeZone ??
+        (restaurant as any)?.cp ??
+        (restaurant as any)?.postalCode ??
+        "",
+      direccion:
+        restaurantProfile?.addressLine1 ??
+        restaurantProfile?.address ??
+        restaurantProfile?.address_line1 ??
+        restaurant?.address_line1 ??
+        restaurant?.address ??
+        restaurant?.direccion ??
+        "",
+      tel:
+        restaurantProfile?.phone ??
+        restaurantProfile?.telefono ??
+        restaurant?.phone ??
+        (restaurant as any)?.telefono ??
+        (restaurant as any)?.phone_number ??
+        "",
+    };
 
-    const itemsPayload: NPrintItem[] = rows.map((r, idx) => {
-      const importe = Number(r.amount ?? 0);
-      const cantidad = Number(r.qty ?? 0) || 1;
+    const mesero =
+      (selectedOrder.waiter as any)?.fullName ||
+      (selectedOrder.waiter as any)?.name ||
+      "";
+
+    const rows = buildTicketRows(items);
+    const itemsPayload = rows.map((row) => {
+      const importe = Number(row.amount ?? 0);
+      const cantidad = Number(row.qty ?? 0) || 1;
       const precio_unitario = Math.round((importe / cantidad) * 100) / 100;
-
       return {
-        codigo: `L${idx + 1}`, // línea simple, puedes cambiarlo a product.code si lo deseas
-        descripcion: r.desc,
+        descripcion: row.desc,
         cantidad,
         precio_unitario,
         importe,
@@ -705,68 +769,78 @@ export default function OrderDetail() {
 
     return [
       {
-        printerName: stationCurrent.printerName,
-        templateId: NPRINT_TEMPLATE_ID,
+        printerName: stationCurrent?.printerName ?? null,
+        restaurantId: restaurantProfile.id ?? null,
         data: {
-          numero,
-          fecha,
+          restaurante: restaurantData,
+          orden: {
+            mesa: mesaLabel,
+            mesero,
+            personas: Number(selectedOrder.persons ?? 0),
+            orden: ordenLabel,
+            folioSerie: opts.folioSeries ?? null,
+            folioNumber: opts.folioNumber ?? null,
+            fechaCreacion,
+            fechaImpresion,
+            cajero: "",
+          },
           cliente: {
             nombre: clienteNombre,
             direccion: clienteDireccion,
-            rfc: clienteRfc,
           },
           items: itemsPayload,
-          subtotal: baseSubtotal,
-          iva: taxTotal,
-          total: grandTotal,
+          totales: {
+            subtotal: baseSubtotal,
+            iva: taxTotal,
+            total: grandTotal,
+            totalEnLetra: formatTotalEnLetra(grandTotal),
+          },
         },
       },
     ];
   }
 
-  // 👉 NUEVO: enviar payload a la API de nprint
-  async function sendTicketToPrintProxy(opts?: {
+  async function sendTicketToPrintProxy(opts: {
     folioSeries?: string;
     folioNumber?: number;
   }) {
-    if (selectedOrder.restaurant.localBaseUrl) {
-      const payload = buildNPrintJobPayload(opts);
-      const cleanBase = selectedOrder.restaurant.localBaseUrl.replace(
-        /\/$/,
-        "",
-      );
-      const res = await fetch(`${cleanBase}/nprint/printers/print`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        let detail = "";
-        try {
-          detail = await res.text();
-        } catch (e) {
-          console.log(e);
-        }
-        throw new Error(
-          `Error al enviar a impresora (${res.status})${
-            detail ? `: ${detail}` : ""
-          }`,
-        );
-      }
-
-      // si tu API responde algo útil, lo puedes usar
-      try {
-        return await res.json();
-      } catch {
-        return null;
-      }
-    } else {
+    const localBaseUrl =
+      restaurantProfile?.localBaseUrl ?? selectedOrder.restaurant?.localBaseUrl;
+    if (!localBaseUrl) {
       message.warning(
         "No se pudo imprimir porque no existe tu servidor local de impresion",
       );
+      return;
+    }
+
+    const payload = buildConsumoPrintPayload(opts);
+    const cleanBase = localBaseUrl.replace(/\/$/, "");
+    const res = await fetch(`${cleanBase}/nprint/printers/print-consumo`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      let detail = "";
+      try {
+        detail = await res.text();
+      } catch (e) {
+        console.log(e);
+      }
+      throw new Error(
+        `Error al enviar a impresora (${res.status})${
+          detail ? `: ${detail}` : ""
+        }`,
+      );
+    }
+
+    try {
+      return await res.json();
+    } catch {
+      return null;
     }
   }
 

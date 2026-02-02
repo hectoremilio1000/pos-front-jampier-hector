@@ -18,6 +18,7 @@ import {
   kioskUnpairDevice,
 } from "@/components/Kiosk/session";
 import apiCashKiosk from "@/components/apis/apiCashKiosk";
+import apiKiosk from "@/components/apis/apiKiosk";
 
 /** Normaliza exp a ms si hiciera falta (seguridad) */
 function normalizeExpToMs(exp: number | string | null): number | null {
@@ -45,6 +46,20 @@ const K = {
   pairState: "kiosk_pair_state", // "none" | "paired" | "revoked"
 };
 
+type RestaurantProfile = {
+  name?: string;
+  rfc?: string;
+  timeZone?: string;
+  addressLine1?: string;
+  address?: string;
+  address_line1?: string;
+  phone?: string;
+  telefono?: string;
+  localBaseUrl?: string | null;
+  cp?: string;
+  postalCode?: string;
+};
+
 type PairState = "none" | "paired" | "revoked";
 type DeviceType = "cashier" | "commander" | "monitor";
 type KioskUser = { id: number; fullName: string; role: string };
@@ -65,7 +80,9 @@ type Ctx = {
   stationId: number | null;
   deviceType: DeviceType | null;
   shiftId: number | null;
+  printNameLocalStation: string | null;
   user: KioskUser | null;
+  restaurantProfile: RestaurantProfile | null;
 
   // pairing
   pairState: PairState;
@@ -81,24 +98,34 @@ type Ctx = {
   refreshShift: () => Promise<boolean>;
   unpair: () => Promise<void>;
   logout: () => void;
+  refreshRestaurantProfile: (
+    overrideId?: number,
+  ) => Promise<RestaurantProfile | null>;
 };
 
 const KioskAuthContext = createContext<Ctx | null>(null);
 
 export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
+  function getStationIdFromSession(): number | null {
+    const raw = sessionStorage.getItem("kiosk_station_id");
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
   // ---------- inicialización SIN efectos (lee sessionStorage en el primer render) ----------
   const [jwt, setJwt] = useState<string | null>(() => getKioskJwtSync());
   const [expMs, setExpMs] = useState<number | null>(() =>
-    normalizeExpToMs(sessionStorage.getItem(K.exp))
+    normalizeExpToMs(sessionStorage.getItem(K.exp)),
   );
   const [restaurantId, setRestaurantId] = useState<number | null>(() => {
     const rid = Number(sessionStorage.getItem(K.restaurantId) || "0");
     return rid || null;
   });
-  const [stationId, setStationId] = useState<number | null>(() => {
-    const sid = Number(sessionStorage.getItem(K.stationId) || "0");
-    return sid || null;
-  });
+
+  const [printNameLocalStation, setPrintNameLocalStation] = useState<
+    string | null
+  >(null);
   const [deviceType, setDeviceType] = useState<DeviceType | null>(() => {
     return (sessionStorage.getItem(K.deviceType) as DeviceType) || null;
   });
@@ -110,11 +137,20 @@ export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
     const uj = sessionStorage.getItem(K.user);
     return uj ? JSON.parse(uj) : null;
   });
+  const [stationId, setStationId] = useState<number | null>(() => {
+    const raw = sessionStorage.getItem("kiosk_station_id");
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) ? n : null;
+  });
 
+  const [restaurantProfile, setRestaurantProfile] =
+    useState<RestaurantProfile | null>(null);
   const [pairState, setPairState] = useState<PairState>(() => {
     const stored = sessionStorage.getItem(K.pairState) as PairState | null;
     if (stored) return stored;
-    return sessionStorage.getItem(K.kioskToken) ? "paired" : "none";
+
+    // ✅ pairing ahora vive en localStorage
+    return localStorage.getItem(K.kioskToken) ? "paired" : "none";
   });
   const [deviceLabel, setDeviceLabel] = useState<string | null>(() => {
     return sessionStorage.getItem(K.deviceLabel) || null;
@@ -122,8 +158,8 @@ export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
 
   // ---------- derivados ----------
   const hasPair = useMemo(
-    () => !!sessionStorage.getItem(K.kioskToken) && pairState === "paired",
-    [pairState]
+    () => !!localStorage.getItem(K.kioskToken) && pairState === "paired",
+    [pairState],
   );
   // const isJwtValid = useCallback(() => isExpValidMs(expMs), [expMs]);
 
@@ -156,6 +192,32 @@ export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
     else sessionStorage.removeItem(K.user);
   };
 
+  const fetchRestaurantProfile = useCallback(
+    async (overrideId?: number) => {
+      const targetId = overrideId ?? restaurantId;
+      if (!targetId) {
+        setRestaurantProfile(null);
+        return null;
+      }
+
+      try {
+        const res = await apiKiosk.get(`/cash/restaurant/${targetId}`, {
+          validateStatus: () => true,
+        });
+        if (res && res.status >= 200 && res.status < 300) {
+          setRestaurantProfile(res.data || null);
+          return res.data || null;
+        }
+      } catch (error) {
+        console.error("No se pudo traer el perfil del restaurante", error);
+      }
+
+      setRestaurantProfile(null);
+      return null;
+    },
+    [restaurantId],
+  );
+
   // ---------- acciones ----------
   const pair = useCallback(
     async ({
@@ -183,7 +245,7 @@ export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
       setPairState("paired");
       sessionStorage.setItem(K.pairState, "paired");
     },
-    []
+    [],
   );
 
   const loginWithPin = useCallback(async (pin: string) => {
@@ -211,19 +273,53 @@ export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
     });
     persistUser(resp.user);
     persistShift(resp.shift?.id ?? null);
+    await fetchRestaurantProfile(resp.device.restaurantId);
   }, []);
 
   const refreshShift = useCallback(async () => {
     try {
       if (!restaurantId) return false;
+
       const url = `commander/shifts/current?restaurantId=${restaurantId}`;
-      const res = await apiCashKiosk.get(url); // ← usa el JWT del kiosko
+      const res = await apiCashKiosk.get(url);
 
       const id = res.data?.shift?.id ?? null;
+
+      // ✅ 1) regla: stationId del operador (PIN) manda
+      const sid = getStationIdFromSession();
+
+      let printerName: string | null = null;
+
+      // si hay stationId, busca printerName de ESA estación
+      if (sid) {
+        try {
+          const stRes = await apiCashKiosk.get(
+            `/commander/cash_stations/${sid}`,
+            {
+              validateStatus: () => true,
+            },
+          );
+
+          if (stRes.status >= 200 && stRes.status < 300) {
+            printerName =
+              stRes.data?.printerName ??
+              stRes.data?.station?.printerName ??
+              null;
+          }
+        } catch {
+          // si falla, caeremos a master
+        }
+      }
+
+      // ✅ 2) si stationId es null o no tiene printerName -> fallback a masterStation
+      if (!printerName) {
+        printerName = res.data?.shift?.masterStation?.printerName ?? null;
+      }
+
+      setPrintNameLocalStation(printerName);
       persistShift(id);
       return !!id;
     } catch {
-      // No tires el storage del kiosko aquí; deja que el guard actúe si expira el JWT
       return false;
     }
   }, [restaurantId]);
@@ -251,12 +347,29 @@ export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
         setPairState("paired");
         sessionStorage.setItem(K.pairState, "paired");
       } else if (status === "revoked") {
-        sessionStorage.removeItem(K.kioskToken);
+        localStorage.removeItem(K.kioskToken);
+        sessionStorage.removeItem(K.kioskToken); // compat
         sessionStorage.setItem(K.pairState, "revoked");
         setPairState("revoked");
       }
     })();
   }, []);
+  useEffect(() => {
+    const token = localStorage.getItem("kiosk_token");
+    if (!token) return;
+
+    const id = setInterval(() => {
+      kioskCheckPairedStatus().catch(() => {});
+    }, 60_000); // cada 60s
+
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      await fetchRestaurantProfile();
+    })();
+  }, [fetchRestaurantProfile]);
 
   const value: Ctx = {
     jwt,
@@ -266,6 +379,7 @@ export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
     deviceType,
     shiftId,
     user,
+    restaurantProfile,
 
     pairState,
     deviceLabel,
@@ -277,8 +391,10 @@ export function KioskAuthProvider({ children }: { children: React.ReactNode }) {
     pair,
     loginWithPin,
     refreshShift,
+    printNameLocalStation,
     unpair,
     logout,
+    refreshRestaurantProfile: fetchRestaurantProfile,
   };
 
   return (

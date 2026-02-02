@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { message } from "antd";
 import apiCashKiosk from "@/components/apis/apiCashKiosk";
+import apiKiosk from "@/components/apis/apiKiosk";
 import apiOrderKiosk from "@/components/apis/apiOrderKiosk";
 
 import { Transmit } from "@adonisjs/transmit-client";
@@ -85,6 +86,21 @@ export type Restaurant = {
   localBaseUrl: string;
 };
 
+export type RestaurantProfile = {
+  id: number;
+  name?: string;
+  rfc?: string;
+  timeZone?: string;
+  addressLine1?: string;
+  address_line1?: string;
+  address?: string;
+  phone?: string;
+  telefono?: string;
+  localBaseUrl?: string | null;
+  cp?: string;
+  postalCode?: string;
+};
+
 export type CashOrder = {
   id: number;
   tableName?: string | null;
@@ -142,6 +158,8 @@ export function useCashKiosk() {
   const [restaurantId, setRestaurantId] = useState<string | null>(
     sessionStorage.getItem("restaurantId"),
   );
+  const [restaurantProfile, setRestaurantProfile] =
+    useState<RestaurantProfile | null>(null);
 
   const [orders, setOrders] = useState<CashOrder[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
@@ -192,6 +210,34 @@ export function useCashKiosk() {
   useEffect(() => {
     fetchCashStation();
   }, []);
+
+  const fetchRestaurantProfile = useCallback(async () => {
+    const rid =
+      Number(restaurantId || sessionStorage.getItem("restaurantId") || 0) || 0;
+    if (!rid) {
+      setRestaurantProfile(null);
+      return null;
+    }
+
+    try {
+      const res = await apiKiosk.get(`/cash/restaurant/${rid}`, {
+        validateStatus: () => true,
+      });
+      if (res && res.status >= 200 && res.status < 300) {
+        setRestaurantProfile(res.data || null);
+        return res.data || null;
+      }
+    } catch (error) {
+      console.error("No se pudo cargar el perfil del restaurante", error);
+    }
+
+    setRestaurantProfile(null);
+    return null;
+  }, [restaurantId]);
+
+  useEffect(() => {
+    fetchRestaurantProfile();
+  }, [fetchRestaurantProfile]);
 
   const checkCurrentShift = useCallback(async () => {
     try {
@@ -732,5 +778,7 @@ export function useCashKiosk() {
     setRestaurantId,
     stationId,
     printSettings,
+    restaurantProfile,
+    fetchRestaurantProfile,
   };
 }
