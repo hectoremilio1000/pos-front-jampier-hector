@@ -356,6 +356,18 @@ export default function TipPayoutModal({
     return { pending };
   }, [filtered, pendingOrders, selectedWaiterId]);
 
+  const selectedRows = useMemo(
+    () => filtered.filter((o) => selectedRowKeys.includes(o.orderId)),
+    [filtered, selectedRowKeys],
+  );
+  const selectedTotals = useMemo(() => {
+    const total = selectedRows.reduce(
+      (a, r) => a + Number(r.tipPending || 0),
+      0,
+    );
+    return { count: selectedRows.length, total };
+  }, [selectedRows]);
+
   return (
     <Modal
       open={open}
@@ -383,26 +395,6 @@ export default function TipPayoutModal({
               }))}
             />
           </Form.Item>
-          <Form.Item
-            name="paymentMethodId"
-            label="Método de pago al mesero"
-            rules={[{ required: true, message: "Selecciona método" }]}
-          >
-            <Select
-              style={{ minWidth: 220 }}
-              placeholder="Selecciona"
-              options={methods.map((m) => ({ value: m.id, label: m.name }))}
-            />
-          </Form.Item>
-          <Form.Item>
-            <Button
-              type="primary"
-              onClick={paySelected}
-              disabled={selectedRowKeys.length === 0 || loading}
-            >
-              Pagar seleccionadas
-            </Button>
-          </Form.Item>
         </Form>
 
         <Descriptions size="small" column={1} bordered>
@@ -420,6 +412,36 @@ export default function TipPayoutModal({
           pagination={{ pageSize: 8 }}
           rowSelection={rowSelection}
         />
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm text-slate-600">
+            Seleccionadas: <b>{selectedTotals.count}</b> · Total:{" "}
+            <b>{money(selectedTotals.total)}</b>
+          </div>
+          <Space wrap>
+            <Form form={form} layout="inline">
+              <Form.Item
+                name="paymentMethodId"
+                label="Método de pago al mesero"
+                rules={[{ required: true, message: "Selecciona método" }]}
+                style={{ marginBottom: 0 }}
+              >
+                <Select
+                  style={{ minWidth: 220 }}
+                  placeholder="Selecciona"
+                  options={methods.map((m) => ({ value: m.id, label: m.name }))}
+                />
+              </Form.Item>
+            </Form>
+            <Button
+              type="primary"
+              onClick={paySelected}
+              disabled={selectedTotals.count === 0 || loading}
+            >
+              Pagar seleccionadas
+            </Button>
+          </Space>
+        </div>
       </Space>
     </Modal>
   );

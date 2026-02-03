@@ -282,7 +282,6 @@ export default function FiscalCutSettings() {
                       options={[
                         { label: "QR", value: "qr" },
                         { label: "Impresión", value: "impresion" },
-                        { label: "Mixto", value: "mixto" },
                       ]}
                     />
                   </div>

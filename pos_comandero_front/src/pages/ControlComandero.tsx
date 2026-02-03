@@ -381,6 +381,7 @@ const ControlComandero: React.FC = () => {
   const [mesaReciente, setMesaReciente] = useState(-1);
   const [mapVisible, setMapVisible] = useState(false);
   const [salesVisible, setSalesVisible] = useState(false);
+  const [tablesRefreshKey, setTablesRefreshKey] = useState(0);
   const [salesView, setSalesView] = useState<"closed" | "all">("closed");
 
   const mapAreaId = useMemo(() => {
@@ -494,6 +495,9 @@ const ControlComandero: React.FC = () => {
   const [printApprovalVisible, setPrintApprovalVisible] = useState(false);
   const [printManagerPassword, setPrintManagerPassword] = useState("");
   const [printSubmitting, setPrintSubmitting] = useState(false);
+  const [reopenApprovalVisible, setReopenApprovalVisible] = useState(false);
+  const [reopenManagerPassword, setReopenManagerPassword] = useState("");
+  const [reopenSubmitting, setReopenSubmitting] = useState(false);
 
   const fetchAreasImpresions = async () => {
     try {
@@ -590,6 +594,25 @@ const ControlComandero: React.FC = () => {
       throw new Error(err);
     }
     return res.data as { folioSeries: string; folioNumber: number };
+  }
+
+  async function doReopenOnOrderApi(orderId: number, approvalToken: string) {
+    const res = await apiOrder.post(
+      `/orders/${orderId}/reopen`,
+      {},
+      {
+        headers: { "X-Approval": `Bearer ${approvalToken}` },
+        validateStatus: () => true,
+      },
+    );
+    if (!res || res.status < 200 || res.status >= 300) {
+      const err =
+        (res?.data &&
+          (res.data.details || res.data.error || res.data.message)) ||
+        "Reabrir orden falló";
+      throw new Error(err);
+    }
+    return res.data as { ok: true; status: string; reopenCount?: number };
   }
 
   // ====== Envío a impresora local (Print Proxy) ======
@@ -964,10 +987,36 @@ const ControlComandero: React.FC = () => {
     orderCurrentIdRef.current = orderCurrent?.id ?? null;
   }, [orderCurrent?.id]);
 
+  useEffect(() => {
+    if (!modalConsultaVisible) return;
+    let alive = true;
+    const refreshDetalle = async () => {
+      const id = orderCurrent?.id ?? orderIdCurrent ?? null;
+      if (!id) return;
+      const updated = await fetchCheques();
+      if (!updated || !alive) return;
+      const found = updated.find((o: any) => Number(o.id) === Number(id));
+      if (!found) return;
+      setOrderCurrent(found);
+      setDetalle_cheque_consulta(found.items ?? []);
+    };
+
+    refreshDetalle().catch(() => {});
+    const timer = setInterval(() => {
+      refreshDetalle().catch(() => {});
+    }, 4000);
+
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [modalConsultaVisible, orderCurrent?.id, orderIdCurrent, fetchCheques]);
+
   /** handler central de eventos del canal */
   const onOrdersEvent = useCallback(
     async (msg: any) => {
       if (!msg || typeof msg !== "object") return;
+      const bumpTables = () => setTablesRefreshKey((k) => k + 1);
       if (msg.type === "order_closed") {
         const id = Number(msg.orderId);
         if (!Number.isFinite(id)) return;
@@ -982,6 +1031,11 @@ const ControlComandero: React.FC = () => {
         try {
           await fetchCheques();
         } catch {}
+        bumpTables();
+      }
+
+      if (msg.type === "order_created") {
+        bumpTables();
       }
 
       if (msg.type === "order_printed") {
@@ -1025,6 +1079,11 @@ const ControlComandero: React.FC = () => {
           setOrderCurrent(found);
           setDetalle_cheque_consulta(found.items ?? []);
         }
+        bumpTables();
+      }
+
+      if (msg.type === "table_status_changed") {
+        bumpTables();
       }
 
       // (futuro) puedes manejar order_created aquí
@@ -1074,19 +1133,58 @@ const ControlComandero: React.FC = () => {
           init.headers = headers;
           return init;
         },
+        maxReconnectAttempts: 10,
+        onSubscribeFailed: (res) => {
+          console.error("Transmit subscribe failed", res?.status);
+        },
       });
     }
 
     const sub = transmitRef.current.subscription(`restaurants/${rid}/orders`);
 
     const off = sub.onMessage(onOrdersEvent);
-    sub.create();
+    sub.create().catch((e) => console.error("Transmit create error", e));
 
     return () => {
       off?.();
       sub.delete();
     };
   }, [jwtOk, rid, shiftId, onOrdersEvent]);
+
+  // Fallback: refresca ordenes al volver a foco/visibilidad
+  useEffect(() => {
+    if (!isJwtValid()) return;
+    if (!shiftId) return;
+    if (!ready) return;
+
+    const handleFocus = () => {
+      if (document.visibilityState && document.visibilityState !== "visible") {
+        return;
+      }
+      fetchCheques().catch(() => {});
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleFocus);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleFocus);
+    };
+  }, [isJwtValid, shiftId, ready, fetchCheques]);
+
+  // Fallback: polling suave por si se cae realtime
+  useEffect(() => {
+    if (!isJwtValid()) return;
+    if (!shiftId) return;
+    if (!ready) return;
+
+    const id = setInterval(() => {
+      fetchCheques().catch(() => {});
+    }, 15000);
+
+    return () => clearInterval(id);
+  }, [isJwtValid, shiftId, ready, fetchCheques]);
 
   const navigate = useNavigate();
   function cerrarSesion() {
@@ -1265,6 +1363,8 @@ const ControlComandero: React.FC = () => {
 
   const isOrderPrinted =
     statusOrderCurrent === "printed" || printCountCurrent > 0;
+  const isOrderLocked = statusOrderCurrent === "printed";
+  const canReopen = ["printed", "paid"].includes(statusOrderCurrent);
 
   const printMode = printSettings.printMode;
   const printButtonLabel =
@@ -1321,6 +1421,11 @@ const ControlComandero: React.FC = () => {
   const openPrintApprovalFlow = () => {
     setPrintManagerPassword("");
     setPrintApprovalVisible(true);
+  };
+
+  const openReopenApprovalFlow = () => {
+    setReopenManagerPassword("");
+    setReopenApprovalVisible(true);
   };
 
   const runInitialPrint = async (order: OrderSummary, orderId: number) => {
@@ -1499,6 +1604,42 @@ const ControlComandero: React.FC = () => {
       message.error(String(e?.message || "No se pudo reimprimir"));
     } finally {
       setPrintSubmitting(false);
+    }
+  };
+
+  const handleReopenApprovalConfirm = async () => {
+    const order = orderCurrent;
+    const orderId = orderIdCurrent ?? order?.id ?? null;
+    if (!order || !orderId) {
+      message.error("No hay orden seleccionada.");
+      return;
+    }
+    if (!reopenManagerPassword) {
+      message.error("Ingresa la contraseña del administrador");
+      return;
+    }
+
+    setReopenSubmitting(true);
+    try {
+      const approval = await requestApprovalToken(
+        "order.reopen",
+        reopenManagerPassword,
+        orderId,
+      );
+
+      await doReopenOnOrderApi(orderId, approval);
+      try {
+        await fetchCheques();
+      } catch {}
+
+      setReopenApprovalVisible(false);
+      setReopenManagerPassword("");
+      setAccionesChequeVisible(false);
+      message.success("Orden reabierta. Ya puedes capturar.");
+    } catch (e: any) {
+      message.error(String(e?.message || "No se pudo reabrir la orden"));
+    } finally {
+      setReopenSubmitting(false);
     }
   };
 
@@ -1736,6 +1877,34 @@ const ControlComandero: React.FC = () => {
         </Modal>
 
         <Modal
+          title="Reabrir orden"
+          open={reopenApprovalVisible}
+          onCancel={() => {
+            if (!reopenSubmitting) {
+              setReopenApprovalVisible(false);
+              setReopenManagerPassword("");
+            }
+          }}
+          onOk={handleReopenApprovalConfirm}
+          okText={reopenSubmitting ? "Validando..." : "Autorizar y reabrir"}
+          cancelText="Cancelar"
+          confirmLoading={reopenSubmitting}
+        >
+          <p className="text-sm text-gray-600">
+            Para reabrir esta orden, ingresa la contraseña de owner/admin/manager.
+          </p>
+          <Input.Password
+            autoFocus
+            value={reopenManagerPassword}
+            onChange={(e) => setReopenManagerPassword(e.target.value)}
+            placeholder="Contraseña manager"
+            onPressEnter={() => {
+              if (!reopenSubmitting) handleReopenApprovalConfirm();
+            }}
+          />
+        </Modal>
+
+        <Modal
           title={"Acciones Orden"}
           footer={false}
           open={accionesChequeVisible}
@@ -1743,18 +1912,41 @@ const ControlComandero: React.FC = () => {
         >
           <div className="w-full">
             <div className="w-full">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                 <button
                   className={`flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 ${
-                    isOrderPrinted
+                    isOrderLocked
                       ? "bg-gray-200 text-gray-500 cursor-not-allowed"
                       : "bg-gray-300 text-gray-800"
                   }`}
                   onClick={() => handleCapturaModal()}
-                  disabled={isOrderPrinted}
+                  disabled={isOrderLocked}
                 >
                   <MdAdsClick className="text-[25px] " />
                   Capturar
+                </button>
+                <button
+                  className={`flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 ${
+                    reopenSubmitting
+                      ? "bg-gray-200 text-gray-500 cursor-wait"
+                      : canReopen
+                        ? "bg-emerald-100 text-emerald-900 hover:bg-emerald-200 cursor-pointer"
+                        : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                  }`}
+                  onClick={() => {
+                    if (!reopenSubmitting && canReopen) {
+                      openReopenApprovalFlow();
+                    }
+                  }}
+                  disabled={!canReopen || reopenSubmitting}
+                  title={
+                    canReopen
+                      ? "Reabrir (requiere contraseña de owner/admin/manager)"
+                      : "Solo disponible si la orden está impresa o pagada"
+                  }
+                >
+                  <MdPointOfSale className="text-[22px]" />
+                  Reabrir
                 </button>
                 <button
                   className={`flex flex-col rounded justify-center items-center gap-2 w-full py-2 px-4 ${
@@ -1804,6 +1996,7 @@ const ControlComandero: React.FC = () => {
           services={services}
           defaultAreaId={selectedAreaId ?? undefined}
           defaultServiceId={selectedServiceId ?? undefined}
+          tablesRefreshKey={tablesRefreshKey}
           onClose={() => setModalVisible(false)}
           onRegistrar={async (cheque) => {
             setCheques([...cheques, cheque]);
@@ -1959,6 +2152,7 @@ const ControlComandero: React.FC = () => {
             areaId={mapAreaId ?? null}
             selectedTableId={null}
             readOnly
+            refreshKey={tablesRefreshKey}
           />
         </Modal>
         <Modal

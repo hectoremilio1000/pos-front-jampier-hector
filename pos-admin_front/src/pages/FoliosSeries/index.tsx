@@ -6,6 +6,7 @@ import {
   Descriptions,
   Drawer,
   Input,
+  List,
   Select,
   Segmented,
   Space,
@@ -60,6 +61,12 @@ type OrderDetail = OrderRow & {
   payments?: Array<{ id: number; amount: number; status?: string }>;
 };
 
+type ShiftRow = {
+  id: number;
+  openedAt?: string | null;
+  closedAt?: string | null;
+};
+
 const { RangePicker } = DatePicker;
 const { Title, Text } = Typography;
 
@@ -92,6 +99,10 @@ export default function AccountsConsultationPage() {
   const [rows, setRows] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [stations, setStations] = useState<Record<number, Station>>({});
+  const [shifts, setShifts] = useState<ShiftRow[]>([]);
+  const [shiftLoading, setShiftLoading] = useState(false);
+  const [selectedShiftId, setSelectedShiftId] = useState<number | null>(null);
+  const [xcutLoading, setXcutLoading] = useState(false);
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -145,8 +156,11 @@ export default function AccountsConsultationPage() {
 
       if (q.trim()) params.q = q.trim();
       if (mode === "closed") {
-        params.dateStart = range?.[0]?.format("YYYY-MM-DD") || "";
-        params.dateEnd = range?.[1]?.format("YYYY-MM-DD") || "";
+        if (!selectedShiftId) {
+          setRows([]);
+          return;
+        }
+        params.shiftId = String(selectedShiftId);
       }
 
       const { data } = await apiOrder.get<OrderRow[]>(
@@ -160,6 +174,32 @@ export default function AccountsConsultationPage() {
       );
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchShifts() {
+    if (mode !== "closed") return;
+    setShiftLoading(true);
+    try {
+      const params: Record<string, string> = {
+        dateStart: range?.[0]?.format("YYYY-MM-DD") || "",
+        dateEnd: range?.[1]?.format("YYYY-MM-DD") || "",
+      };
+      const { data } = await apiOrder.get<ShiftRow[]>("/admin/shifts/closed", {
+        params,
+      });
+      const rows = Array.isArray(data) ? data : [];
+      setShifts(rows);
+      setSelectedShiftId((prev) => {
+        if (prev && rows.some((r) => r.id === prev)) return prev;
+        return rows.length ? rows[0].id : null;
+      });
+    } catch (e: any) {
+      message.error("No se pudieron cargar los turnos cerrados");
+      setShifts([]);
+      setSelectedShiftId(null);
+    } finally {
+      setShiftLoading(false);
     }
   }
 
@@ -187,10 +227,216 @@ export default function AccountsConsultationPage() {
   }, [restaurantId]);
 
   useEffect(() => {
-    if (mode === "closed" && (!range?.[0] || !range?.[1])) return;
+    if (mode !== "closed") return;
+    if (!range?.[0] || !range?.[1]) return;
+    fetchShifts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, range?.[0]?.format("YYYY-MM-DD"), range?.[1]?.format("YYYY-MM-DD")]);
+
+  useEffect(() => {
     fetchRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, status, range?.[0]?.format("YYYY-MM-DD"), range?.[1]?.format("YYYY-MM-DD")]);
+  }, [mode, status, selectedShiftId]);
+
+  const formatShiftLabel = (s: ShiftRow) => {
+    const opened = s.openedAt ? dayjs(s.openedAt).format("YYYY-MM-DD HH:mm") : "-";
+    const closed = s.closedAt ? dayjs(s.closedAt).format("YYYY-MM-DD HH:mm") : "-";
+    return `Turno #${s.id} — Apertura: ${opened} · Cierre: ${closed}`;
+  };
+
+  const formatDT = (iso?: string | null) => {
+    if (!iso) return "-";
+    const d = new Date(iso);
+    const pad2 = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  };
+
+  const buildXCutHtml = (r: any) => {
+    const line = `<div class="sep"></div>`;
+    const fmt = (n?: number) => `$${Number(n ?? 0).toFixed(2)}`;
+    const enc = (s?: string) =>
+      (s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
+    const methodsSales =
+      (r.salesByMethod || [])
+        .map((m: any) => `${enc(m.name)}: ${fmt(m.salesAmount)}`)
+        .join("<br/>") || "—";
+    const totalSalesForms = (r.salesByMethod || []).reduce(
+      (a: number, m: any) => a + Number(m.salesAmount || 0),
+      0
+    );
+    const methodsTips =
+      (r.tipsByMethod || [])
+        .map((m: any) => `${enc(m.name)}: ${fmt(m.tipAmount)}`)
+        .join("<br/>") || "—";
+    const totalTipsForms = (r.tipsByMethod || []).reduce(
+      (a: number, m: any) => a + Number(m.tipAmount || 0),
+      0
+    );
+    const totalsByMethod =
+      (r.totalsByMethod || [])
+        .map((m: any) => `${enc(m.name)}: ${fmt(m.amount)}`)
+        .join("<br/>") || "—";
+
+    const summary = r.summary || {};
+    const courtesyByCat =
+      (r.courtesyByCategory || [])
+        .map((c: any) => `${enc(c.name)}: ${fmt(c.amount)}`)
+        .join("<br/>") || "—";
+    const discountByCat =
+      (r.discountByCategory || [])
+        .map((c: any) => `${enc(c.name)}: ${fmt(c.amount)}`)
+        .join("<br/>") || "—";
+    const declarations =
+      (r.declarations?.byMethod || [])
+        .map(
+          (d: any) =>
+            `${enc(d.name)}: ${fmt(d.declared)} (Esp: ${fmt(
+              d.expected
+            )} / Dif: ${fmt(d.difference)})`
+        )
+        .join("<br/>") || "—";
+
+    const byCat =
+      (r.byCategory || [])
+        .map(
+          (c: any) =>
+            `${enc(c.name)}: ${fmt(c.salesAmount)} (${Math.round((c.pct || 0) * 100)}%) ${c.salesCount}`
+        )
+        .join("<br/>") || "—";
+    const bySvc =
+      (r.byService || [])
+        .map(
+          (s: any) =>
+            `${enc(s.name)}: ${fmt(s.salesAmount)} (${Math.round((s.pct || 0) * 100)}%)`
+        )
+        .join("<br/>") || "—";
+
+    const taxes =
+      (r.totals?.taxes || [])
+        .map(
+          (t: any) =>
+            `VENTA ${enc(t.rateLabel)}: ${fmt(t.base)}<br/>IMPUESTO ${enc(t.rateLabel)}: ${fmt(t.tax)}`
+        )
+        .join("<br/>") || "";
+
+    return `
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Corte X</title>
+<style>
+  @page { size: 80mm auto; margin: 2mm; }
+  body { font-family: "Courier New", monospace; font-size: 14px; margin:0; padding:0; width:78mm; }
+  .center { text-align:center; }
+  .bold { font-weight:700; }
+  .sep { margin:6px 0; border-top:1px dashed #000; }
+  .title { font-size:16px; font-weight:700; }
+  .small { font-size:12px; }
+</style></head>
+<body>
+  <div class="center bold">${enc(r.company?.name)}</div>
+  <div class="center small">${enc(r.company?.rfc || "")}</div>
+  <div class="center small">${enc(r.company?.address || "")}</div>
+
+  <div class="center title" style="margin-top:4px;">CORTE DE CAJA X</div>
+  <div class="center small">DEL ${formatDT(r.shift?.openedAt)}</div>
+  <div class="center small">AL  ${formatDT(r.shift?.closedAt)}</div>
+  <div class="center small">TURNO: ${r.shift?.id ?? ""} ${
+      r.shift?.stationName ? " · ESTACIÓN: " + enc(r.shift.stationName) : ""
+    }</div>
+  ${summary.cashierNames?.length ? `<div class="center small">CAJERO: ${enc(summary.cashierNames.join(", "))}</div>` : ""}
+  ${line}
+
+  <div class="bold">CAJA</div>
+  +EFECTIVO INICIAL: ${fmt(r.openingCash)}<br/>
+  ${totalsByMethod}<br/>
+  +DEPÓSITOS EFECTIVO: ${fmt(r.cashDeposits)}<br/>
+  -RETIROS EFECTIVO: ${fmt(r.cashWithdrawals)}<br/>
+  -PROPINAS PAGADAS: ${fmt(r.tipsPaid)}<br/>
+  ${line}
+  =SALDO FINAL: ${fmt(r.finalBalance)}<br/>
+  EFECTIVO FINAL: ${fmt(r.finalCash)}<br/>
+
+  <div class="bold" style="margin-top:6px;">FORMA DE PAGO VENTAS</div>
+  ${methodsSales}<br/>
+  <div class="bold">TOTAL FORMAS: ${fmt(totalSalesForms)}</div>
+  ${line}
+  <div class="bold">FORMA DE PAGO PROPINA</div>
+  ${methodsTips}<br/>
+  <div class="bold">TOTAL FORMAS PROPINA: ${fmt(totalTipsForms)}</div>
+  ${line}
+
+  <div class="bold">VENTA (NO INCLUYE IMPUESTOS)</div>
+  <div class="bold">POR TIPO DE PRODUCTO</div>
+  ${byCat}<br/>
+
+  <div class="bold" style="margin-top:4px;">POR TIPO DE SERVICIO</div>
+  ${bySvc}<br/>
+
+  ${line}
+  ${r.totals?.subtotal != null ? `SUBTOTAL : ${fmt(r.totals?.subtotal)}<br/>` : ""}
+  ${r.totals?.discounts != null ? `-DESCUENTOS : ${fmt(r.totals?.discounts)}<br/>` : ""}
+  ${r.totals?.net != null ? `VENTA NETA : ${fmt(r.totals?.net)}<br/>` : ""}
+  ${line}
+  ${taxes ? taxes + "<br/>" : ""}
+  ${r.totals?.taxesTotal != null ? `IMPUESTOS TOTAL: ${fmt(r.totals?.taxesTotal)}<br/>` : ""}
+  ${line}
+  ${r.totals?.gross != null ? `VENTAS CON IMP.: ${fmt(r.totals?.gross)}<br/>` : ""}
+  ${line}
+
+  <div class="bold">RESUMEN CUENTAS</div>
+  CUENTAS NORMALES : ${summary.closedCount ?? 0}<br/>
+  CUENTAS CANCELADAS : ${summary.voidCount ?? 0}<br/>
+  CUENTAS CON DESCUENTO : ${summary.discountCount ?? 0}<br/>
+  CUENTAS CON CORTESIA : ${summary.courtesyCount ?? 0}<br/>
+  CUENTA PROMEDIO : ${fmt(summary.avgTicket)}<br/>
+  CONSUMO PROMEDIO : ${fmt(summary.avgConsumption)}<br/>
+  COMENSALES : ${summary.guests ?? 0}<br/>
+  PROPINAS : ${fmt(summary.tipsTotal)}<br/>
+  ${summary.folioFrom ? `FOLIO INICIAL : ${enc(summary.folioFrom)}<br/>` : ""}
+  ${summary.folioTo ? `FOLIO FINAL : ${enc(summary.folioTo)}<br/>` : ""}
+
+  ${line}
+  <div class="bold">CORTESIAS POR CATEGORIA</div>
+  ${courtesyByCat}<br/>
+  <div class="bold">TOTAL CORTESIAS : ${fmt(summary.totalCourtesy)}</div>
+
+  ${line}
+  <div class="bold">DESCUENTOS POR CATEGORIA</div>
+  ${discountByCat}<br/>
+  <div class="bold">TOTAL DESCUENTOS : ${fmt(summary.totalDiscounts)}</div>
+
+  ${line}
+  <div class="bold">DECLARACION DE CAJERO</div>
+  ${declarations}<br/>
+  <div class="bold">TOTAL DECLARADO: ${fmt(r.declarations?.totalDeclared)}</div>
+  <div class="bold">SOBRANTE/FALTANTE: ${fmt(r.declarations?.totalDifference)}</div>
+</body></html>`.trim();
+  };
+
+  const openXCutPreview = async () => {
+    if (!selectedShiftId) return message.error("Selecciona un turno");
+    try {
+      setXcutLoading(true);
+      const { data } = await apiCash.get(`/admin/shifts/${selectedShiftId}/xcut`, {
+        validateStatus: () => true,
+      });
+      if (!data || data.error) {
+        return message.error(data?.error || "No fue posible obtener el corte X");
+      }
+      const html = buildXCutHtml(data);
+      const blob = new Blob([html], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer,width=480,height=800");
+    } catch (e: any) {
+      message.error(String(e?.message || "No fue posible abrir el corte X"));
+    } finally {
+      setXcutLoading(false);
+    }
+  };
 
   const columns: ColumnsType<OrderRow> = [
     {
@@ -354,15 +600,68 @@ export default function AccountsConsultationPage() {
           </Card>
         </div>
 
-        <Card>
-          <Table
-            rowKey="id"
-            loading={loading}
-            dataSource={rows}
-            columns={columns}
-            pagination={{ pageSize: 20, showSizeChanger: true }}
-          />
-        </Card>
+        {mode === "closed" ? (
+          <div
+            style={{
+              display: "grid",
+              gap: 16,
+              gridTemplateColumns: "280px 1fr",
+              alignItems: "start",
+            }}
+          >
+            <Card
+              title="Turnos cerrados (apertura)"
+              extra={
+                <Button
+                  size="small"
+                  type="primary"
+                  onClick={openXCutPreview}
+                  loading={xcutLoading}
+                  disabled={!selectedShiftId}
+                >
+                  Corte X (PDF)
+                </Button>
+              }
+            >
+              <List
+                loading={shiftLoading}
+                dataSource={shifts}
+                locale={{ emptyText: "Sin turnos en el rango" }}
+                renderItem={(s) => (
+                  <List.Item style={{ padding: 4 }}>
+                    <Button
+                      type={s.id === selectedShiftId ? "primary" : "default"}
+                      block
+                      onClick={() => setSelectedShiftId(s.id)}
+                      style={{ whiteSpace: "normal", height: "auto", textAlign: "left" }}
+                    >
+                      {formatShiftLabel(s)}
+                    </Button>
+                  </List.Item>
+                )}
+              />
+            </Card>
+            <Card>
+              <Table
+                rowKey="id"
+                loading={loading}
+                dataSource={rows}
+                columns={columns}
+                pagination={{ pageSize: 20, showSizeChanger: true }}
+              />
+            </Card>
+          </div>
+        ) : (
+          <Card>
+            <Table
+              rowKey="id"
+              loading={loading}
+              dataSource={rows}
+              columns={columns}
+              pagination={{ pageSize: 20, showSizeChanger: true }}
+            />
+          </Card>
+        )}
       </div>
 
       <Drawer
