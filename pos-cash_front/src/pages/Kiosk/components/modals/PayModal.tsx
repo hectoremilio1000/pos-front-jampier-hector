@@ -21,6 +21,7 @@ type PaymentLine = {
   key: string;
   methodId: number | null;
   amount: number | null;
+  auto?: boolean;
 };
 type PaymentMethod = { id: number; name: string };
 
@@ -49,7 +50,7 @@ export default function PayModal({ open, onClose }: Props) {
   const [saleLines, setSaleLines] = useState<PaymentLine[]>([]);
 
   // Propina UI
-  const [tipMode, setTipMode] = useState<"fixed" | "percent">("fixed");
+  const [tipMode, setTipMode] = useState<"none" | "fixed" | "percent">("none");
   const [tipValue, setTipValue] = useState<number>(0); // si percent: 10 = 10%
   // Líneas de pago (propina)
   const [tipLines, setTipLines] = useState<PaymentLine[]>([]);
@@ -102,6 +103,7 @@ export default function PayModal({ open, onClose }: Props) {
   }, [selectedOrder]);
 
   const tipAmount = useMemo(() => {
+    if (tipMode === "none") return 0;
     const base = Math.max(orderSubtotal, 0);
     const t =
       tipMode === "percent"
@@ -127,7 +129,10 @@ export default function PayModal({ open, onClose }: Props) {
   const saleDiff = money(saleTarget - sumSale);
   const tipDiff = money(tipAmount - sumTip);
 
-  const saleBalanced = Math.abs(saleDiff) <= EPS && saleTarget > 0;
+  const isZeroClose = saleTarget <= 0 && tipAmount <= 0;
+  const saleBalanced = isZeroClose
+    ? true
+    : Math.abs(saleDiff) <= EPS && saleTarget > 0;
   const tipBalanced = Math.abs(tipDiff) <= EPS || tipAmount === 0; // tip puede ser 0
   const totalDue = money(saleTarget + tipAmount);
 
@@ -146,10 +151,39 @@ export default function PayModal({ open, onClose }: Props) {
 
     // Tip por defecto: sin líneas (hasta que elijan propina)
     setTipLines([]);
-    setTipMode("fixed");
+    setTipMode("none");
     setTipValue(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, orderSubtotal]);
+
+  // Auto-crear/ajustar línea de propina cuando exista monto
+  useEffect(() => {
+    if (!open) return;
+    setTipLines((prev) => {
+      if (tipAmount <= 0) return [];
+      if (prev.length === 0) {
+        return [
+          {
+            key: crypto.randomUUID(),
+            methodId: methods[0]?.id ?? null,
+            amount: tipAmount,
+            auto: true,
+          },
+        ];
+      }
+      if (prev.length === 1 && prev[0].auto) {
+        return [
+          {
+            ...prev[0],
+            methodId: prev[0].methodId ?? methods[0]?.id ?? null,
+            amount: tipAmount,
+            auto: true,
+          },
+        ];
+      }
+      return prev;
+    });
+  }, [open, tipAmount, methods]);
 
   const addSaleLine = () => {
     const rest = money(Math.max(saleTarget - sumSale, 0));
@@ -170,6 +204,7 @@ export default function PayModal({ open, onClose }: Props) {
         key: crypto.randomUUID(),
         methodId: methods[0]?.id ?? null,
         amount: rest || null,
+        auto: false,
       },
     ]);
   };
@@ -184,8 +219,12 @@ export default function PayModal({ open, onClose }: Props) {
     patch: Partial<PaymentLine>,
     type: "sale" | "tip"
   ) => {
+    const nextPatch =
+      type === "tip" && (patch.amount !== undefined || patch.methodId !== undefined)
+        ? { ...patch, auto: false }
+        : patch;
     (type === "sale" ? setSaleLines : setTipLines)((prev) =>
-      prev.map((l) => (l.key === key ? { ...l, ...patch } : l))
+      prev.map((l) => (l.key === key ? { ...l, ...nextPatch } : l))
     );
   };
 
@@ -280,6 +319,22 @@ export default function PayModal({ open, onClose }: Props) {
 
   const onConfirm = async () => {
     if (!selectedOrder) return;
+
+    if (isZeroClose) {
+      try {
+        setLoading(true);
+        await payOrder(selectedOrder.id, { payments: [] });
+        message.success("Pago registrado y orden cerrada.");
+        onClose();
+      } catch (e: any) {
+        console.error(e);
+        const msg = e?.response?.data?.error || "No se pudo registrar el pago";
+        message.error(msg);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
 
     // Validaciones
     if (saleTarget > 0 && saleLines.length === 0) {
@@ -428,60 +483,59 @@ export default function PayModal({ open, onClose }: Props) {
             >
               Propina
             </Typography.Title>
-            <Space style={{ marginBottom: 8 }}>
+            <Space style={{ marginBottom: 8 }} align="center">
+              <span>Tipo:</span>
+              <Radio.Group
+                value={tipMode}
+                onChange={(e) => setTipMode(e.target.value)}
+                options={[
+                  { label: "Sin propina", value: "none" },
+                  { label: "Propina fija", value: "fixed" },
+                  { label: "Propina %", value: "percent" },
+                ]}
+                optionType="button"
+              />
+            </Space>
+            <Space style={{ marginBottom: 8 }} align="center">
               <span>
                 Propina objetivo: <b>{CURRENCY(tipAmount)}</b>
               </span>
+              <Tag color="purple">
+                Propina calc: <b>{CURRENCY(tipAmount)}</b>
+              </Tag>
             </Space>
-            <Table<PaymentLine>
-              rowKey={(r) => r.key}
-              dataSource={tipLines}
-              columns={columns("tip")}
-              pagination={false}
-              size="small"
-            />
-            <Space style={{ marginTop: 8 }}>
-              <Button onClick={addTipLine} disabled={tipAmount <= 0}>
-                Agregar método de pago
-              </Button>
-            </Space>
-            <Divider />
-            {/* <Space>
-                  <span>Desc:</span>
-                  <InputNumber
-                    min={0}
-                    step={0.1}
-                    precision={2}
-                    value={discount}
-                    onChange={(v) =>
-                      setDiscount(typeof v === "number" ? money(v) : 0)
-                    }
-                    addonBefore="$"
-                    style={{ width: 140 }}
-                  />
-                </Space> */}
-            <Divider type="vertical" />
-            <Radio.Group
-              value={tipMode}
-              onChange={(e) => setTipMode(e.target.value)}
-              options={[
-                { label: "Propina fija", value: "fixed" },
-                { label: "Propina %", value: "percent" },
-              ]}
-              optionType="button"
-            />
-            <InputNumber
-              min={0}
-              step={tipMode === "percent" ? 0.5 : 0.1}
-              precision={2}
-              value={tipValue}
-              onChange={(v) => setTipValue(typeof v === "number" ? v : 0)}
-              addonAfter={tipMode === "percent" ? "%" : "$"}
-              style={{ width: 140 }}
-            />
-            <Tag color="purple">
-              Propina calc: <b>{CURRENCY(tipAmount)}</b>
-            </Tag>
+            {tipMode !== "none" && (
+              <Space style={{ marginBottom: 8 }} align="center">
+                <span>Monto:</span>
+                <InputNumber
+                  min={0}
+                  step={tipMode === "percent" ? 0.5 : 0.1}
+                  precision={2}
+                  value={tipValue}
+                  onChange={(v) => setTipValue(typeof v === "number" ? v : 0)}
+                  addonAfter={tipMode === "percent" ? "%" : "$"}
+                  style={{ width: 140 }}
+                />
+              </Space>
+            )}
+            {tipAmount > 0 ? (
+              <>
+                <Table<PaymentLine>
+                  rowKey={(r) => r.key}
+                  dataSource={tipLines}
+                  columns={columns("tip")}
+                  pagination={false}
+                  size="small"
+                />
+                <Space style={{ marginTop: 8 }}>
+                  <Button onClick={addTipLine} disabled={tipAmount <= 0}>
+                    Agregar otro método
+                  </Button>
+                </Space>
+              </>
+            ) : (
+              <div className="text-sm text-slate-500">Sin propina</div>
+            )}
           </div>
         </div>
 
@@ -492,9 +546,7 @@ export default function PayModal({ open, onClose }: Props) {
           <Button
             type="primary"
             onClick={onConfirm}
-            disabled={
-              loading || saleTarget <= 0 || !saleBalanced || !tipBalanced
-            }
+            disabled={loading || (!isZeroClose && (!saleBalanced || !tipBalanced))}
             loading={loading}
           >
             Cobrar

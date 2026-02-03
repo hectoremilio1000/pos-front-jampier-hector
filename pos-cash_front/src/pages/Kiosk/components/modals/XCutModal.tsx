@@ -73,6 +73,35 @@ type XCutReport = {
     folioFrom?: string;
     folioTo?: string;
   };
+  summary?: {
+    closedCount?: number;
+    voidCount?: number;
+    discountCount?: number;
+    courtesyCount?: number;
+    avgTicket?: number;
+    avgConsumption?: number;
+    guests?: number;
+    tipsTotal?: number;
+    folioSeries?: string | null;
+    folioFrom?: string | null;
+    folioTo?: string | null;
+    totalCourtesy?: number;
+    totalDiscounts?: number;
+    cashierNames?: string[];
+  };
+  courtesyByCategory?: Array<{ name: string; amount: number }>;
+  discountByCategory?: Array<{ name: string; amount: number }>;
+  declarations?: {
+    byMethod: Array<{
+      name: string;
+      expected: number;
+      declared: number;
+      difference: number;
+    }>;
+    totalDeclared: number;
+    totalExpected: number;
+    totalDifference: number;
+  };
 };
 
 export default function XCutModal({
@@ -176,13 +205,40 @@ export default function XCutModal({
       (r.salesByMethod || [])
         .map((m) => `${enc(m.name)}: ${fmt(m.salesAmount)}`)
         .join("<br/>") || "—";
+    const totalSalesForms = (r.salesByMethod || []).reduce(
+      (a, m) => a + Number(m.salesAmount || 0),
+      0
+    );
     const methodsTips =
       (r.tipsByMethod || [])
         .map((m) => `${enc(m.name)}: ${fmt(m.tipAmount)}`)
         .join("<br/>") || "—";
+    const totalTipsForms = (r.tipsByMethod || []).reduce(
+      (a, m) => a + Number(m.tipAmount || 0),
+      0
+    );
     const totalsByMethod =
       (r.totalsByMethod || [])
         .map((m) => `${enc(m.name)}: ${fmt(m.amount)}`)
+        .join("<br/>") || "—";
+
+    const summary = r.summary || {};
+    const courtesyByCat =
+      (r.courtesyByCategory || [])
+        .map((c) => `${enc(c.name)}: ${fmt(c.amount)}`)
+        .join("<br/>") || "—";
+    const discountByCat =
+      (r.discountByCategory || [])
+        .map((c) => `${enc(c.name)}: ${fmt(c.amount)}`)
+        .join("<br/>") || "—";
+    const declarations =
+      (r.declarations?.byMethod || [])
+        .map(
+          (d) =>
+            `${enc(d.name)}: ${fmt(d.declared)} (Esp: ${fmt(
+              d.expected
+            )} / Dif: ${fmt(d.difference)})`
+        )
         .join("<br/>") || "—";
 
     const byCat =
@@ -230,6 +286,7 @@ export default function XCutModal({
   <div class="center small">DEL ${formatDT(r.shift.openedAt)}</div>
   <div class="center small">AL  ${formatDT(r.shift.closedAt)}</div>
   <div class="center small">TURNO: ${r.shift.id} ${r.shift.stationName ? " · ESTACIÓN: " + enc(r.shift.stationName) : ""}</div>
+  ${summary.cashierNames?.length ? `<div class="center small">CAJERO: ${enc(summary.cashierNames.join(", "))}</div>` : ""}
   ${line}
 
   <div class="bold">CAJA</div>
@@ -244,9 +301,11 @@ export default function XCutModal({
 
   <div class="bold" style="margin-top:6px;">FORMA DE PAGO VENTAS</div>
   ${methodsSales}<br/>
+  <div class="bold">TOTAL FORMAS: ${fmt(totalSalesForms)}</div>
   ${line}
   <div class="bold">FORMA DE PAGO PROPINA</div>
   ${methodsTips}<br/>
+  <div class="bold">TOTAL FORMAS PROPINA: ${fmt(totalTipsForms)}</div>
   ${line}
 
   <div class="bold">VENTA (NO INCLUYE IMPUESTOS)</div>
@@ -265,6 +324,35 @@ export default function XCutModal({
   ${r.totals?.taxesTotal != null ? `IMPUESTOS TOTAL: ${fmt(r.totals?.taxesTotal)}<br/>` : ""}
   ${line}
   ${r.totals?.gross != null ? `VENTAS CON IMP.: ${fmt(r.totals?.gross)}<br/>` : ""}
+  ${line}
+
+  <div class="bold">RESUMEN CUENTAS</div>
+  CUENTAS NORMALES : ${summary.closedCount ?? 0}<br/>
+  CUENTAS CANCELADAS : ${summary.voidCount ?? 0}<br/>
+  CUENTAS CON DESCUENTO : ${summary.discountCount ?? 0}<br/>
+  CUENTAS CON CORTESIA : ${summary.courtesyCount ?? 0}<br/>
+  CUENTA PROMEDIO : ${fmt(summary.avgTicket)}<br/>
+  CONSUMO PROMEDIO : ${fmt(summary.avgConsumption)}<br/>
+  COMENSALES : ${summary.guests ?? 0}<br/>
+  PROPINAS : ${fmt(summary.tipsTotal)}<br/>
+  ${summary.folioFrom ? `FOLIO INICIAL : ${enc(summary.folioFrom)}<br/>` : ""}
+  ${summary.folioTo ? `FOLIO FINAL : ${enc(summary.folioTo)}<br/>` : ""}
+
+  ${line}
+  <div class="bold">CORTESIAS POR CATEGORIA</div>
+  ${courtesyByCat}<br/>
+  <div class="bold">TOTAL CORTESIAS : ${fmt(summary.totalCourtesy)}</div>
+
+  ${line}
+  <div class="bold">DESCUENTOS POR CATEGORIA</div>
+  ${discountByCat}<br/>
+  <div class="bold">TOTAL DESCUENTOS : ${fmt(summary.totalDiscounts)}</div>
+
+  ${line}
+  <div class="bold">DECLARACION DE CAJERO</div>
+  ${declarations}<br/>
+  <div class="bold">TOTAL DECLARADO: ${fmt(r.declarations?.totalDeclared)}</div>
+  <div class="bold">SOBRANTE/FALTANTE: ${fmt(r.declarations?.totalDifference)}</div>
 </body></html>`.trim();
   }
 
@@ -320,6 +408,52 @@ export default function XCutModal({
         `${Math.round((s.pct || 0) * 100)}%`,
       ])
     );
+
+    rows.push([]);
+    rows.push(["RESUMEN CUENTAS"]);
+    rows.push(["CUENTAS NORMALES", String(r.summary?.closedCount ?? 0)]);
+    rows.push(["CUENTAS CANCELADAS", String(r.summary?.voidCount ?? 0)]);
+    rows.push(["CUENTAS CON DESCUENTO", String(r.summary?.discountCount ?? 0)]);
+    rows.push(["CUENTAS CON CORTESIA", String(r.summary?.courtesyCount ?? 0)]);
+    rows.push(["CUENTA PROMEDIO", (r.summary?.avgTicket ?? 0).toFixed(2)]);
+    rows.push(["CONSUMO PROMEDIO", (r.summary?.avgConsumption ?? 0).toFixed(2)]);
+    rows.push(["COMENSALES", String(r.summary?.guests ?? 0)]);
+    rows.push(["PROPINAS", (r.summary?.tipsTotal ?? 0).toFixed(2)]);
+    if (r.summary?.folioFrom) rows.push(["FOLIO INICIAL", String(r.summary.folioFrom)]);
+    if (r.summary?.folioTo) rows.push(["FOLIO FINAL", String(r.summary.folioTo)]);
+
+    rows.push([]);
+    rows.push(["CORTESIAS POR CATEGORIA"]);
+    r.courtesyByCategory?.forEach((c) =>
+      rows.push([c.name, c.amount.toFixed(2)])
+    );
+    rows.push(["TOTAL CORTESIAS", (r.summary?.totalCourtesy ?? 0).toFixed(2)]);
+
+    rows.push([]);
+    rows.push(["DESCUENTOS POR CATEGORIA"]);
+    r.discountByCategory?.forEach((c) =>
+      rows.push([c.name, c.amount.toFixed(2)])
+    );
+    rows.push(["TOTAL DESCUENTOS", (r.summary?.totalDiscounts ?? 0).toFixed(2)]);
+
+    rows.push([]);
+    rows.push(["DECLARACION DE CAJERO"]);
+    r.declarations?.byMethod?.forEach((d) =>
+      rows.push([
+        d.name,
+        `DECL: ${d.declared.toFixed(2)}`,
+        `ESP: ${d.expected.toFixed(2)}`,
+        `DIF: ${d.difference.toFixed(2)}`,
+      ])
+    );
+    rows.push([
+      "TOTAL DECLARADO",
+      (r.declarations?.totalDeclared ?? 0).toFixed(2),
+    ]);
+    rows.push([
+      "SOBRANTE/FALTANTE",
+      (r.declarations?.totalDifference ?? 0).toFixed(2),
+    ]);
     return rows;
   }
 

@@ -137,6 +137,8 @@ export default function OrderDetail() {
   const [generalDiscountValue, setGeneralDiscountValue] = useState<number>(0);
   const [generalDiscountReason, setGeneralDiscountReason] =
     useState<string>("");
+  const [generalDiscountIsCourtesy, setGeneralDiscountIsCourtesy] =
+    useState<boolean>(false);
 
   const [itemDiscountModalVisible, setItemDiscountModalVisible] =
     useState(false);
@@ -146,6 +148,8 @@ export default function OrderDetail() {
     useState<DiscountType>("percent");
   const [itemDiscountValue, setItemDiscountValue] = useState<number>(0);
   const [itemDiscountReason, setItemDiscountReason] = useState<string>("");
+  const [itemDiscountIsCourtesy, setItemDiscountIsCourtesy] =
+    useState<boolean>(false);
 
   // Imprimir
   const [printApprovalVisible, setPrintApprovalVisible] = useState(false);
@@ -194,6 +198,7 @@ export default function OrderDetail() {
     );
     setGeneralDiscountValue(Number(selectedOrder.discountValue ?? 0));
     setGeneralDiscountReason(selectedOrder.discountReason ?? "");
+    setGeneralDiscountIsCourtesy(Boolean((selectedOrder as any).isCourtesy));
     setGeneralDiscountModalVisible(true);
   }
 
@@ -202,6 +207,7 @@ export default function OrderDetail() {
     setItemDiscountType((target.discountType as DiscountType) || "percent");
     setItemDiscountValue(Number(target.discountValue ?? 0));
     setItemDiscountReason(target.discountReason ?? "");
+    setItemDiscountIsCourtesy(Boolean((target as any).isCourtesy));
     setItemDiscountModalVisible(true);
   }
 
@@ -245,6 +251,7 @@ export default function OrderDetail() {
           discountValue: value,
           discountAmount,
           discountReason: generalDiscountReason?.trim() || null,
+          isCourtesy: generalDiscountIsCourtesy,
         },
         { validateStatus: () => true },
       );
@@ -303,6 +310,7 @@ export default function OrderDetail() {
           discountValue: value,
           discountAmount,
           discountReason: itemDiscountReason?.trim() || null,
+          isCourtesy: itemDiscountIsCourtesy,
         },
         { validateStatus: () => true },
       );
@@ -963,11 +971,10 @@ export default function OrderDetail() {
   );
 
   const canPrint =
-    hasItems &&
-    (status === "open" ||
-      status === "in_progress" ||
-      status === "reopened" ||
-      (printCount > 0 && ["printed", "paid", "closed"].includes(status)));
+    status === "open" ||
+    status === "in_progress" ||
+    status === "reopened" ||
+    (printCount > 0 && ["printed", "paid", "closed"].includes(status));
   const canPay = status === "printed"; // debe estar impresa
   const canVoidItems =
     hasItems && !["printed", "closed", "paid"].includes(status);
@@ -1044,7 +1051,7 @@ export default function OrderDetail() {
   async function doInitialPrintOnOrderApi() {
     const res = await apiOrderKiosk.post(
       `/orders/${selectedOrder?.id}/firstPrint`,
-      {},
+      hasItems ? {} : { allowEmptyPrint: true },
       { validateStatus: () => true },
     );
     if (!res || res.status < 200 || res.status >= 300) {
@@ -1060,7 +1067,7 @@ export default function OrderDetail() {
   async function doPrintOnOrderApi(approvalToken: string) {
     const res = await apiOrderKiosk.post(
       `/orders/${selectedOrder?.id}/print`,
-      {},
+      hasItems ? {} : { allowEmptyPrint: true },
       {
         headers: { "X-Approval": `Bearer ${approvalToken}` },
         validateStatus: () => true,
@@ -1125,10 +1132,12 @@ export default function OrderDetail() {
       return;
     }
 
-    if (printSettings?.confirmPrint) {
+    if (printSettings?.confirmPrint || !hasItems) {
       Modal.confirm({
-        title: "Imprimir cuenta",
-        content: "¿Seguro que deseas imprimir esta cuenta?",
+        title: hasItems ? "Imprimir cuenta" : "Imprimir cuenta vacía",
+        content: hasItems
+          ? "¿Seguro que deseas imprimir esta cuenta?"
+          : "Esta cuenta no tiene productos. ¿Deseas imprimir de todos modos?",
         okText: "Imprimir",
         cancelText: "Cancelar",
         onOk: () => runInitialPrint(),
@@ -1560,6 +1569,14 @@ export default function OrderDetail() {
                   rows={3}
                 />
               </Form.Item>
+              <Form.Item>
+                <Checkbox
+                  checked={generalDiscountIsCourtesy}
+                  onChange={(e) => setGeneralDiscountIsCourtesy(e.target.checked)}
+                >
+                  Es cortesía
+                </Checkbox>
+              </Form.Item>
             </Form>
           </Modal>
 
@@ -1738,6 +1755,14 @@ export default function OrderDetail() {
                   onChange={(e) => setItemDiscountReason(e.target.value)}
                   rows={3}
                 />
+              </Form.Item>
+              <Form.Item>
+                <Checkbox
+                  checked={itemDiscountIsCourtesy}
+                  onChange={(e) => setItemDiscountIsCourtesy(e.target.checked)}
+                >
+                  Es cortesía
+                </Checkbox>
               </Form.Item>
             </Form>
           </Modal>

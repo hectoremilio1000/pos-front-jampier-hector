@@ -86,6 +86,7 @@ type Props = {
   // NUEVO: llegan fijos desde ControlComandero
   defaultAreaId?: number;
   defaultServiceId?: number;
+  tablesRefreshKey?: number;
 };
 
 const { Step } = Steps;
@@ -98,13 +99,16 @@ const RegistroChequeModal: React.FC<Props> = ({
   services,
   defaultAreaId,
   defaultServiceId,
+  tablesRefreshKey,
 }) => {
   // 0: Nombre, 1: Personas, 2: Resumen
   const [step, setStep] = useState(0);
 
   const [cuenta, setCuenta] = useState("");
   const [personas, setPersonas] = useState("");
-  const [showMap, setShowMap] = useState(true);
+  const [nameSource, setNameSource] = useState<"manual" | "table" | null>(null);
+  const hasManualName = nameSource === "manual" && Boolean(cuenta.trim());
+  const showMap = !hasManualName;
 
   // ✅ Mesas por área (tableId puede ser null)
   const [tables, setTables] = useState<TableRow[]>([]);
@@ -128,6 +132,35 @@ const RegistroChequeModal: React.FC<Props> = ({
     () => tables.find((t) => Number(t.id) === Number(selectedTableId)),
     [tables, selectedTableId]
   );
+
+  const syncManualName = (next: string) => {
+    if (next.trim()) {
+      setNameSource("manual");
+      if (selectedTableId !== null) setSelectedTableId(null);
+    } else {
+      setNameSource(null);
+    }
+  };
+
+  const setCuentaManual: React.Dispatch<React.SetStateAction<string>> = (
+    value
+  ) => {
+    if (typeof value === "function") {
+      setCuenta((prev) => {
+        const next = (value as (prev: string) => string)(prev);
+        syncManualName(next);
+        return next;
+      });
+      return;
+    }
+    setCuenta(value);
+    syncManualName(value);
+  };
+
+  const setCuentaFromTable = (label: string) => {
+    setCuenta(label);
+    setNameSource("table");
+  };
 
   // Área/Servicio siempre vienen de arriba. Si faltan, tomamos el primero disponible.
   const areaId =
@@ -162,6 +195,7 @@ const RegistroChequeModal: React.FC<Props> = ({
       return exists ? prev : defaultId;
     });
   }, [visible, hasServices, services, defaultServiceId]);
+
   // ✅ Cargar mesas por área cuando abre el modal o cambia el área
   useEffect(() => {
     if (!visible) return;
@@ -215,6 +249,7 @@ const RegistroChequeModal: React.FC<Props> = ({
     setCuenta("");
     setPersonas("");
     setSelectedTableId(null);
+    setNameSource(null);
     setStep(0);
   };
 
@@ -308,7 +343,9 @@ const RegistroChequeModal: React.FC<Props> = ({
         <Button
           size="small"
           onClick={() => {
-            setShowMap(true);
+            setCuenta("");
+            setNameSource(null);
+            setSelectedTableId(null);
             setStep(2);
           }}
         >
@@ -316,12 +353,12 @@ const RegistroChequeModal: React.FC<Props> = ({
         </Button>
       </div>
       <TecladoVirtual
-        onKeyPress={(v) => setCuenta((prev) => prev + v)}
-        onBackspace={() => setCuenta((prev) => prev.slice(0, -1))}
-        onSpace={() => setCuenta((prev) => prev + " ")}
-        onClear={() => setCuenta("")}
+        onKeyPress={(v) => setCuentaManual((prev) => prev + v)}
+        onBackspace={() => setCuentaManual((prev) => prev.slice(0, -1))}
+        onSpace={() => setCuentaManual((prev) => prev + " ")}
+        onClear={() => setCuentaManual("")}
         text={cuenta}
-        setTexto={setCuenta}
+        setTexto={setCuentaManual}
       />
     </div>
   );
@@ -364,6 +401,10 @@ const RegistroChequeModal: React.FC<Props> = ({
               onChange={(v) => {
                 if (v === "none") {
                   setSelectedTableId(null);
+                  if (nameSource === "table") {
+                    setCuenta("");
+                    setNameSource(null);
+                  }
                   return;
                 }
                 const id = Number(v);
@@ -372,9 +413,7 @@ const RegistroChequeModal: React.FC<Props> = ({
                 if (nextId !== null) {
                   const t = tables.find((row) => Number(row.id) === nextId);
                   if (t) {
-                    if (!cuenta.trim()) {
-                      setCuenta(getTableLabel(t));
-                    }
+                    setCuentaFromTable(getTableLabel(t));
                     if (!personas.trim() && t.seats) {
                       setPersonas(String(t.seats));
                     }
@@ -404,9 +443,11 @@ const RegistroChequeModal: React.FC<Props> = ({
         <div className="p-3 rounded border bg-white">
           <div className="flex items-center justify-between">
             <div className="text-xs text-gray-500">Mesa en mapa</div>
-            <Button size="small" onClick={() => setShowMap((v) => !v)}>
-              {showMap ? "Ocultar" : "Mostrar"}
-            </Button>
+            {hasManualName ? (
+              <span className="text-xs text-gray-400">
+                Mapa oculto por nombre manual
+              </span>
+            ) : null}
           </div>
           {showMap ? (
             <div className="mt-3">
@@ -415,17 +456,25 @@ const RegistroChequeModal: React.FC<Props> = ({
                 selectedTableId={selectedTableId}
                 onSelect={(table) => {
                   setSelectedTableId(table.id);
-                  if (!cuenta.trim()) {
-                    setCuenta(String(table.code || ""));
-                  }
-                  if (!personas.trim() && table.seats) {
+                  setCuentaFromTable(getTableLabel(table));
+                  if (
+                    (!personas.trim() ||
+                      (selectedTable?.seats &&
+                        personas.trim() === String(selectedTable.seats))) &&
+                    table.seats
+                  ) {
                     setPersonas(String(table.seats));
                   }
                 }}
+                showGrid={false}
+                minStage={{ width: 280, height: 220 }}
+                refreshKey={tablesRefreshKey}
               />
             </div>
           ) : (
-            <div className="mt-2 text-sm text-gray-500">Mapa oculto.</div>
+            <div className="mt-2 text-sm text-gray-500">
+              Mapa oculto porque escribiste el nombre de la mesa.
+            </div>
           )}
         </div>
 
@@ -455,7 +504,7 @@ const RegistroChequeModal: React.FC<Props> = ({
           <div className="text-xs text-gray-500 mb-1">Nombre de la mesa</div>
           <Input
             value={cuenta}
-            onChange={(e) => setCuenta(e.target.value)}
+            onChange={(e) => setCuentaManual(e.target.value)}
             size="large"
           />
         </div>

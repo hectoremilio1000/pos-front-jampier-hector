@@ -1,6 +1,20 @@
 // /src/components/Comandero/ConsultarItemModal.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { Button, Modal, Table, Tag, Typography, message, Tooltip } from "antd";
+import {
+  Button,
+  Modal,
+  Table,
+  Tag,
+  Typography,
+  message,
+  Tooltip,
+  Form,
+  Input,
+  Radio,
+  InputNumber,
+  Space,
+  Checkbox,
+} from "antd";
 import type { ColumnsType } from "antd/es/table";
 import apiOrder from "@/components/apis/apiOrder";
 
@@ -53,6 +67,7 @@ type OrderItem = {
   discountAmount: number | null;
   discountAppliedBy: number | null;
   discountReason: string | null;
+  isCourtesy?: boolean | null;
   product: Producto;
   status: string | null;
 
@@ -133,6 +148,12 @@ const ConsultarItemModal: React.FC<Props> = ({
 }) => {
   const [items, setItems] = useState<OrderItem[]>(detalle_cheque || []);
   const [loading, setLoading] = useState(false);
+  const [discountModalOpen, setDiscountModalOpen] = useState(false);
+  const [discountType, setDiscountType] = useState<"percent" | "fixed">("percent");
+  const [discountValue, setDiscountValue] = useState<number>(0);
+  const [discountReason, setDiscountReason] = useState<string>("");
+  const [discountIsCourtesy, setDiscountIsCourtesy] = useState<boolean>(false);
+  const [discountTargetRow, setDiscountTargetRow] = useState<Row | null>(null);
 
   const money = (n: number) =>
     new Intl.NumberFormat("es-MX", {
@@ -142,8 +163,12 @@ const ConsultarItemModal: React.FC<Props> = ({
     }).format(Number.isFinite(n) ? n : 0);
 
   const totals = useMemo(() => {
-    const sumTotal = items.reduce(
+    const sumGross = items.reduce(
       (acc, it) => acc + (Number(it.total) || 0),
+      0,
+    );
+    const sumDiscount = items.reduce(
+      (acc, it) => acc + (Number(it.discountAmount) || 0),
       0,
     );
 
@@ -153,12 +178,15 @@ const ConsultarItemModal: React.FC<Props> = ({
       return acc + base * qty;
     }, 0);
 
-    const iva = sumTotal - sumBase;
+    const netTotal = Math.max(0, sumGross - sumDiscount);
+    const netBase = Math.max(0, sumBase - sumDiscount);
+    const iva = netTotal - netBase;
 
     return {
-      subtotal: sumBase,
+      subtotal: netBase,
       iva,
-      total: sumTotal,
+      total: netTotal,
+      discounts: sumDiscount,
     };
   }, [items]);
 
@@ -308,35 +336,173 @@ const ConsultarItemModal: React.FC<Props> = ({
       render: (st: ItemStatus) => <StatusTag status={st} />,
     },
     {
+      title: "Descuento",
+      key: "discount",
+      width: 140,
+      align: "right",
+      render: (_: any, row: Row) => {
+        const discountSum = items
+          .filter((it) => it.id && row.allItemIds.includes(it.id))
+          .reduce((acc, it) => acc + Number(it.discountAmount || 0), 0);
+        const hasCourtesy = items.some(
+          (it) => it.id && row.allItemIds.includes(it.id) && it.isCourtesy
+        );
+        if (!discountSum && !hasCourtesy) return <Text>—</Text>;
+        return (
+          <div>
+            <Text strong>{money(discountSum)}</Text>
+            {hasCourtesy ? (
+              <Tag color="green" style={{ marginLeft: 6 }}>
+                Cortesía
+              </Tag>
+            ) : null}
+          </div>
+        );
+      },
+    },
+    {
       title: "Acción",
       key: "actions",
-      width: 160,
+      width: 340,
       render: (_: any, row: Row) => {
         const course = row.course ?? 1;
         const canFire = row.status === "sent" && course > 1; // 🔥 solo si está en 'sent' y no es 1er tiempo
+        const orderStatus = String(orderCurrent?.status || "").toLowerCase();
+        const canAdjust = ["open", "in_progress", "reopened"].includes(orderStatus);
         return (
-          <Tooltip
-            title={
-              canFire
-                ? "Enviar a FIRE"
-                : course <= 1
-                  ? "FIRE solo aplica a tiempos > 1"
-                  : "Solo disponible cuando el estado es 'sent'"
-            }
-          >
+          <Space size="small" wrap>
             <Button
-              type="primary"
+              danger
               size="small"
-              onClick={() => onFire(row)}
-              disabled={!row.allItemIds.length || !canFire}
+              onClick={() => onCancelItem(row)}
+              disabled={
+                !row.allItemIds.length || row.status === "cancelled" || !canAdjust
+              }
             >
-              Fired
+              Cancelar
             </Button>
-          </Tooltip>
+            <Button
+              size="small"
+              onClick={() => openDiscountModal(row)}
+              disabled={!row.allItemIds.length || !canAdjust}
+            >
+              Descuento
+            </Button>
+            <Tooltip
+              title={
+                canFire
+                  ? "Enviar a FIRE"
+                  : course <= 1
+                    ? "FIRE solo aplica a tiempos > 1"
+                    : "Solo disponible cuando el estado es 'sent'"
+              }
+            >
+              <Button
+                type="primary"
+                size="small"
+                onClick={() => onFire(row)}
+                disabled={!row.allItemIds.length || !canFire}
+              >
+                Fired
+              </Button>
+            </Tooltip>
+          </Space>
         );
       },
     },
   ];
+
+  function openDiscountModal(row: Row) {
+    setDiscountTargetRow(row);
+    setDiscountIsCourtesy(false);
+    setDiscountType("percent");
+    setDiscountValue(0);
+    setDiscountReason("");
+    setDiscountModalOpen(true);
+  }
+
+  async function applyDiscountToRow() {
+    if (!discountTargetRow) return;
+    const targetIds = discountTargetRow.mainItemId
+      ? [discountTargetRow.mainItemId]
+      : discountTargetRow.allItemIds;
+    if (!targetIds.length) {
+      return message.warning("Item sin id persistido todavía.");
+    }
+    if (!Number.isFinite(Number(discountValue)) || Number(discountValue) < 0) {
+      return message.warning("Ingresa un descuento válido.");
+    }
+
+    try {
+      setLoading(true);
+      for (const id of targetIds) {
+        const it = items.find((x) => x.id === id);
+        if (!it) continue;
+        const qty = Number(it.qty ?? 0);
+        const unit = Number(it.unitPrice ?? 0);
+        const gross = qty * unit;
+        if (gross <= 0) continue;
+
+        let discountAmount = 0;
+        if (discountType === "percent") {
+          discountAmount = Math.round(gross * (Number(discountValue) / 100) * 100) / 100;
+        } else {
+          discountAmount = Math.min(Number(discountValue), gross);
+        }
+
+        const res = await apiOrder.put(
+          `/order-items/${id}`,
+          {
+            discountType,
+            discountValue: Number(discountValue),
+            discountAmount,
+            discountReason: discountReason?.trim() || null,
+            isCourtesy: discountIsCourtesy,
+          },
+          { validateStatus: () => true }
+        );
+
+        if (!res || res.status < 200 || res.status >= 300) {
+          const err =
+            (res?.data && res.data.error) ||
+            "No se pudo aplicar el descuento al producto";
+          throw new Error(err);
+        }
+      }
+
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id && targetIds.includes(it.id)
+            ? {
+                ...it,
+                discountType,
+                discountValue: Number(discountValue),
+                discountAmount:
+                  discountType === "percent"
+                    ? Math.round((Number(it.qty ?? 0) * Number(it.unitPrice ?? 0)) * (Number(discountValue) / 100) * 100) / 100
+                    : Math.min(Number(discountValue), Number(it.qty ?? 0) * Number(it.unitPrice ?? 0)),
+                discountReason: discountReason?.trim() || null,
+                isCourtesy: discountIsCourtesy,
+              }
+            : it
+        )
+      );
+
+      message.success(
+        discountIsCourtesy ? "Cortesía aplicada al producto" : "Descuento aplicado al producto"
+      );
+      setDiscountModalOpen(false);
+      setDiscountTargetRow(null);
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.error ||
+        err?.message ||
+        "No se pudo aplicar el descuento";
+      message.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function onFire(row: Row) {
     if (!row.allItemIds.length) {
@@ -363,6 +529,36 @@ const ConsultarItemModal: React.FC<Props> = ({
         err?.response?.data?.error ||
         err?.message ||
         "No se pudo actualizar el estado";
+      message.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onCancelItem(row: Row) {
+    if (!row.allItemIds.length) {
+      return message.warning("Item sin id persistido todavía.");
+    }
+    try {
+      setLoading(true);
+      await apiOrder.post("/order-items/status", {
+        itemIds: row.allItemIds,
+        status: "cancelled",
+      });
+
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id && row.allItemIds.includes(it.id)
+            ? { ...it, status: "cancelled" }
+            : it
+        )
+      );
+      message.success("Producto cancelado");
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.error ||
+        err?.message ||
+        "No se pudo cancelar el producto";
       message.error(msg);
     } finally {
       setLoading(false);
@@ -433,6 +629,11 @@ const ConsultarItemModal: React.FC<Props> = ({
                 </div>
 
                 <div className="flex gap-6 justify-end">
+                  <span className="text-gray-500">Descuento</span>
+                  <span className="font-medium">{money(totals.discounts)}</span>
+                </div>
+
+                <div className="flex gap-6 justify-end">
                   <span className="text-gray-500">IVA</span>
                   <span className="font-medium">{money(totals.iva)}</span>
                 </div>
@@ -447,6 +648,55 @@ const ConsultarItemModal: React.FC<Props> = ({
             </div>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        open={discountModalOpen}
+        title="Descuento por producto"
+        onCancel={() => setDiscountModalOpen(false)}
+        onOk={applyDiscountToRow}
+        okText="Aplicar descuento"
+        destroyOnHidden
+      >
+        <Form layout="vertical">
+          <Form.Item label="Tipo de descuento">
+            <Radio.Group
+              value={discountType}
+              onChange={(e) => setDiscountType(e.target.value)}
+            >
+              <Radio value="percent">% porcentaje</Radio>
+              <Radio value="fixed">Monto fijo</Radio>
+            </Radio.Group>
+          </Form.Item>
+
+          <Form.Item
+            label={discountType === "percent" ? "Valor (%)" : "Monto (MXN)"}
+          >
+            <InputNumber
+              min={0}
+              max={discountType === "percent" ? 100 : undefined}
+              value={discountValue}
+              onChange={(v) => setDiscountValue(Number(v ?? 0))}
+              style={{ width: "100%" }}
+            />
+          </Form.Item>
+
+          <Form.Item label="Motivo (opcional)">
+            <Input.TextArea
+              value={discountReason}
+              onChange={(e) => setDiscountReason(e.target.value)}
+              rows={3}
+            />
+          </Form.Item>
+          <Form.Item>
+            <Checkbox
+              checked={discountIsCourtesy}
+              onChange={(e) => setDiscountIsCourtesy(e.target.checked)}
+            >
+              Es cortesía
+            </Checkbox>
+          </Form.Item>
+        </Form>
       </Modal>
     </>
   );

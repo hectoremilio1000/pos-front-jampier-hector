@@ -31,6 +31,9 @@ type LayoutDocument = {
 export type TableRow = {
   id: number;
   code?: string | null;
+  name?: string | null;
+  label?: string | null;
+  number?: string | null;
   seats?: number | null;
   status?: TableStatus | string | null;
 };
@@ -40,6 +43,9 @@ type Props = {
   selectedTableId: number | null;
   onSelect?: (table: TableRow) => void;
   readOnly?: boolean;
+  showGrid?: boolean;
+  minStage?: { width: number; height: number };
+  refreshKey?: number;
 };
 
 const DEFAULT_STAGE = { width: 720, height: 380 };
@@ -69,14 +75,20 @@ const statusFill = (status: string) => {
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
+const normalizeKey = (value: unknown) =>
+  String(value ?? "").trim().toLowerCase();
+
 const getTableKey = (item: LayoutItem) =>
-  String(item.code || item.name || "").trim().toLowerCase();
+  normalizeKey(item.code || item.name || "");
 
 export default function MesaMapPicker({
   areaId,
   selectedTableId,
   onSelect,
   readOnly = false,
+  showGrid = true,
+  minStage,
+  refreshKey,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [stageSize, setStageSize] = useState(DEFAULT_STAGE);
@@ -93,14 +105,16 @@ export default function MesaMapPicker({
       const entry = entries[0];
       if (!entry) return;
       const { width, height } = entry.contentRect;
+      const minWidth = minStage?.width ?? DEFAULT_STAGE.width;
+      const minHeight = minStage?.height ?? DEFAULT_STAGE.height;
       setStageSize({
-        width: Math.max(640, Math.floor(width)),
-        height: Math.max(360, Math.floor(height)),
+        width: Math.max(minWidth, Math.floor(width) || minWidth),
+        height: Math.max(minHeight, Math.floor(height) || minHeight),
       });
     });
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [minStage]);
 
   useEffect(() => {
     if (!areaId) {
@@ -135,7 +149,7 @@ export default function MesaMapPicker({
     return () => {
       cancelled = true;
     };
-  }, [areaId]);
+  }, [areaId, refreshKey]);
 
   useEffect(() => {
     const normalized = normalizeLayout(rawLayout, stageSize);
@@ -143,17 +157,22 @@ export default function MesaMapPicker({
     const merged = mergeTablesIntoLayout(
       normalized?.items ?? [],
       tables,
-      stageSize
+      normalized?.canvas ?? stageSize
     );
     setItems(merged);
   }, [rawLayout, tables, stageSize]);
 
-  const tableByCode = useMemo(() => {
+  const tableIndex = useMemo(() => {
     const map = new Map<string, TableRow>();
     tables.forEach((t) => {
-      const key = String(t.code || "").trim().toLowerCase();
-      if (!key) return;
-      map.set(key, t);
+      const codeKey = normalizeKey(t.code);
+      const nameKey = normalizeKey(t.name);
+      const labelKey = normalizeKey(t.label);
+      const numberKey = normalizeKey(t.number);
+      if (codeKey && !map.has(codeKey)) map.set(codeKey, t);
+      if (nameKey && !map.has(nameKey)) map.set(nameKey, t);
+      if (labelKey && !map.has(labelKey)) map.set(labelKey, t);
+      if (numberKey && !map.has(numberKey)) map.set(numberKey, t);
     });
     return map;
   }, [tables]);
@@ -164,10 +183,29 @@ export default function MesaMapPicker({
     return clamp(Math.round(raw), 18, 60);
   }, [layout?.gridSize]);
 
+  const canvasSize = useMemo(() => {
+    return layout?.canvas ?? stageSize;
+  }, [layout?.canvas, stageSize]);
+
+  const view = useMemo(() => {
+    const canvasW = canvasSize.width || stageSize.width;
+    const canvasH = canvasSize.height || stageSize.height;
+    if (!canvasW || !canvasH) {
+      return { scale: 1, offsetX: 0, offsetY: 0 };
+    }
+    const scale = Math.min(
+      stageSize.width / canvasW,
+      stageSize.height / canvasH
+    );
+    const offsetX = (stageSize.width - canvasW * scale) / 2;
+    const offsetY = (stageSize.height - canvasH * scale) / 2;
+    return { scale, offsetX, offsetY };
+  }, [canvasSize, stageSize]);
+
   const gridLines = useMemo(() => {
     const lines: number[][] = [];
-    const width = stageSize.width;
-    const height = stageSize.height;
+    const width = canvasSize.width;
+    const height = canvasSize.height;
     for (let x = 0; x <= width; x += gridSize) {
       lines.push([x, 0, x, height]);
     }
@@ -175,7 +213,7 @@ export default function MesaMapPicker({
       lines.push([0, y, width, y]);
     }
     return lines;
-  }, [gridSize, stageSize.width, stageSize.height]);
+  }, [gridSize, canvasSize.width, canvasSize.height]);
 
   const handleHover = (e: any, cursor: string) => {
     const stage = e?.target?.getStage?.();
@@ -193,7 +231,7 @@ export default function MesaMapPicker({
 
     if (isTable(item.kind)) {
       const key = getTableKey(item);
-      const table = key ? tableByCode.get(key) : undefined;
+      const table = key ? tableIndex.get(key) : undefined;
       const status = String(table?.status || "unknown").toLowerCase();
       const canSelect = !readOnly && status === "free" && !!table && !!onSelect;
       const isSelected =
@@ -380,7 +418,7 @@ export default function MesaMapPicker({
   return (
     <div className="w-full">
       <div className="w-full rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
-        <div ref={wrapRef} className="w-full">
+        <div ref={wrapRef} className="w-full overflow-hidden">
           {loading ? (
             <div className="text-sm text-gray-500">Cargando mapa...</div>
           ) : !areaId ? (
@@ -407,15 +445,24 @@ export default function MesaMapPicker({
                     stroke="#e2e8f0"
                     strokeWidth={1}
                   />
-                  {gridLines.map((points, index) => (
-                    <Line
-                      key={`grid-${index}`}
-                      points={points}
-                      stroke="#e2e8f0"
-                      strokeWidth={1}
-                    />
-                  ))}
-                  {items.map((item) => renderItem(item))}
+                  <Group
+                    x={view.offsetX}
+                    y={view.offsetY}
+                    scaleX={view.scale}
+                    scaleY={view.scale}
+                  >
+                    {showGrid
+                      ? gridLines.map((points, index) => (
+                          <Line
+                            key={`grid-${index}`}
+                            points={points}
+                            stroke="#e2e8f0"
+                            strokeWidth={1}
+                          />
+                        ))
+                      : null}
+                    {items.map((item) => renderItem(item))}
+                  </Group>
                 </Layer>
               </Stage>
             </>
@@ -499,38 +546,19 @@ function normalizeLayout(
   const gridSize = Number(raw.gridSize ?? 20);
   const meta = raw.meta && typeof raw.meta === "object" ? raw.meta : undefined;
 
-  const scaledItems = scaleLayoutItems(items, canvas, stageSize);
-
   return {
     version: 1,
-    canvas: { width: stageSize.width, height: stageSize.height },
+    canvas,
     gridSize,
     meta,
-    items: scaledItems,
+    items,
   };
-}
-
-function scaleLayoutItems(
-  items: LayoutItem[],
-  from: { width: number; height: number },
-  to: { width: number; height: number }
-) {
-  if (!from.width || !from.height) return items;
-  const scaleX = to.width / from.width;
-  const scaleY = to.height / from.height;
-  return items.map((item) => ({
-    ...item,
-    x: item.x * scaleX,
-    y: item.y * scaleY,
-    width: item.width * scaleX,
-    height: item.height * scaleY,
-  }));
 }
 
 function mergeTablesIntoLayout(
   items: LayoutItem[],
   tables: TableRow[],
-  stageSize: { width: number; height: number }
+  canvasSize: { width: number; height: number }
 ) {
   const map = new Map(
     items
@@ -553,7 +581,7 @@ function mergeTablesIntoLayout(
     }
     const position = autoPlacePosition(
       index + items.length + addedCount,
-      stageSize
+      canvasSize
     );
     nextItems.push({
       id: `auto_${table.id}`,
