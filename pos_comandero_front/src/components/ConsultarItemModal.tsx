@@ -541,15 +541,15 @@ const ConsultarItemModal: React.FC<Props> = ({
         : null;
 
       if (updatedItems && updatedItems.length) {
-        const updatedMap = new Map(
-          updatedItems.map((it: any) => [Number(it.id), it]),
+        const updatedMap = new Map<number, Partial<OrderItem>>(
+          updatedItems.map((it: any) => [Number(it.id), it as Partial<OrderItem>]),
         );
         setItems((prev) =>
           prev.map((it) =>
             it.id && updatedMap.has(Number(it.id))
               ? {
                   ...it,
-                  ...updatedMap.get(Number(it.id)),
+                  ...(updatedMap.get(Number(it.id)) || {}),
                 }
               : it,
           ),

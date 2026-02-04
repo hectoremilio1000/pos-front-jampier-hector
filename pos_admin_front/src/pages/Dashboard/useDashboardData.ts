@@ -180,7 +180,10 @@ export function useDashboardData(restaurantId?: number) {
     return { start, end };
   }
 
-  function buildKpis(summary: ClosedSummary, realtime?: DashboardKpisResponse | null) {
+  function buildKpis(
+    summary: ClosedSummary,
+    realtime?: DashboardKpisResponse | null
+  ): Kpi[] {
     const salesNet = Number(realtime?.salesNet ?? summary.salesTotal ?? 0);
     const openSales = Number(realtime?.openSales ?? 0);
     const realtimeSales = salesNet + openSales;

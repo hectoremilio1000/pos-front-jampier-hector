@@ -15,10 +15,7 @@ import {
   Radio,
   InputNumber,
 } from "antd";
-import {
-  createInvoiceForOrder,
-  getInvoiceByOrder,
-} from "@/components/apis/apiOrderInvoices";
+import { createInvoiceForOrder } from "@/components/apis/apiOrderInvoices";
 
 import type { ColumnsType } from "antd/es/table";
 import PayModal from "./modals/PayModal";
@@ -174,17 +171,12 @@ export default function OrderDetail() {
 
   // Recibo (email / QR opcional)
   const [receiptOpen, setReceiptOpen] = useState(false);
-  const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
+  const [receiptUrl] = useState<string | null>(null);
   const [receiptEmail, setReceiptEmail] = useState("");
 
   // ====== Datos / columnas / totales ======
   const status: string = (selectedOrder?.status || "").toLowerCase();
   const items: CashOrderItem[] = selectedOrder?.items ?? [];
-  const canOpenReceipt =
-    !!selectedOrder &&
-    (printSettings?.printMode === "qr" ||
-      printSettings?.printMode === "mixto" ||
-      status === "printed");
   const shouldShowQrReceipt =
     printSettings?.printMode === "qr" || printSettings?.printMode === "mixto";
 
@@ -882,32 +874,6 @@ export default function OrderDetail() {
   // }
 
   // ====== Recibo (email / QR opcional) ======
-  function buildReceiptUrl(orderId: number, restaurantId: number) {
-    const envBase = (import.meta as any).env?.VITE_RECEIPT_BASE_URL as
-      | string
-      | undefined;
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const base = (envBase || origin).replace(/\/$/, "");
-    return `${base}/${restaurantId}/qrscan/${orderId}`;
-  }
-
-  function openReceiptModal() {
-    if (!selectedOrder) return;
-    if (!canOpenReceipt) {
-      message.warning("Primero imprime la orden para generar el recibo.");
-      return;
-    }
-    const rid = Number(restaurantId || selectedOrder.restaurant?.id || 0);
-    const oid = Number(selectedOrder.id || 0);
-    if (!rid || !oid) {
-      message.error("No hay orden seleccionada.");
-      return;
-    }
-    setReceiptUrl(buildReceiptUrl(oid, rid));
-    setReceiptEmail("");
-    setReceiptOpen(true);
-  }
-
   async function copyReceiptUrl() {
     if (!receiptUrl) return;
     try {
