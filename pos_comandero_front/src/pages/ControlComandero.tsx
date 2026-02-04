@@ -1004,7 +1004,7 @@ const ControlComandero: React.FC = () => {
     refreshDetalle().catch(() => {});
     const timer = setInterval(() => {
       refreshDetalle().catch(() => {});
-    }, 4000);
+    }, 2000);
 
     return () => {
       alive = false;
@@ -1066,20 +1066,62 @@ const ControlComandero: React.FC = () => {
       if (msg.type === "order_changed") {
         const id = Number(msg.orderId);
         if (!Number.isFinite(id)) return;
-
-        const updated = await fetchCheques();
-        if (!updated) return;
-
-        const found = updated.find((o: any) => Number(o.id) === id);
-        if (!found) return;
-
         const currentId =
           orderIdCurrentRef.current ?? Number(orderCurrentIdRef.current || 0);
-        if (currentId === id) {
-          setOrderCurrent(found);
-          setDetalle_cheque_consulta(found.items ?? []);
+        const itemsRemoved = Array.isArray(msg.itemsRemoved)
+          ? msg.itemsRemoved.map((it: any) => Number(it)).filter(Number.isFinite)
+          : [];
+        const totals = msg.totals && typeof msg.totals === "object" ? msg.totals : null;
+
+        if (itemsRemoved.length && currentId === id) {
+          const removedSet = new Set(itemsRemoved);
+          setDetalle_cheque_consulta((prev) =>
+            Array.isArray(prev)
+              ? prev.filter((it: any) => !removedSet.has(Number(it?.id)))
+              : prev,
+          );
+          setOrderCurrent((prev) => {
+            if (!prev) return prev;
+            const nextItems = Array.isArray(prev.items)
+              ? prev.items.filter((it: any) => !removedSet.has(Number(it?.id)))
+              : prev.items;
+            const next = { ...prev, items: nextItems };
+            if (totals) {
+              if (totals.subtotal != null) (next as any).subtotal = totals.subtotal;
+              if (totals.tax != null) (next as any).tax = totals.tax;
+              if (totals.total != null) (next as any).total = totals.total;
+            }
+            if (msg.status) (next as any).status = msg.status;
+            return next;
+          });
         }
-        bumpTables();
+
+        if (itemsRemoved.length) {
+          setCheques((prev) =>
+            prev.map((o: any) => {
+              if (Number(o.id) !== id) return o;
+              const next = { ...o };
+              if (totals) {
+                if (totals.subtotal != null) (next as any).subtotal = totals.subtotal;
+                if (totals.tax != null) (next as any).tax = totals.tax;
+                if (totals.total != null) (next as any).total = totals.total;
+              }
+              if (msg.status) (next as any).status = msg.status;
+              return next;
+            }),
+          );
+        }
+
+        void fetchCheques().then((updated) => {
+          if (!updated) return;
+          const found = updated.find((o: any) => Number(o.id) === id);
+          if (!found) return;
+          if (currentId === id) {
+            setOrderCurrent(found);
+            setDetalle_cheque_consulta(found.items ?? []);
+          }
+          bumpTables();
+        });
       }
 
       if (msg.type === "table_status_changed") {
