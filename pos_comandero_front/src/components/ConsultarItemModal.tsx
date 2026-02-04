@@ -139,6 +139,32 @@ function StatusTag({ status }: { status: ItemStatus }) {
   }
 }
 
+function parseJwt<T = any>(token: string | null): T | null {
+  if (!token) return null;
+  try {
+    const [, payload] = token.split(".");
+    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(json) as T;
+  } catch {
+    return null;
+  }
+}
+
+function getRestaurantIdFromJwt(): number {
+  const payload = parseJwt<{ restaurantId?: number }>(
+    sessionStorage.getItem("kiosk_jwt"),
+  );
+  if (payload?.restaurantId) return Number(payload.restaurantId);
+
+  try {
+    const stored = sessionStorage.getItem("kiosk_restaurant_id") || "";
+    const parsed = Number(stored);
+    return Number.isFinite(parsed) ? parsed : 0;
+  } catch {
+    return 0;
+  }
+}
+
 const ConsultarItemModal: React.FC<Props> = ({
   visible,
   onClose,
@@ -154,6 +180,11 @@ const ConsultarItemModal: React.FC<Props> = ({
   const [discountReason, setDiscountReason] = useState<string>("");
   const [discountIsCourtesy, setDiscountIsCourtesy] = useState<boolean>(false);
   const [discountTargetRow, setDiscountTargetRow] = useState<Row | null>(null);
+  const [discountManagerPassword, setDiscountManagerPassword] = useState("");
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelManagerPassword, setCancelManagerPassword] = useState("");
+  const [cancelTargetRow, setCancelTargetRow] = useState<Row | null>(null);
 
   const money = (n: number) =>
     new Intl.NumberFormat("es-MX", {
@@ -162,17 +193,51 @@ const ConsultarItemModal: React.FC<Props> = ({
       maximumFractionDigits: 2,
     }).format(Number.isFinite(n) ? n : 0);
 
+  const getRestaurantId = () =>
+    Number(orderCurrent?.restaurantId ?? 0) || getRestaurantIdFromJwt();
+
+  async function requestApprovalToken(
+    action: string,
+    password: string,
+    targetId: number,
+  ) {
+    const restaurantId = Number(getRestaurantId() || 0);
+    if (!restaurantId) throw new Error("restaurantId faltante");
+    const apiUrlAuth = import.meta.env.VITE_API_URL_AUTH;
+    const res = await fetch(`${apiUrlAuth}/approvals/issue-by-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        restaurantId,
+        stationId: null, // comandero no está amarrado a station/caja
+        password,
+        action,
+        targetId,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = data?.error || data?.message || "Aprobación rechazada";
+      throw new Error(err);
+    }
+    return String(data?.approval_token || "");
+  }
+
   const totals = useMemo(() => {
-    const sumGross = items.reduce(
+    const activeItems = items.filter(
+      (it) => String(it.status || "").toLowerCase() !== "cancelled",
+    );
+    const sumGross = activeItems.reduce(
       (acc, it) => acc + (Number(it.total) || 0),
       0,
     );
-    const sumDiscount = items.reduce(
+    const sumDiscount = activeItems.reduce(
       (acc, it) => acc + (Number(it.discountAmount) || 0),
       0,
     );
 
-    const sumBase = items.reduce((acc, it) => {
+    const sumBase = activeItems.reduce((acc, it) => {
       const qty = Number(it.qty) || 0;
       const base = Number(it.basePrice ?? it.unitPrice) || 0;
       return acc + base * qty;
@@ -374,7 +439,7 @@ const ConsultarItemModal: React.FC<Props> = ({
             <Button
               danger
               size="small"
-              onClick={() => onCancelItem(row)}
+              onClick={() => openCancelModal(row)}
               disabled={
                 !row.allItemIds.length || row.status === "cancelled" || !canAdjust
               }
@@ -418,11 +483,16 @@ const ConsultarItemModal: React.FC<Props> = ({
     setDiscountType("percent");
     setDiscountValue(0);
     setDiscountReason("");
+    setDiscountManagerPassword("");
     setDiscountModalOpen(true);
   }
 
   async function applyDiscountToRow() {
     if (!discountTargetRow) return;
+    const orderId = orderCurrent?.id ?? null;
+    if (!orderId) {
+      return message.error("No hay orden seleccionada.");
+    }
     const targetIds = discountTargetRow.mainItemId
       ? [discountTargetRow.mainItemId]
       : discountTargetRow.allItemIds;
@@ -432,72 +502,168 @@ const ConsultarItemModal: React.FC<Props> = ({
     if (!Number.isFinite(Number(discountValue)) || Number(discountValue) < 0) {
       return message.warning("Ingresa un descuento válido.");
     }
+    if (!discountManagerPassword) {
+      return message.warning("Ingresa la contraseña del administrador.");
+    }
 
     try {
       setLoading(true);
-      for (const id of targetIds) {
-        const it = items.find((x) => x.id === id);
-        if (!it) continue;
-        const qty = Number(it.qty ?? 0);
-        const unit = Number(it.unitPrice ?? 0);
-        const gross = qty * unit;
-        if (gross <= 0) continue;
+      const approval = await requestApprovalToken(
+        "order.discount",
+        discountManagerPassword,
+        orderId,
+      );
 
-        let discountAmount = 0;
-        if (discountType === "percent") {
-          discountAmount = Math.round(gross * (Number(discountValue) / 100) * 100) / 100;
-        } else {
-          discountAmount = Math.min(Number(discountValue), gross);
-        }
+      const res = await apiOrder.post(
+        `/orders/${orderId}/items/discount`,
+        {
+          itemIds: targetIds,
+          discountType,
+          discountValue: Number(discountValue),
+          discountReason: discountReason?.trim() || null,
+          isCourtesy: discountIsCourtesy,
+        },
+        {
+          headers: { "X-Approval": `Bearer ${approval}` },
+          validateStatus: () => true,
+        },
+      );
 
-        const res = await apiOrder.put(
-          `/order-items/${id}`,
-          {
-            discountType,
-            discountValue: Number(discountValue),
-            discountAmount,
-            discountReason: discountReason?.trim() || null,
-            isCourtesy: discountIsCourtesy,
-          },
-          { validateStatus: () => true }
-        );
-
-        if (!res || res.status < 200 || res.status >= 300) {
-          const err =
-            (res?.data && res.data.error) ||
-            "No se pudo aplicar el descuento al producto";
-          throw new Error(err);
-        }
+      if (!res || res.status < 200 || res.status >= 300) {
+        const err =
+          (res?.data && res.data.error) ||
+          "No se pudo aplicar el descuento al producto";
+        throw new Error(err);
       }
 
-      setItems((prev) =>
-        prev.map((it) =>
-          it.id && targetIds.includes(it.id)
-            ? {
-                ...it,
-                discountType,
-                discountValue: Number(discountValue),
-                discountAmount:
-                  discountType === "percent"
-                    ? Math.round((Number(it.qty ?? 0) * Number(it.unitPrice ?? 0)) * (Number(discountValue) / 100) * 100) / 100
-                    : Math.min(Number(discountValue), Number(it.qty ?? 0) * Number(it.unitPrice ?? 0)),
-                discountReason: discountReason?.trim() || null,
-                isCourtesy: discountIsCourtesy,
-              }
-            : it
-        )
-      );
+      const updatedItems = Array.isArray(res.data?.items)
+        ? res.data.items
+        : null;
+
+      if (updatedItems && updatedItems.length) {
+        const updatedMap = new Map(
+          updatedItems.map((it: any) => [Number(it.id), it]),
+        );
+        setItems((prev) =>
+          prev.map((it) =>
+            it.id && updatedMap.has(Number(it.id))
+              ? {
+                  ...it,
+                  ...updatedMap.get(Number(it.id)),
+                }
+              : it,
+          ),
+        );
+      } else {
+        setItems((prev) =>
+          prev.map((it) =>
+            it.id && targetIds.includes(it.id)
+              ? {
+                  ...it,
+                  discountType,
+                  discountValue: Number(discountValue),
+                  discountAmount:
+                    discountType === "percent"
+                      ? Math.round(
+                          (Number(it.qty ?? 0) * Number(it.unitPrice ?? 0)) *
+                            (Number(discountValue) / 100) *
+                            100,
+                        ) / 100
+                      : Math.min(
+                          Number(discountValue),
+                          Number(it.qty ?? 0) * Number(it.unitPrice ?? 0),
+                        ),
+                  discountReason: discountReason?.trim() || null,
+                  isCourtesy: discountIsCourtesy,
+                }
+              : it,
+          ),
+        );
+      }
 
       message.success(
         discountIsCourtesy ? "Cortesía aplicada al producto" : "Descuento aplicado al producto"
       );
       setDiscountModalOpen(false);
       setDiscountTargetRow(null);
+      setDiscountManagerPassword("");
     } catch (err: any) {
       const msg =
         err?.response?.data?.error ||
         err?.message ||
         "No se pudo aplicar el descuento";
+      message.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function openCancelModal(row: Row) {
+    if (!row.allItemIds.length) {
+      return message.warning("Item sin id persistido todavía.");
+    }
+    setCancelTargetRow(row);
+    setCancelReason("");
+    setCancelManagerPassword("");
+    setCancelModalOpen(true);
+  }
+
+  async function applyCancelToRow() {
+    if (!cancelTargetRow) return;
+    const orderId = orderCurrent?.id ?? null;
+    if (!orderId) {
+      return message.error("No hay orden seleccionada.");
+    }
+    if (!cancelReason.trim()) {
+      return message.warning("Escribe el motivo de cancelación.");
+    }
+    if (!cancelManagerPassword) {
+      return message.warning("Ingresa la contraseña del administrador.");
+    }
+
+    try {
+      setLoading(true);
+      const approval = await requestApprovalToken(
+        "order.items.void",
+        cancelManagerPassword,
+        orderId,
+      );
+
+      const res = await apiOrder.post(
+        `/orders/${orderId}/items/void`,
+        {
+          itemIds: cancelTargetRow.allItemIds,
+          reason: cancelReason.trim(),
+        },
+        {
+          headers: { "X-Approval": `Bearer ${approval}` },
+          validateStatus: () => true,
+        },
+      );
+
+      if (!res || res.status < 200 || res.status >= 300) {
+        const err =
+          (res?.data && res.data.error) ||
+          "No se pudo cancelar el producto";
+        throw new Error(err);
+      }
+
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id && cancelTargetRow.allItemIds.includes(it.id)
+            ? { ...it, status: "cancelled" }
+            : it,
+        ),
+      );
+
+      message.success("Producto cancelado");
+      setCancelModalOpen(false);
+      setCancelTargetRow(null);
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.error ||
+        err?.message ||
+        "No se pudo cancelar el producto";
       message.error(msg);
     } finally {
       setLoading(false);
@@ -529,36 +695,6 @@ const ConsultarItemModal: React.FC<Props> = ({
         err?.response?.data?.error ||
         err?.message ||
         "No se pudo actualizar el estado";
-      message.error(msg);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function onCancelItem(row: Row) {
-    if (!row.allItemIds.length) {
-      return message.warning("Item sin id persistido todavía.");
-    }
-    try {
-      setLoading(true);
-      await apiOrder.post("/order-items/status", {
-        itemIds: row.allItemIds,
-        status: "cancelled",
-      });
-
-      setItems((prev) =>
-        prev.map((it) =>
-          it.id && row.allItemIds.includes(it.id)
-            ? { ...it, status: "cancelled" }
-            : it
-        )
-      );
-      message.success("Producto cancelado");
-    } catch (err: any) {
-      const msg =
-        err?.response?.data?.error ||
-        err?.message ||
-        "No se pudo cancelar el producto";
       message.error(msg);
     } finally {
       setLoading(false);
@@ -651,6 +787,33 @@ const ConsultarItemModal: React.FC<Props> = ({
       </Modal>
 
       <Modal
+        open={cancelModalOpen}
+        title="Cancelar producto"
+        onCancel={() => setCancelModalOpen(false)}
+        onOk={applyCancelToRow}
+        okText="Cancelar producto"
+        okButtonProps={{ danger: true }}
+        destroyOnHidden
+      >
+        <Form layout="vertical">
+          <Form.Item label="Motivo" required>
+            <Input.TextArea
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              rows={3}
+            />
+          </Form.Item>
+          <Form.Item label="Contraseña manager" required>
+            <Input.Password
+              value={cancelManagerPassword}
+              onChange={(e) => setCancelManagerPassword(e.target.value)}
+              placeholder="Contraseña de owner/admin/manager"
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
         open={discountModalOpen}
         title="Descuento por producto"
         onCancel={() => setDiscountModalOpen(false)}
@@ -695,6 +858,13 @@ const ConsultarItemModal: React.FC<Props> = ({
             >
               Es cortesía
             </Checkbox>
+          </Form.Item>
+          <Form.Item label="Contraseña manager" required>
+            <Input.Password
+              value={discountManagerPassword}
+              onChange={(e) => setDiscountManagerPassword(e.target.value)}
+              placeholder="Contraseña de owner/admin/manager"
+            />
           </Form.Item>
         </Form>
       </Modal>
