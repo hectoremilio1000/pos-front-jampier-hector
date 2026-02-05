@@ -15,8 +15,19 @@ export default function RequireSubscription({
 }: {
   children: React.ReactNode;
 }) {
-  const { logout, user } = useAuth();
+  const { logout, user, token, loading: authLoading } = useAuth();
   const { loading, subscription, error, refresh } = useSubscription();
+
+  if (authLoading) {
+    return (
+      <Spin tip="Cargando sesión..." spinning>
+        <div style={{ height: "60vh" }} />
+      </Spin>
+    );
+  }
+
+  if (!token) return <>{children}</>;
+
   const location = useLocation();
 
   if (user?.role?.code === "superadmin") {

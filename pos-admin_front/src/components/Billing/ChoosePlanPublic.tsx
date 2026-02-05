@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Button, Card, message, Tag } from "antd";
 
-import { useAuth } from "@/components/Auth/AuthContext";
 import apiCenter from "../apis/apiCenter";
+import { useParams } from "react-router-dom";
 
 type PlanPrice = {
   id: number;
@@ -32,11 +32,11 @@ function humanize(interval: PlanPrice) {
   return n === 1 ? s : `${n} ${p}`;
 }
 
-export default function ChoosePlan() {
+export default function ChoosePlanPublic() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(false);
-  const { user } = useAuth();
-  const restaurant = user?.restaurant;
+
+  const { restaurantId } = useParams();
 
   useEffect(() => {
     apiCenter
@@ -46,14 +46,16 @@ export default function ChoosePlan() {
   }, []);
 
   const buy = async (price: PlanPrice) => {
-    if (!restaurant?.name || !user?.email) {
-      return message.error("Datos de usuario/restaurante incompletos");
+    if (!restaurantId) {
+      return message.error(
+        "No tienes acceso a este link, contacta al administrador",
+      );
     }
     try {
       setLoading(true);
-      const { data } = await apiCenter.post("/subscriptions/checkout", {
+      const { data } = await apiCenter.post("/subscriptions/checkout_public", {
         planPriceId: price.id,
-        restaurantId: restaurant.id,
+        restaurantId: restaurantId,
       });
       window.location.href = data.url;
     } catch (e) {

@@ -8,6 +8,7 @@ import {
   Dropdown,
   Form,
   Input,
+  InputNumber,
   Modal,
   Select,
   Space,
@@ -22,13 +23,14 @@ import apiCenter from "@/components/apis/apiCenter";
 import ManualSubscriptionModal from "@/components/ManualSubscriptionModal";
 import SubscriptionEditModal from "@/components/SubscriptionEditModal";
 import GenerateNoteModal from "@/components/GenerateNoteModal";
-import PayModal from "@/components/PayModal";
+
 import PaymentsDrawer from "@/components/PaymentsDrawer";
 import type { InvoiceRow } from "@/pages/Invoices/InvoicesTable";
 import type { SubscriptionRow } from "@/types/billing";
+import { transmit } from "@/lib/transmit";
 
 const { RangePicker } = DatePicker;
-
+const { Text } = Typography;
 const formatInterval = (interval?: string | null, count?: number | null) => {
   if (!interval) return "-";
   const n = Number(count || 1);
@@ -65,6 +67,7 @@ export default function Subscriptions() {
       { status: "paid" | "pending" | "overdue"; invoice: InvoiceRow | null }
     >
   >({});
+  const [newPayOpen, setNewPayOpen] = useState(false);
 
   // filtros
   const [form] = Form.useForm<{
@@ -76,34 +79,71 @@ export default function Subscriptions() {
   const paymentFilter = Form.useWatch("paymentStatus", form);
 
   // drawer de pagos
+  // Drawer único: Nota + Pagos (1:1)
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerLoading, setDrawerLoading] = useState(false);
-  const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
-  const [invoiceSummaries, setInvoiceSummaries] = useState<
-    Record<number, { paid: number; balance: number }>
-  >({});
-  const [subPaymentsOpen, setSubPaymentsOpen] = useState(false);
-  const [subPaymentsLoading, setSubPaymentsLoading] = useState(false);
-  const [subPaymentsRows, setSubPaymentsRows] = useState<
-    Array<{
-      id: string;
-      invoiceId: number;
-      period: string;
-      invoiceAmount: number;
-      paidAt?: string | null;
-      method?: string;
-      amount: number;
-      status: string;
-      reference?: string | null;
-    }>
-  >([]);
+
   const [activeSub, setActiveSub] = useState<SubscriptionRow | null>(null);
+  const [activeInvoice, setActiveInvoice] = useState<InvoiceRow | null>(null);
+
+  const [invoicePaid, setInvoicePaid] = useState(0);
+  const [invoiceBalance, setInvoiceBalance] = useState(0);
+
+  type PaymentRow = {
+    id: number;
+    invoiceId: number;
+    paidAt?: string | null;
+    method?: string | null;
+    amount: number;
+    status: string;
+    reference?: string | null;
+    checkoutUrl?: string | null; // ✅ nuevo
+  };
+
+  const [payments, setPayments] = useState<PaymentRow[]>([]);
+
+  // modal detalle pago
+  const [paymentDetailOpen, setPaymentDetailOpen] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState<PaymentRow | null>(
+    null,
+  );
+
   // const [cfdiLoading, setCfdiLoading] = useState(false);
   const [noteModalOpen, setNoteModalOpen] = useState(false);
-  const [payInvoice, setPayInvoice] = useState<InvoiceRow | null>(null);
   const [paymentsInvoice, setPaymentsInvoice] = useState<InvoiceRow | null>(
     null,
   );
+  // modal editar suscripción
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingSub, setEditingSub] = useState<SubscriptionRow | null>(null);
+
+  const hasBlockingStripePending = useMemo(() => {
+    if (!activeInvoice) return false;
+    const due = Number(activeInvoice.amountDue ?? 0);
+
+    // Suma de pagos ya pagados (por seguridad, usa invoicePaid que ya viene calculado)
+    const balance = Number(invoiceBalance ?? Math.max(0, due - invoicePaid));
+
+    // Si no hay saldo, no bloquea (ya está pagado)
+    if (balance <= 0) return false;
+
+    // Buscar pagos stripe pendientes cuyo monto cubre el saldo COMPLETO
+    const blockers = payments.filter(
+      (p) =>
+        p.method === "stripe" &&
+        p.status === "pending" &&
+        Number(p.amount ?? 0) >= balance,
+    );
+
+    return blockers.length > 0;
+  }, [payments, activeInvoice, invoiceBalance, invoicePaid]);
+  const canCreateNewPayment =
+    !!activeInvoice &&
+    invoiceBalance > 0 &&
+    !hasBlockingStripePending &&
+    activeInvoice.status !== "paid" &&
+    activeInvoice.status !== "void";
+
   const periodLabel = (start?: string | null, end?: string | null) => {
     if (!start || !end) return "—";
     const fmt = new Intl.DateTimeFormat("es-MX", {
@@ -124,12 +164,7 @@ export default function Subscriptions() {
           year: "2-digit",
         })
       : "-";
-  const { Text } = Typography;
-  // modal editar suscripción
-  const [editOpen, setEditOpen] = useState(false);
-  const [editingSub, setEditingSub] = useState<SubscriptionRow | null>(null);
-  // modal cobrar nota
-  const [payModalOpen, setPayModalOpen] = useState(false);
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -234,89 +269,90 @@ export default function Subscriptions() {
     setActiveSub(sub);
     setDrawerOpen(true);
     setDrawerLoading(true);
+    setActiveInvoice(null);
+    setPayments([]);
+    setInvoicePaid(0);
+    setInvoiceBalance(0);
+
     try {
+      // 1) Traer invoice(s) por subscriptionId y quedarnos con el más reciente
       const params = new URLSearchParams();
       if (sub.id) params.set("subscriptionId", String(sub.id));
       if (sub.restaurantId)
         params.set("restaurantId", String(sub.restaurantId));
+
       const { data } = await apiCenter.get(`/invoices?${params.toString()}`);
       const norm: InvoiceRow[] = normalizeInvoices(data);
-      setInvoices(norm);
-      const summaries = await Promise.all(
-        norm.map(async (inv) => {
-          try {
-            const { data: payData } = await apiCenter.get(
-              `/invoices/${inv.id}/payments`,
-            );
-            const paid = Number(payData?.invoice?.paid ?? 0);
-            const balance = Number(payData?.invoice?.balance ?? 0);
-            return [inv.id, { paid, balance }];
-          } catch (e) {
-            console.error(e);
-            return [
-              inv.id,
-              {
-                paid: 0,
-                balance: Number(inv.amountDue ?? 0),
-              },
-            ];
-          }
-        }),
+      const inv = pickLatestInvoice(norm);
+
+      setActiveInvoice(inv ?? null);
+
+      if (!inv?.id) return;
+
+      // 2) Traer pagos de ese invoice
+      const { data: payData } = await apiCenter.get(
+        `/invoices/${inv.id}/payments`,
       );
-      setInvoiceSummaries(Object.fromEntries(summaries));
+
+      const items = Array.isArray(payData?.items) ? payData.items : [];
+      const paid = Number(payData?.invoice?.paid ?? 0);
+      const balance = Number(
+        payData?.invoice?.balance ??
+          Math.max(0, Number(inv.amountDue ?? 0) - paid),
+      );
+
+      setInvoicePaid(paid);
+      setInvoiceBalance(balance);
+
+      setPayments(
+        items.map((p: any) => ({
+          id: Number(p.id),
+          invoiceId: Number(inv.id),
+          paidAt: p.paidAt ?? null,
+          method: p.method ?? null,
+          amount: Number(p.amount ?? 0),
+          status: String(p.status ?? ""),
+          reference: p.reference ?? null,
+          checkoutUrl: p.checkoutUrl ?? p.checkout_url ?? null,
+        })),
+      );
     } catch (e) {
       console.error(e);
-      message.error("No se pudieron cargar las notas");
+      message.error("No se pudieron cargar nota/pagos");
     } finally {
       setDrawerLoading(false);
     }
   };
+  useEffect(() => {
+    if (!drawerOpen) return;
+    if (!activeSub?.id) return;
 
-  const subscriptionTotals = useMemo(() => {
-    const total = invoices.reduce(
-      (acc, inv) => acc + Number(inv.amountDue ?? 0),
-      0,
-    );
-    const paid = invoices.reduce(
-      (acc, inv) => acc + Number(invoiceSummaries[inv.id]?.paid ?? 0),
-      0,
-    );
-    const balance = Math.max(0, +(total - paid).toFixed(2));
-    return { total, paid, balance };
-  }, [invoices, invoiceSummaries]);
+    const sub = transmit.subscription(`billing:subscription:${activeSub.id}`);
 
-  const openSubscriptionPayments = async () => {
-    if (!invoices.length) return;
-    setSubPaymentsOpen(true);
-    setSubPaymentsLoading(true);
-    try {
-      const rows = await Promise.all(
-        invoices.map(async (inv) => {
-          const { data: payData } = await apiCenter.get(
-            `/invoices/${inv.id}/payments`,
-          );
-          const items = Array.isArray(payData?.items) ? payData.items : [];
-          return items.map((p: any) => ({
-            id: `${inv.id}-${p.id}`,
-            invoiceId: inv.id,
-            period: periodLabel(inv.periodStart, inv.periodEnd),
-            invoiceAmount: Number(inv.amountDue ?? 0),
-            paidAt: p.paidAt ?? null,
-            method: p.method,
-            amount: Number(p.amount ?? 0),
-            status: String(p.status ?? ""),
-            reference: p.reference ?? null,
-          }));
-        }),
-      );
-      setSubPaymentsRows(rows.flat());
-    } catch (e) {
-      console.error(e);
-      message.error("No se pudieron cargar los pagos");
-    } finally {
-      setSubPaymentsLoading(false);
-    }
-  };
+    const off = sub.onMessage(async (msg: any) => {
+      if (!msg || typeof msg !== "object") return;
+      if (msg.type !== "payment_confirmed") return;
+
+      // 1) refresca tabla (status pago de suscripción)
+      await fetchData();
+
+      // 2) refresca drawer si corresponde
+      if (
+        activeSub?.id &&
+        Number(msg.subscriptionId) === Number(activeSub.id)
+      ) {
+        await openPayments(activeSub);
+      }
+    });
+
+    sub.create().catch((e: any) => console.error("[transmit] create error", e));
+
+    return () => {
+      off?.();
+      sub.delete().catch(() => {});
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawerOpen, activeSub?.id]);
 
   const handleEmitCfdi = (invoice: InvoiceRow) => {
     if (!activeSub) return;
@@ -463,7 +499,6 @@ export default function Subscriptions() {
       width: 170,
       render: (_, r) => {
         const inv = paymentBySub[r.id]?.invoice;
-        const canPay = !!inv && paymentBySub[r.id]?.status !== "paid";
         const items = [
           {
             key: "notas",
@@ -490,18 +525,10 @@ export default function Subscriptions() {
         ];
         return (
           <Space>
-            <Button
-              size="small"
-              type="primary"
-              disabled={!canPay}
-              onClick={() => {
-                setActiveSub(r);
-                setPayInvoice(inv ?? null);
-                setPayModalOpen(true);
-              }}
-            >
-              Registrar pago
+            <Button size="small" type="primary" onClick={() => openPayments(r)}>
+              Ver pagos
             </Button>
+
             <Dropdown menu={{ items }} trigger={["click"]}>
               <Button size="small">Más ▾</Button>
             </Dropdown>
@@ -612,107 +639,206 @@ export default function Subscriptions() {
       <Drawer
         title={
           activeSub
-            ? `Notas — Sub #${activeSub.id} (${activeSub.restaurant?.name ?? activeSub.restaurantId})`
-            : "Notas"
+            ? `Detalle — Sub #${activeSub.id} (${activeSub.restaurant?.name ?? activeSub.restaurantId})`
+            : "Detalle"
         }
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         width="80vw"
       >
         <Space style={{ marginBottom: 12 }} wrap>
-          <Text strong>Total facturado:</Text>
-          <Text>{money(subscriptionTotals.total, invoices[0]?.currency)}</Text>
-          <Text type="secondary">Pagado:</Text>
-          <Text>{money(subscriptionTotals.paid, invoices[0]?.currency)}</Text>
-          <Text type="warning">Saldo:</Text>
-          <Text>
-            {money(subscriptionTotals.balance, invoices[0]?.currency)}
-          </Text>
+          <h1>Nota:</h1>
+          <h1>{activeInvoice ? `#${activeInvoice.id}` : "—"}</h1>
+
+          <h1>Total:</h1>
+          <h1>
+            {money(activeInvoice?.amountDue ?? 0, activeInvoice?.currency)}
+          </h1>
+
+          <h1>Pagado:</h1>
+          <h1>{money(invoicePaid, activeInvoice?.currency)}</h1>
+
+          <h1>Saldo:</h1>
+          <h1>{money(invoiceBalance, activeInvoice?.currency)}</h1>
+        </Space>
+
+        <Card size="small" style={{ marginBottom: 12 }}>
+          <Space wrap>
+            <h1>Periodo:</h1>
+            <h1>
+              {activeInvoice
+                ? periodLabel(
+                    activeInvoice.periodStart,
+                    activeInvoice.periodEnd,
+                  )
+                : "—"}
+            </h1>
+
+            <h1>Estado:</h1>
+            <Tag
+              color={
+                activeInvoice?.status === "paid"
+                  ? "green"
+                  : activeInvoice?.status === "pending"
+                    ? "blue"
+                    : activeInvoice?.status === "past_due"
+                      ? "red"
+                      : "default"
+              }
+            >
+              {activeInvoice?.status
+                ? ((
+                    {
+                      paid: "Pagada",
+                      pending: "Pendiente",
+                      past_due: "Vencida",
+                      void: "Anulada",
+                    } as any
+                  )[activeInvoice.status] ?? activeInvoice.status)
+                : "—"}
+            </Tag>
+
+            <h1>Vence:</h1>
+            <h1>
+              {activeInvoice?.dueAt
+                ? new Date(activeInvoice.dueAt).toLocaleDateString("es-MX")
+                : "—"}
+            </h1>
+          </Space>
+        </Card>
+        <Space
+          style={{
+            width: "100%",
+            justifyContent: "space-between",
+            marginBottom: 8,
+          }}
+        >
           <Button
-            size="small"
-            onClick={openSubscriptionPayments}
-            disabled={!invoices.length}
+            type="primary"
+            disabled={!canCreateNewPayment}
+            onClick={() => setNewPayOpen(true)}
           >
-            Pagos de suscripción
+            Nuevo pago
           </Button>
         </Space>
-        <Table<InvoiceRow>
+        {!canCreateNewPayment && (
+          <div style={{ marginBottom: 8 }}>
+            <Text type="secondary">
+              {invoiceBalance <= 0
+                ? "Esta nota ya está cubierta."
+                : hasBlockingStripePending
+                  ? "Ya existe un link de Stripe pendiente que cubre el saldo. Espera a que se pague o cámbialo a efectivo."
+                  : "No disponible."}
+            </Text>
+          </div>
+        )}
+
+        <Table
           rowKey="id"
           loading={drawerLoading}
-          dataSource={invoices}
+          dataSource={payments}
+          size="small"
           columns={[
-            { title: "ID", dataIndex: "id" },
             {
-              title: "Periodo",
-              render: (_, r) => periodLabel(r.periodStart, r.periodEnd),
+              title: "Fecha",
+              dataIndex: "paidAt",
+              width: 180,
+              render: (v?: string) =>
+                v ? new Date(v).toLocaleString("es-MX") : "—",
+            },
+            {
+              title: "Método",
+              dataIndex: "method",
+              width: 140,
+              render: (m: string) => m || "—",
             },
             {
               title: "Importe",
-              render: (_, r) =>
-                `$${Number(r.amountDue ?? 0).toFixed(2)} ${r.currency}`,
+              dataIndex: "amount",
+              width: 140,
+              render: (v: number) => `$${Number(v ?? 0).toFixed(2)}`,
             },
             {
               title: "Estado",
               dataIndex: "status",
-              render: (v: InvoiceRow["status"]) => (
+              width: 120,
+              render: (s: string) => (
                 <Tag
                   color={
-                    v === "paid"
+                    s === "succeeded"
                       ? "green"
-                      : v === "pending"
+                      : s === "pending"
                         ? "blue"
-                        : v === "past_due"
-                          ? "red"
-                          : "default"
+                        : "red"
                   }
                 >
-                  {{
-                    paid: "Pagada",
-                    pending: "Pendiente",
-                    past_due: "Vencida",
-                    void: "Anulada",
-                  }[v] ?? v}
+                  {s}
                 </Tag>
               ),
             },
             {
-              title: "Vence",
-              dataIndex: "dueAt",
-              render: (v) => (v ? new Date(v).toLocaleDateString() : "-"),
-            },
-            {
-              title: "Pagado",
-              render: (_, r) =>
-                money(invoiceSummaries[r.id]?.paid ?? 0, r.currency),
-            },
-            {
-              title: "Saldo",
-              render: (_, r) =>
-                money(
-                  invoiceSummaries[r.id]?.balance ?? r.amountDue,
-                  r.currency,
-                ),
+              title: "Referencia",
+              dataIndex: "reference",
+              ellipsis: true,
             },
             {
               title: "Acciones",
-              render: (_, row) => (
+              width: 140,
+              render: (_: any, row: any) => (
                 <Space>
                   <Button
                     size="small"
-                    disabled={row.status === "paid" || row.status === "void"}
                     onClick={() => {
-                      setPayInvoice(row);
-                      setPayModalOpen(true);
+                      setSelectedPayment(row);
+                      setPaymentDetailOpen(true);
                     }}
                   >
-                    Cobrar
+                    Ver
                   </Button>
+
+                  {row?.method === "stripe" &&
+                    row?.status === "pending" &&
+                    row?.checkoutUrl && (
+                      <Button
+                        size="small"
+                        onClick={async () => {
+                          await navigator.clipboard.writeText(row.checkoutUrl);
+                          message.success("Link copiado");
+                        }}
+                      >
+                        Copiar link
+                      </Button>
+                    )}
                 </Space>
               ),
             },
           ]}
         />
+
+        {/* Modal detalle del pago */}
+        <PaymentDetailModal
+          open={paymentDetailOpen}
+          payment={selectedPayment}
+          currency={activeInvoice?.currency ?? "MXN"}
+          onClose={() => {
+            setPaymentDetailOpen(false);
+            setSelectedPayment(null);
+          }}
+          onUpdated={async () => {
+            if (activeSub) await openPayments(activeSub);
+          }}
+        />
+        <NewPaymentModal
+          open={newPayOpen}
+          invoice={activeInvoice}
+          balance={invoiceBalance}
+          onClose={() => setNewPayOpen(false)}
+          onCreated={async () => {
+            if (activeSub) await openPayments(activeSub);
+          }}
+        />
       </Drawer>
+
       {/* Modal Editar suscripción */}
       <SubscriptionEditModal
         open={editOpen}
@@ -721,20 +847,6 @@ export default function Subscriptions() {
         onSaved={async () => {
           setEditOpen(false);
           await fetchData();
-        }}
-      />
-
-      {/* Cobrar nota */}
-      <PayModal
-        open={payModalOpen}
-        invoice={payInvoice}
-        onClose={() => setPayModalOpen(false)}
-        onPaid={async () => {
-          setPayModalOpen(false);
-          await fetchData();
-          if (drawerOpen && activeSub) {
-            await openPayments(activeSub);
-          }
         }}
       />
 
@@ -749,82 +861,6 @@ export default function Subscriptions() {
         }}
       />
 
-      <Drawer
-        title={
-          activeSub
-            ? `Pagos — Sub #${activeSub.id} (${activeSub.restaurant?.name ?? activeSub.restaurantId})`
-            : "Pagos"
-        }
-        open={subPaymentsOpen}
-        onClose={() => setSubPaymentsOpen(false)}
-        width={800}
-      >
-        <Space direction="vertical" style={{ width: "100%" }}>
-          <div>
-            <Text strong>Total facturado:</Text>{" "}
-            {money(subscriptionTotals.total, invoices[0]?.currency)}
-            &nbsp;&nbsp;
-            <Text type="secondary">Pagado:</Text>{" "}
-            {money(subscriptionTotals.paid, invoices[0]?.currency)}
-            &nbsp;&nbsp;
-            <Text type="warning">Saldo:</Text>{" "}
-            {money(subscriptionTotals.balance, invoices[0]?.currency)}
-          </div>
-          <Table
-            rowKey="id"
-            loading={subPaymentsLoading}
-            dataSource={subPaymentsRows}
-            columns={[
-              {
-                title: "Factura",
-                dataIndex: "invoiceId",
-                width: 100,
-              },
-              {
-                title: "Periodo",
-                dataIndex: "period",
-                width: 160,
-              },
-              {
-                title: "Importe factura",
-                dataIndex: "invoiceAmount",
-                render: (v: number) => `$${Number(v).toFixed(2)}`,
-                width: 140,
-              },
-              {
-                title: "Fecha",
-                dataIndex: "paidAt",
-                render: (v?: string) =>
-                  v ? new Date(v).toLocaleString("es-MX") : "—",
-                width: 180,
-              },
-              {
-                title: "Método",
-                dataIndex: "method",
-                width: 140,
-                render: (m: string) => m || "—",
-              },
-              {
-                title: "Importe",
-                dataIndex: "amount",
-                render: (v: number) => `$${Number(v).toFixed(2)}`,
-                width: 120,
-              },
-              {
-                title: "Estado",
-                dataIndex: "status",
-                width: 120,
-              },
-              {
-                title: "Referencia",
-                dataIndex: "reference",
-                ellipsis: true,
-              },
-            ]}
-          />
-        </Space>
-      </Drawer>
-
       <GenerateNoteModal
         open={noteModalOpen}
         subscriptions={rows}
@@ -837,5 +873,361 @@ export default function Subscriptions() {
         }}
       />
     </Card>
+  );
+}
+
+function PaymentDetailModal({
+  open,
+  payment,
+  currency,
+  onClose,
+  onUpdated,
+}: {
+  open: boolean;
+  payment: any | null;
+  currency: string;
+  onClose: () => void;
+  onUpdated: () => Promise<void> | void;
+}) {
+  const [form] = Form.useForm();
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open || !payment) return;
+    form.resetFields();
+    form.setFieldsValue({
+      method: payment.method ?? "stripe",
+    });
+  }, [open, payment, form]);
+
+  if (!payment) return null;
+
+  const isPaid = payment.status === "succeeded";
+  const isStripe = (payment.method ?? "") === "stripe";
+
+  const checkoutUrl: string | null =
+    payment.checkoutUrl ?? payment.checkout_url ?? null;
+
+  const canShowCheckout =
+    isStripe && payment.status === "pending" && !!checkoutUrl;
+
+  const handleSave = async () => {
+    try {
+      const v = await form.validateFields();
+      setSaving(true);
+
+      // Ajusta si tu endpoint es otro:
+      await apiCenter.patch(`/invoice-payments/${payment.id}`, {
+        method: v.method,
+      });
+
+      message.success("Pago actualizado");
+      await onUpdated();
+      onClose();
+    } catch (e) {
+      console.error(e);
+      message.error("No se pudo actualizar el pago");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={`Pago #${payment.id}`}
+      open={open}
+      onCancel={onClose}
+      onOk={isPaid ? onClose : handleSave}
+      okText={isPaid ? "Cerrar" : "Guardar"}
+      confirmLoading={saving}
+    >
+      <Space direction="vertical" style={{ width: "100%" }} size={12}>
+        {/* Estado + importe */}
+        <Card size="small">
+          <Space wrap>
+            <Text type="secondary">Estado:</Text>
+            <Tag
+              color={
+                payment.status === "succeeded"
+                  ? "green"
+                  : payment.status === "pending"
+                    ? "blue"
+                    : "red"
+              }
+            >
+              {payment.status}
+            </Tag>
+
+            <Text type="secondary">Importe:</Text>
+            <Text strong>
+              ${Number(payment.amount ?? 0).toFixed(2)} {currency}
+            </Text>
+
+            <Text type="secondary">Fecha:</Text>
+            <Text>
+              {payment.paidAt
+                ? new Date(payment.paidAt).toLocaleString("es-MX")
+                : "—"}
+            </Text>
+          </Space>
+        </Card>
+
+        {/* Reference */}
+        <Card size="small" title="Referencia">
+          <div style={{ wordBreak: "break-all" }}>
+            {payment.reference ? (
+              <Text code>{payment.reference}</Text>
+            ) : (
+              <Text type="secondary">—</Text>
+            )}
+          </div>
+        </Card>
+
+        {/* Checkout URL */}
+        <Card size="small" title="Link de pago (Stripe)">
+          {canShowCheckout ? (
+            <>
+              <div style={{ wordBreak: "break-all" }}>
+                <Text code>{checkoutUrl}</Text>
+              </div>
+
+              <Space style={{ marginTop: 10 }}>
+                <Button
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(checkoutUrl!);
+                    message.success("Link copiado");
+                  }}
+                >
+                  Copiar link
+                </Button>
+                <Button
+                  type="primary"
+                  onClick={() =>
+                    window.open(checkoutUrl!, "_blank", "noopener,noreferrer")
+                  }
+                >
+                  Abrir
+                </Button>
+              </Space>
+
+              <div style={{ marginTop: 8 }}>
+                <Text type="secondary">
+                  Si el link expira, genera un nuevo pago desde “Cobrar”.
+                </Text>
+              </div>
+            </>
+          ) : (
+            <Text type="secondary">
+              {isStripe
+                ? "No hay link disponible (solo aplica cuando está pendiente)."
+                : "Este pago no es Stripe."}
+            </Text>
+          )}
+        </Card>
+
+        {/* Editar método (solo si NO está pagado) */}
+        <Card size="small" title="Editar método">
+          <Form form={form} layout="vertical">
+            <Form.Item
+              name="method"
+              label="Método"
+              rules={[{ required: true }]}
+            >
+              <Select
+                disabled={isPaid}
+                options={[
+                  { value: "stripe", label: "Stripe" },
+                  { value: "cash", label: "Efectivo" },
+                  { value: "transfer", label: "Transferencia" },
+                ]}
+              />
+            </Form.Item>
+          </Form>
+
+          {isPaid && (
+            <Text type="secondary">
+              Este pago ya está pagado; no se puede modificar el método.
+            </Text>
+          )}
+        </Card>
+      </Space>
+    </Modal>
+  );
+}
+function NewPaymentModal({
+  open,
+  invoice,
+  balance,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  invoice: InvoiceRow | null;
+  balance: number;
+  onClose: () => void;
+  onCreated: (created?: any) => Promise<void> | void;
+}) {
+  const [form] = Form.useForm();
+  const [saving, setSaving] = useState(false);
+
+  const provider = Form.useWatch("provider", form);
+
+  useEffect(() => {
+    if (!open) return;
+    form.resetFields();
+    form.setFieldsValue({
+      provider: "cash",
+      amount: Number(balance ?? 0),
+      paymentStatus: "succeeded",
+    });
+  }, [open, balance, form]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (provider === "stripe") {
+      form.setFieldsValue({ paymentStatus: "pending" });
+    }
+  }, [provider, open, form]);
+
+  if (!invoice) return null;
+
+  const handleOk = async () => {
+    const v = await form.validateFields();
+    const amount = Number(v.amount ?? 0);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      message.error("El monto debe ser mayor a 0.");
+      return;
+    }
+    if (amount > balance) {
+      message.error("El monto no puede ser mayor al saldo.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      // 🚨 Ajusta al endpoint real que estés usando para crear un payment sobre un invoice:
+      // Ideal: POST /invoices/:id/payments
+      setSaving(true);
+      try {
+        if (v.provider === "stripe") {
+          // ✅ Stripe: pedir link al backend (y backend crea invoice_payment pending)
+          const { data } = await apiCenter.post(
+            `/invoices/${invoice.id}/payments/checkout`,
+            {
+              provider: "stripe",
+              amount, // ✅ este amount es el parcial
+              // opcional si tu backend lo usa:
+              // successUrl: import.meta.env.VITE_PUBLIC_CHECKOUT_SUCCESS_URL,
+              // cancelUrl: import.meta.env.VITE_PUBLIC_CHECKOUT_CANCEL_URL,
+            },
+          );
+
+          const checkoutUrl =
+            data?.checkoutUrl ??
+            data?.url ??
+            data?.payment?.checkoutUrl ??
+            null;
+
+          if (checkoutUrl) {
+            await navigator.clipboard.writeText(String(checkoutUrl));
+            message.success("Pago creado. Link copiado.");
+          } else {
+            message.error("No se generó link.");
+          }
+
+          await onCreated(data);
+          onClose();
+          return;
+        }
+
+        // ✅ Offline: register
+        const { data } = await apiCenter.post(
+          `/invoices/${invoice.id}/payments/register`,
+          {
+            method: v.provider, // cash | transfer
+            amount,
+            reference: null,
+            notes: null,
+          },
+        );
+
+        message.success("Pago registrado.");
+        await onCreated(data);
+        onClose();
+      } catch (e) {
+        console.error(e);
+        message.error("No se pudo crear el pago");
+      } finally {
+        setSaving(false);
+      }
+    } catch (e) {
+      console.error(e);
+      message.error("No se pudo crear el pago");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={`Nuevo pago — Nota #${invoice.id}`}
+      open={open}
+      onCancel={onClose}
+      onOk={handleOk}
+      okText="Crear pago"
+      confirmLoading={saving}
+    >
+      <Form form={form} layout="vertical">
+        <Form.Item label="Saldo actual">
+          <Text strong>
+            ${Number(balance ?? 0).toFixed(2)} {invoice.currency ?? "MXN"}
+          </Text>
+        </Form.Item>
+
+        <Form.Item
+          name="amount"
+          label="Monto a cobrar ahora"
+          rules={[{ required: true, message: "Ingresa el monto" }]}
+        >
+          <InputNumber style={{ width: "100%" }} min={0} step={10} />
+        </Form.Item>
+
+        <Form.Item
+          name="provider"
+          label="Método"
+          rules={[{ required: true, message: "Selecciona método" }]}
+        >
+          <Select
+            options={[
+              { value: "cash", label: "Efectivo" },
+              { value: "transfer", label: "Transferencia" },
+              { value: "stripe", label: "Stripe (link)" },
+            ]}
+          />
+        </Form.Item>
+
+        {provider !== "stripe" ? (
+          <Form.Item
+            name="paymentStatus"
+            label="Estado"
+            rules={[{ required: true }]}
+          >
+            <Select
+              options={[
+                { value: "succeeded", label: "Pagado" },
+                { value: "pending", label: "Pendiente" },
+                { value: "failed", label: "Fallido" },
+              ]}
+            />
+          </Form.Item>
+        ) : (
+          <Text type="secondary">
+            Stripe se registra como <Text strong>pendiente</Text> y se confirma
+            con webhook.
+          </Text>
+        )}
+      </Form>
+    </Modal>
   );
 }
