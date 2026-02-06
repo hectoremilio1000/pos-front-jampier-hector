@@ -1287,12 +1287,19 @@ const ControlComandero: React.FC = () => {
     };
   }, [invoiceItems]);
 
-  const invoiceOrigin =
-    typeof window !== "undefined" ? window.location.origin : "";
+  const invoiceOriginRaw = import.meta.env.VITE_FRONT_FACTURAS_URL;
+  const invoiceOrigin = (invoiceOriginRaw ?? "").replace(/\/+$/, "");
   const invoiceRestaurantId = invoicePreviewOrder?.restaurantId ?? rid;
   const invoiceUrl =
     invoiceRestaurantId && invoiceOrigin
-      ? `${invoiceOrigin}/invoices/generate/${invoiceRestaurantId}`
+      ? `${invoiceOrigin}/${invoiceRestaurantId}/facturar`
+      : null;
+  const receiptBaseOrigin =
+    typeof window !== "undefined" ? window.location.origin : "";
+  const receiptOrderId = invoicePreviewOrder?.id;
+  const qrReceiptUrl =
+    receiptBaseOrigin && invoiceRestaurantId && receiptOrderId
+      ? `${receiptBaseOrigin}/${invoiceRestaurantId}/qrscan/${receiptOrderId}`
       : null;
 
   // ---------- NUEVO: UI para "No hay turno" ----------
@@ -2054,6 +2061,17 @@ const ControlComandero: React.FC = () => {
           <div className="space-y-4">
             <div className="grid grid-cols-1 lg:grid-cols-[3fr,2fr] gap-4">
               <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-4">
+                {qrReceiptUrl ? (
+                  <div className="flex flex-col items-center gap-1 mb-4">
+                    <QRCodeCanvas value={qrReceiptUrl} size={150} includeMargin />
+                    <div className="text-xs text-gray-500 text-center">
+                      Escanea para ver el ticket en QR
+                    </div>
+                    <div className="text-xs text-gray-500 text-center break-all">
+                      {qrReceiptUrl}
+                    </div>
+                  </div>
+                ) : null}
                 <div className="text-center text-lg font-semibold">
                   Ticket de orden
                 </div>
