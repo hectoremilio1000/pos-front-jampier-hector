@@ -62,10 +62,11 @@ export function SubscriptionProvider({
       setLoading(false);
       return;
     }
+
     setLoading(true);
     try {
       const { data } = await apiCenter.get(
-        `/subscriptions/current?restaurantId=${restaurantId}`
+        `/subscriptions/current?restaurantId=${restaurantId}`,
       );
       setSubscription(data ?? null);
       setError(null);
@@ -108,7 +109,7 @@ export function SubscriptionProvider({
       error,
       refresh: fetchCurrent,
     }),
-    [combinedLoading, subscription, error]
+    [combinedLoading, subscription, error],
   );
 
   return (

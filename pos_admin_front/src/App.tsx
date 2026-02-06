@@ -46,6 +46,9 @@ import InventoryBOMPage from "./pages/Inventarios/BOM/BOMPage";
 import InventoryWastesPage from "./pages/Inventarios/Wastes/WastesPage";
 import InventoryMovementsPage from "./pages/Inventarios/Movements/MovementsPage";
 import InventoryConsumptionPage from "./pages/Inventarios/Consumption/ConsumptionPage";
+import ChoosePlan from "./components/Billing/ChoosePlan";
+import ChoosePlanPublic from "./components/Billing/ChoosePlanPublic";
+import CheckoutSuccessPublic from "./pages/Billing/CheckoutSuccessPublic";
 
 function App() {
   return (
@@ -53,16 +56,27 @@ function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginScreen />} />
+        {/* este modulo es con authenticacion del usuario por contexto del authprovider cuando inicia session */}
+        <Route path="/choose_plan" element={<ChoosePlan />} />
+        {/* este modulo sin authenticacion y es necesario el restaurantId*/}
+        <Route
+          path="/r/:restaurantId/choose_plan"
+          element={<ChoosePlanPublic />}
+        />
 
         <Route
+          path="/public/checkout/success"
+          element={<CheckoutSuccessPublic />}
+        />
+        <Route
           element={
-            <SubscriptionProvider>
-              <RequireSubscription>
-                <ProtectedRoute>
+            <ProtectedRoute>
+              <SubscriptionProvider>
+                <RequireSubscription>
                   <PrivateLayout />
-                </ProtectedRoute>
-              </RequireSubscription>
-            </SubscriptionProvider>
+                </RequireSubscription>
+              </SubscriptionProvider>
+            </ProtectedRoute>
           }
         >
           {/* 👇 al entrar al layout, redirige a /dashboard */}

@@ -1004,7 +1004,7 @@ const ControlComandero: React.FC = () => {
     refreshDetalle().catch(() => {});
     const timer = setInterval(() => {
       refreshDetalle().catch(() => {});
-    }, 2000);
+    }, 4000);
 
     return () => {
       alive = false;
@@ -1066,62 +1066,20 @@ const ControlComandero: React.FC = () => {
       if (msg.type === "order_changed") {
         const id = Number(msg.orderId);
         if (!Number.isFinite(id)) return;
+
+        const updated = await fetchCheques();
+        if (!updated) return;
+
+        const found = updated.find((o: any) => Number(o.id) === id);
+        if (!found) return;
+
         const currentId =
           orderIdCurrentRef.current ?? Number(orderCurrentIdRef.current || 0);
-        const itemsRemoved = Array.isArray(msg.itemsRemoved)
-          ? msg.itemsRemoved.map((it: any) => Number(it)).filter(Number.isFinite)
-          : [];
-        const totals = msg.totals && typeof msg.totals === "object" ? msg.totals : null;
-
-        if (itemsRemoved.length && currentId === id) {
-          const removedSet = new Set(itemsRemoved);
-          setDetalle_cheque_consulta((prev) =>
-            Array.isArray(prev)
-              ? prev.filter((it: any) => !removedSet.has(Number(it?.id)))
-              : prev,
-          );
-          setOrderCurrent((prev) => {
-            if (!prev) return prev;
-            const nextItems = Array.isArray(prev.items)
-              ? prev.items.filter((it: any) => !removedSet.has(Number(it?.id)))
-              : prev.items;
-            const next = { ...prev, items: nextItems };
-            if (totals) {
-              if (totals.subtotal != null) (next as any).subtotal = totals.subtotal;
-              if (totals.tax != null) (next as any).tax = totals.tax;
-              if (totals.total != null) (next as any).total = totals.total;
-            }
-            if (msg.status) (next as any).status = msg.status;
-            return next;
-          });
+        if (currentId === id) {
+          setOrderCurrent(found);
+          setDetalle_cheque_consulta(found.items ?? []);
         }
-
-        if (itemsRemoved.length) {
-          setCheques((prev) =>
-            prev.map((o: any) => {
-              if (Number(o.id) !== id) return o;
-              const next = { ...o };
-              if (totals) {
-                if (totals.subtotal != null) (next as any).subtotal = totals.subtotal;
-                if (totals.tax != null) (next as any).tax = totals.tax;
-                if (totals.total != null) (next as any).total = totals.total;
-              }
-              if (msg.status) (next as any).status = msg.status;
-              return next;
-            }),
-          );
-        }
-
-        void fetchCheques().then((updated) => {
-          if (!updated) return;
-          const found = updated.find((o: any) => Number(o.id) === id);
-          if (!found) return;
-          if (currentId === id) {
-            setOrderCurrent(found);
-            setDetalle_cheque_consulta(found.items ?? []);
-          }
-          bumpTables();
-        });
+        bumpTables();
       }
 
       if (msg.type === "table_status_changed") {
@@ -1329,12 +1287,19 @@ const ControlComandero: React.FC = () => {
     };
   }, [invoiceItems]);
 
-  const invoiceOrigin =
-    typeof window !== "undefined" ? window.location.origin : "";
+  const invoiceOriginRaw = import.meta.env.VITE_FRONT_FACTURAS_URL;
+  const invoiceOrigin = (invoiceOriginRaw ?? "").replace(/\/+$/, "");
   const invoiceRestaurantId = invoicePreviewOrder?.restaurantId ?? rid;
   const invoiceUrl =
     invoiceRestaurantId && invoiceOrigin
-      ? `${invoiceOrigin}/invoices/generate/${invoiceRestaurantId}`
+      ? `${invoiceOrigin}/${invoiceRestaurantId}/facturar`
+      : null;
+  const receiptBaseOrigin =
+    typeof window !== "undefined" ? window.location.origin : "";
+  const receiptOrderId = invoicePreviewOrder?.id;
+  const qrReceiptUrl =
+    receiptBaseOrigin && invoiceRestaurantId && receiptOrderId
+      ? `${receiptBaseOrigin}/${invoiceRestaurantId}/qrscan/${receiptOrderId}`
       : null;
 
   // ---------- NUEVO: UI para "No hay turno" ----------
@@ -2096,6 +2061,17 @@ const ControlComandero: React.FC = () => {
           <div className="space-y-4">
             <div className="grid grid-cols-1 lg:grid-cols-[3fr,2fr] gap-4">
               <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-4">
+                {qrReceiptUrl ? (
+                  <div className="flex flex-col items-center gap-1 mb-4">
+                    <QRCodeCanvas value={qrReceiptUrl} size={150} includeMargin />
+                    <div className="text-xs text-gray-500 text-center">
+                      Escanea para ver el ticket en QR
+                    </div>
+                    <div className="text-xs text-gray-500 text-center break-all">
+                      {qrReceiptUrl}
+                    </div>
+                  </div>
+                ) : null}
                 <div className="text-center text-lg font-semibold">
                   Ticket de orden
                 </div>
