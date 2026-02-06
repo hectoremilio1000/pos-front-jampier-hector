@@ -72,7 +72,6 @@ export default function SubscriptionFormModal({
   const planPriceId = Form.useWatch("planPriceId", form);
   const provider = Form.useWatch("provider", form);
   const paymentType = Form.useWatch("paymentType", form);
-  const amountOverride = Form.useWatch("amountOverride", form);
 
   const selectedPlan = useMemo(() => {
     return planPrices.find((p) => p.value === planPriceId) ?? null;
