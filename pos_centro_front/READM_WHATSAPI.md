@@ -176,4 +176,4 @@ iniciales que más valor crean en restaurantes.
 - Registrar movimiento de caja (IN/OUT) — valida rol + PIN; usa /cash-movements.
 - Emitir factura de una venta — valida RFC + PIN; usa /orders/:id/invoice.
 - Anular ítems en comanda — requiere aprobación; usa /orders/:id/items/void.
-- Crear orden de compra (draft) — valida rol; usa pos_inventory-api (nuevo endpoint).
+- Crear orden de compra (draft) — valida rol; usa pos_inventory_api (nuevo endpoint).
