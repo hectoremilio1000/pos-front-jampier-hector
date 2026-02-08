@@ -65,7 +65,7 @@ function getRestaurantIdFromJwt(): number {
   }
 }
 export function ControlMonitor() {
-  const { shiftId, setShiftId } = useShift();
+  const { shiftId, setShiftId, clearShift } = useShift();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const stationCode = sessionStorage.getItem("monitor_station_code");
@@ -162,6 +162,13 @@ export function ControlMonitor() {
     async (msg: any) => {
       if (!msg || typeof msg !== "object") return;
 
+      if (msg.type === "shift_closed") {
+        clearShift();
+        setOrders([]);
+        message.info("Turno cerrado. Esperando un nuevo turno.");
+        return;
+      }
+
       if (msg.type === "order_changed") {
         try {
           await loadAll(); // ✅ usa shiftId real o lo vuelve a pedir
@@ -182,7 +189,7 @@ export function ControlMonitor() {
         } catch {}
       }
     },
-    [loadAll]
+    [loadAll, clearShift]
   );
 
   useEffect(() => {

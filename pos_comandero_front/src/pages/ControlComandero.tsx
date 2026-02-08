@@ -218,6 +218,21 @@ const formatMoney = (value: number) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = 4500,
+) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    return res;
+  } finally {
+    clearTimeout(id);
+  }
+}
 
 const ControlComandero: React.FC = () => {
   const {
@@ -846,11 +861,15 @@ const ControlComandero: React.FC = () => {
     const cleanBase = String(opts.localBaseUrl || "").replace(/\/$/, "");
     if (!cleanBase) throw new Error("localBaseUrl faltante");
 
-    const res = await fetch(`${cleanBase}/nprint/printers/print-consumo`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(opts.payload),
-    });
+    const res = await fetchWithTimeout(
+      `${cleanBase}/nprint/printers/print-consumo`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(opts.payload),
+      },
+      4500, // ✅ timeout
+    );
 
     if (!res.ok) {
       let detail = "";
@@ -945,21 +964,28 @@ const ControlComandero: React.FC = () => {
     payloads: NPrintJobPayload[],
     baseUrl?: string | null,
   ) {
-    if (!payloads.length) return;
+    if (!payloads.length)
+      return { ok: false, skipped: true, reason: "no_payloads" };
+
     if (!baseUrl) {
-      message.warning(
-        "No se pudo imprimir porque no existe tu servidor local de impresión",
-      );
-      return;
+      // no debe bloquear nada
+      return { ok: false, skipped: true, reason: "no_local_base_url" };
     }
-    const cleanBase = baseUrl.replace(/\/$/, "");
+
+    const cleanBase = String(baseUrl).replace(/\/$/, "");
     try {
-      const res = await fetch(`${cleanBase}/nprint/printers/print-comanda`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payloads),
-      });
+      const res = await fetchWithTimeout(
+        `${cleanBase}/nprint/printers/print-comanda`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payloads),
+        },
+        4500, // ✅ timeout
+      );
+
       const payloadResp = await res.json().catch(() => null);
+
       if (!res.ok) {
         const errMsg =
           payloadResp?.message ||
@@ -967,11 +993,15 @@ const ControlComandero: React.FC = () => {
           `Error ${res.status}: ${res.statusText}`;
         throw new Error(errMsg);
       }
-      return payloadResp;
-    } catch (error) {
-      console.error("Error de impresión local", error);
-      message.error("No se pudo realizar la impresión local");
-      throw error;
+
+      return { ok: true, data: payloadResp };
+    } catch (error: any) {
+      // ✅ importantísimo: NO “tronar” UI, solo reportar al caller
+      const msg =
+        error?.name === "AbortError"
+          ? "Timeout: servidor local no respondió"
+          : String(error?.message || "No se pudo imprimir localmente");
+      return { ok: false, error: msg };
     }
   }
 
@@ -1016,6 +1046,18 @@ const ControlComandero: React.FC = () => {
   const onOrdersEvent = useCallback(
     async (msg: any) => {
       if (!msg || typeof msg !== "object") return;
+      console.log(msg);
+      if (msg.type === "shift_closed") {
+        message.info("El turno fue cerrado. Esperando un nuevo turno.");
+        setReady(false);
+        setCheques([]);
+        setOrderCurrent(null);
+        setOrderIdCurrent(null);
+        setDetalle_cheque([]);
+        setDetalle_cheque_consulta([]);
+        refreshShift().catch(() => {});
+        return;
+      }
       const bumpTables = () => setTablesRefreshKey((k) => k + 1);
       if (msg.type === "order_closed") {
         const id = Number(msg.orderId);
@@ -1088,7 +1130,7 @@ const ControlComandero: React.FC = () => {
 
       // (futuro) puedes manejar order_created aquí
     },
-    [fetchCheques],
+    [fetchCheques, refreshShift],
   );
   useEffect(() => {
     if (!jwtOk) return;
@@ -1437,18 +1479,20 @@ const ControlComandero: React.FC = () => {
 
   const runInitialPrint = async (order: OrderSummary, orderId: number) => {
     setPrintSubmitting(true);
+
     try {
+      // ✅ 1) CRÍTICO: marcar primera impresión en API
       const r = await doInitialPrintOnOrderApi(orderId);
 
-      try {
-        await fetchCheques();
-      } catch {}
+      // resync best effort
+      fetchCheques().catch(() => {});
 
+      // ✅ 2) Si modo QR, no depende de impresora
       if (printMode === "qr") {
-        openInvoicePreview(order);
-        return;
+        return; // el preview lo abrimos en finally
       }
 
+      // ✅ 3) Intentar impresión local "best effort"
       const localBaseUrl =
         order?.restaurant?.localBaseUrl ??
         cheques.find((c) => c.id === orderId)?.restaurant?.localBaseUrl ??
@@ -1456,16 +1500,14 @@ const ControlComandero: React.FC = () => {
 
       if (!localBaseUrl) {
         message.warning(
-          "No se encontró la URL local de impresión (restaurant.localBaseUrl).",
+          "No se encontró la URL local de impresión (localBaseUrl).",
         );
-        openInvoicePreview(order);
         return;
       }
 
       const printerName = getDefaultPrinterName();
       if (!printerName) {
         message.warning("No hay impresora configurada (printerName).");
-        openInvoicePreview(order);
         return;
       }
 
@@ -1488,11 +1530,15 @@ const ControlComandero: React.FC = () => {
       });
 
       message.success("Cuenta enviada a la impresora");
-      openInvoicePreview(order);
     } catch (e: any) {
-      message.error(String(e?.message || "No se pudo imprimir"));
+      // OJO: si falla impresión o timeout, no bloquea el QR
+      const msg = String(e?.message || "No se pudo imprimir");
+      message.warning(msg);
     } finally {
       setPrintSubmitting(false);
+
+      // ✅ SIEMPRE abre el QR/ticket aunque la impresión local falle
+      openInvoicePreview(order);
     }
   };
 
@@ -1537,6 +1583,7 @@ const ControlComandero: React.FC = () => {
   const handlePrintApprovalConfirm = async () => {
     const order = orderCurrent;
     const orderId = orderIdCurrent ?? order?.id ?? null;
+
     if (!order || !orderId) {
       message.error("No hay orden seleccionada.");
       return;
@@ -1547,28 +1594,32 @@ const ControlComandero: React.FC = () => {
     }
 
     setPrintSubmitting(true);
+
     try {
+      // ✅ 1) pedir token de aprobación (pos-auth)
       const approval = await requestApprovalToken(
         "order.print",
         printManagerPassword,
         orderId,
       );
 
+      // ✅ 2) registrar reimpresión en API Order
       const r = await doPrintOnOrderApi(orderId, approval);
 
-      try {
-        await fetchCheques();
-      } catch {}
+      // resync best effort
+      fetchCheques().catch(() => {});
 
+      // cierra modal de password
       setPrintApprovalVisible(false);
       setPrintManagerPassword("");
 
+      // ✅ 3) Si estás en modo QR: no dependas de impresora
       if (printMode === "qr") {
-        message.info("Reimpresión sin impresora (modo QR)");
-        openInvoicePreview(order);
-        return;
+        message.info("Reimpresión en modo QR (sin impresión local)");
+        return; // el preview se abrirá en finally
       }
 
+      // ✅ 4) Intentar impresión local "best effort" (NO bloquea)
       const localBaseUrl =
         order?.restaurant?.localBaseUrl ??
         cheques.find((c) => c.id === orderId)?.restaurant?.localBaseUrl ??
@@ -1578,21 +1629,22 @@ const ControlComandero: React.FC = () => {
         message.warning(
           "No se encontró la URL local de impresión (restaurant.localBaseUrl).",
         );
-        openInvoicePreview(order);
         return;
       }
 
       const printerName = getDefaultPrinterName();
       if (!printerName) {
         message.warning("No hay impresora configurada (printerName).");
-        openInvoicePreview(order);
         return;
       }
 
       const totals = calcInvoiceTotalsFromOrder(order);
 
+      // ✅ si no hay printNameLocalStation, usa default
+      const targetPrinterName = printNameLocalStation || printerName;
+
       const payload = buildConsumoPrintPayload({
-        printerName: printNameLocalStation,
+        printerName: targetPrinterName,
         order,
         folioSeries: r.folioSeries ?? "",
         folioNumber: r.folioNumber ?? 0,
@@ -1600,17 +1652,24 @@ const ControlComandero: React.FC = () => {
         restaurantProfile,
         mesero: user?.fullName ?? "",
       });
+
       await sendTicketToPrintProxy({
         localBaseUrl,
         payload,
       });
 
       message.success("Cuenta reimpresa (enviada a la impresora)");
-      openInvoicePreview(order);
     } catch (e: any) {
-      message.error(String(e?.message || "No se pudo reimprimir"));
+      // ✅ si falla la impresión local o timeout, NO bloquea QR
+      // ✅ si falla approvals/print API, sí cae aquí (y se muestra error)
+      const msg = String(e?.message || "No se pudo reimprimir");
+      message.warning(msg);
     } finally {
       setPrintSubmitting(false);
+
+      // ✅ SIEMPRE abre el QR/ticket aunque la impresión local falle
+      // (si order existe)
+      if (order) openInvoicePreview(order);
     }
   };
 
@@ -1660,51 +1719,91 @@ const ControlComandero: React.FC = () => {
 
   const sendToProduction = async (items: OrderItem[]) => {
     const orderId = orderIdCurrent ?? orderCurrent?.id ?? null;
+
     if (!orderId) {
       message.error("No hay orden seleccionada.");
       return;
     }
-    const status = String((orderCurrent as any)?.status || "").toLowerCase();
+
+    // ✅ valida contra la orden correcta (por id), no contra orderCurrent viejo
+    const status = String(
+      cheques.find((c) => c.id === orderId)?.status ??
+        (orderCurrent as any)?.status ??
+        "",
+    ).toLowerCase();
+
     if (status === "printed") {
       message.warning("Orden impresa. Reabre con autorización para editar.");
       return;
     }
+
     if (!items.length) {
       message.warning("No hay productos para enviar.");
       return;
     }
+
     try {
       const itemsToSend = [...items];
+
+      // ✅ 1) OPERACIÓN CRÍTICA: enviar items
       await apiOrder.post(`/orders/${orderId}/items`, {
         orderItems: itemsToSend,
       });
-      const fetchedCheques = (await fetchCheques()) ?? cheques;
-      const chequeActual =
-        fetchedCheques.find((c: any) => c.id === orderId) ??
-        cheques.find((c) => c.id === orderId) ??
-        orderCurrent;
-      const tableName = chequeActual?.tableName ?? "";
-      const localBaseUrl =
-        chequeActual?.restaurant?.localBaseUrl ||
-        orderCurrent?.restaurant?.localBaseUrl ||
-        null;
-      const payloads = buildLocalPrintPayloads({
-        items: itemsToSend,
-        orderId,
-        tableName,
-      });
-      await sendPrintJobToLocalPrinter(payloads, localBaseUrl);
+
+      // ✅ 2) UI: cerrar modal SIEMPRE después de enviar
       setDetalle_cheque([]);
       setModalComandaVisible(false);
-      await fetchCheques();
-      message.success("Enviado a producción y solicitado a impresora local");
+
+      // refresco “best effort”
+      fetchCheques().catch(() => {});
+
+      message.success("Enviado a producción");
+
+      // ✅ 3) OPERACIÓN NO CRÍTICA: imprimir comanda local con timeout
+      //    - si falla, NO bloquea
+      try {
+        const fetchedCheques = (await fetchCheques()) ?? cheques;
+        const chequeActual =
+          fetchedCheques.find((c: any) => c.id === orderId) ??
+          cheques.find((c) => c.id === orderId) ??
+          orderCurrent;
+
+        const tableName = chequeActual?.tableName ?? "";
+        const localBaseUrl =
+          chequeActual?.restaurant?.localBaseUrl ||
+          orderCurrent?.restaurant?.localBaseUrl ||
+          null;
+
+        const payloads = buildLocalPrintPayloads({
+          items: itemsToSend,
+          orderId,
+          tableName,
+        });
+
+        const printRes = await sendPrintJobToLocalPrinter(
+          payloads,
+          localBaseUrl,
+        );
+
+        if (!printRes?.ok) {
+          // solo warning
+          message.warning(
+            printRes?.error ||
+              "Comanda enviada, pero no se pudo imprimir localmente",
+          );
+        } else {
+          message.success("Comanda enviada a impresora local");
+        }
+      } catch (e) {
+        message.warning("Comanda enviada, pero no se pudo imprimir localmente");
+      }
     } catch (error: any) {
       console.error(error);
       const msg =
         error?.response?.data?.error ||
         error?.response?.data?.message ||
         error?.message ||
-        "No se pudo enviar a produccion";
+        "No se pudo enviar a producción";
       message.error(msg);
     }
   };
@@ -1898,7 +1997,8 @@ const ControlComandero: React.FC = () => {
           confirmLoading={reopenSubmitting}
         >
           <p className="text-sm text-gray-600">
-            Para reabrir esta orden, ingresa la contraseña de owner/admin/manager.
+            Para reabrir esta orden, ingresa la contraseña de
+            owner/admin/manager.
           </p>
           <Input.Password
             autoFocus
@@ -2006,10 +2106,15 @@ const ControlComandero: React.FC = () => {
           tablesRefreshKey={tablesRefreshKey}
           onClose={() => setModalVisible(false)}
           onRegistrar={async (cheque) => {
-            setCheques([...cheques, cheque]);
-            setMesaReciente(cheques.length);
-            await fetchCheques();
+            // ✅ importante: actualiza orderCurrent también
+            setOrderCurrent(cheque);
             setOrderIdCurrent(cheque.id);
+
+            // evita estado viejo por closure
+            setCheques((prev) => [...prev, cheque]);
+            setMesaReciente((prev) => prev + 1);
+
+            await fetchCheques();
             setModalComandaVisible(true);
           }}
         />
@@ -2063,7 +2168,11 @@ const ControlComandero: React.FC = () => {
               <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-4">
                 {qrReceiptUrl ? (
                   <div className="flex flex-col items-center gap-1 mb-4">
-                    <QRCodeCanvas value={qrReceiptUrl} size={150} includeMargin />
+                    <QRCodeCanvas
+                      value={qrReceiptUrl}
+                      size={150}
+                      includeMargin
+                    />
                     <div className="text-xs text-gray-500 text-center">
                       Escanea para ver el ticket en QR
                     </div>
