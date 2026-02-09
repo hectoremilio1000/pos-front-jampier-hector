@@ -8,6 +8,7 @@ import { MdAdsClick, MdPointOfSale, MdTableBar } from "react-icons/md";
 import RegistroChequeModal from "@/components/RegistroChequeModal";
 import apiOrder from "@/components/apis/apiOrder";
 import apiKiosk from "@/components/apis/apiKiosk";
+import apiCashKiosk from "@/components/apis/apiCashKiosk";
 import ConsultarItemModal from "@/components/ConsultarItemModal";
 import MesaMapPicker from "@/components/MesaMapPicker";
 
@@ -1006,6 +1007,7 @@ const ControlComandero: React.FC = () => {
   }
 
   const transmitRef = useRef<Transmit | null>(null);
+  const shiftTransmitRef = useRef<Transmit | null>(null);
   const orderIdCurrentRef = useRef<number | null>(null);
   const orderCurrentIdRef = useRef<number | null>(null);
 
@@ -1047,17 +1049,6 @@ const ControlComandero: React.FC = () => {
     async (msg: any) => {
       if (!msg || typeof msg !== "object") return;
       console.log(msg);
-      if (msg.type === "shift_closed") {
-        message.info("El turno fue cerrado. Esperando un nuevo turno.");
-        setReady(false);
-        setCheques([]);
-        setOrderCurrent(null);
-        setOrderIdCurrent(null);
-        setDetalle_cheque([]);
-        setDetalle_cheque_consulta([]);
-        refreshShift().catch(() => {});
-        return;
-      }
       const bumpTables = () => setTablesRefreshKey((k) => k + 1);
       if (msg.type === "order_closed") {
         const id = Number(msg.orderId);
@@ -1130,6 +1121,34 @@ const ControlComandero: React.FC = () => {
 
       // (futuro) puedes manejar order_created aquí
     },
+    [fetchCheques],
+  );
+
+  const handleShiftEvent = useCallback(
+    async (msg: any) => {
+      if (!msg || typeof msg !== "object") return;
+
+      if (msg.type === "shift_closed") {
+        message.info("El turno fue cerrado. Esperando un nuevo turno.");
+        setReady(false);
+        setCheques([]);
+        setOrderCurrent(null);
+        setOrderIdCurrent(null);
+        setDetalle_cheque([]);
+        setDetalle_cheque_consulta([]);
+        await refreshShift().catch(() => {});
+        return;
+      }
+
+      if (msg.type === "shift_opened") {
+        message.success("Turno abierto en caja.");
+        const ok = await refreshShift().catch(() => false);
+        if (ok) {
+          setReady(true);
+          fetchCheques().catch(() => {});
+        }
+      }
+    },
     [fetchCheques, refreshShift],
   );
   useEffect(() => {
@@ -1192,6 +1211,53 @@ const ControlComandero: React.FC = () => {
       sub.delete();
     };
   }, [jwtOk, rid, shiftId, onOrdersEvent]);
+
+  const attachKioskToken = (request: Request | RequestInit) => {
+    const token = sessionStorage.getItem("kiosk_jwt") || "";
+    if (!token) return;
+
+    if (request instanceof Request) {
+      request.headers.set("Authorization", `Bearer ${token}`);
+      return;
+    }
+
+    const init = request as RequestInit;
+    const headers = new Headers(init.headers || {});
+    headers.set("Authorization", `Bearer ${token}`);
+    init.headers = headers;
+    return init;
+  };
+
+  useEffect(() => {
+    if (!jwtOk) return;
+    if (!rid) return;
+
+    if (!shiftTransmitRef.current) {
+      const rawBaseUrl =
+        (apiCashKiosk.defaults.baseURL as string | undefined) ||
+        import.meta.env.VITE_API_URL_CASH ||
+        "/api";
+      const baseUrl = rawBaseUrl.replace(/\/$/, "");
+      shiftTransmitRef.current = new Transmit({
+        baseUrl,
+        beforeSubscribe: attachKioskToken,
+        beforeUnsubscribe: attachKioskToken,
+        maxReconnectAttempts: 10,
+        onSubscribeFailed: (res) => {
+          console.error("Shift transmit subscribe failed", res?.status);
+        },
+      });
+    }
+
+    const sub = shiftTransmitRef.current.subscription(`restaurants/${rid}/shifts`);
+    const off = sub.onMessage(handleShiftEvent);
+    sub.create().catch((e) => console.error("Shift transmit create error", e));
+
+    return () => {
+      off?.();
+      sub.delete();
+    };
+  }, [jwtOk, rid, handleShiftEvent]);
 
   // Fallback: refresca ordenes al volver a foco/visibilidad
   useEffect(() => {

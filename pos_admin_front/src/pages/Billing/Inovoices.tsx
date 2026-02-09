@@ -107,8 +107,7 @@ export default function InvoicesPage() {
       setData(rows);
       setTotal(res.data?.meta?.total ?? rows.length);
     } catch (e) {
-      console.error(e);
-      message.error("No se pudo cargar facturas");
+      message.warning("Modulo de facturas no configurado");
     } finally {
       setLoading(false);
     }
@@ -165,7 +164,7 @@ export default function InvoicesPage() {
         message.error(msg);
       }
     },
-    [mode, restaurantId]
+    [mode, restaurantId],
   );
 
   const columns: ColumnsType<Invoice> = useMemo(
@@ -245,7 +244,7 @@ export default function InvoicesPage() {
         ),
       },
     ],
-    [doDownload]
+    [doDownload],
   );
 
   return (
