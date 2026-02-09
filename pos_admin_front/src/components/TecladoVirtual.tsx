@@ -10,21 +10,12 @@ type Props = {
   setTexto: React.Dispatch<React.SetStateAction<string>>;
 };
 
-const keys = [
-  ..."QWERTYUIOP".split(""),
-  ..."ASDFGHJKLÑ".split(""),
-  ..."ZXCVBNM".split(""),
-  ..."1234567890".split(""),
-  "@",
-  ".",
-  ",",
-  "-",
-  "_",
-  "/",
-  "*",
-  "+",
-  ":",
-  ";",
+const keyRows = [
+  "QWERTYUIOP".split(""),
+  "ASDFGHJKLÑ".split(""),
+  "ZXCVBNM".split(""),
+  "1234567890".split(""),
+  ["@", ".", ",", "-", "_", "/", "*", "+", ":", ";"],
 ];
 
 const TecladoVirtual: React.FC<Props> = ({
@@ -35,35 +26,72 @@ const TecladoVirtual: React.FC<Props> = ({
   text,
   setTexto,
 }) => {
+  const keyStyle = {
+    minHeight: "clamp(52px, 5.2vw, 92px)",
+    fontSize: "clamp(16px, 1.35vw, 28px)",
+  } as const;
+
+  const actionKeyStyle = {
+    minHeight: "clamp(52px, 5.4vw, 96px)",
+    fontSize: "clamp(16px, 1.35vw, 28px)",
+  } as const;
+
   return (
-    <div className="bg-white p-4 rounded shadow w-full mx-auto">
+    <div className="w-full mx-auto max-w-[980px]">
       <textarea
         value={text}
+        rows={2}
         onChange={(e) => setTexto(e.target.value)}
-        className="w-full px-4 border-2 border-gray-300"
+        className="mb-4 w-full rounded border-2 border-gray-300 px-3 py-3"
+        style={{
+          minHeight: "clamp(92px, 10vh, 152px)",
+          fontSize: "clamp(18px, 1.5vw, 30px)",
+        }}
       />
-      <div className="grid grid-cols-10 gap-1 mb-2">
-        {keys.map((k, i) => (
-          <button
-            key={i}
-            onClick={() => onKeyPress(k)}
-            className="bg-gray-200 px-2 py-2 font-bold text-center rounded hover:bg-blue-300"
+      <div className="mb-4 flex flex-col gap-2 md:gap-3">
+        {keyRows.map((row, rowIndex) => (
+          <div
+            key={rowIndex}
+            className="grid gap-2 md:gap-2.5"
+            style={{ gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))` }}
           >
-            {k}
-          </button>
+            {row.map((k, keyIndex) => (
+              <button
+                type="button"
+                key={`${rowIndex}-${keyIndex}-${k}`}
+                onClick={() => onKeyPress(k)}
+                style={keyStyle}
+                className="rounded-md bg-gray-200 px-1 text-center font-bold touch-manipulation select-none hover:bg-blue-300"
+              >
+                {k}
+              </button>
+            ))}
+          </div>
         ))}
       </div>
-      <div className="flex justify-between mt-2">
+      <div className="grid grid-cols-3 gap-2 md:gap-3">
         <button
+          type="button"
           onClick={onSpace}
-          className="bg-blue-600 text-white px-4 py-2 rounded"
+          style={actionKeyStyle}
+          className="rounded-md bg-blue-600 px-2 font-semibold text-white touch-manipulation select-none"
         >
           ESPACIO
         </button>
-        <button onClick={onBackspace} className="bg-red-400 px-4 py-2 rounded">
+        <button
+          type="button"
+          onClick={onBackspace}
+          style={actionKeyStyle}
+          className="rounded-md bg-red-400 px-2 font-semibold touch-manipulation select-none"
+        >
           BORRAR
         </button>
-        <button onClick={onClear} className="bg-gray-300 px-4 py-2 rounded">
+        <button
+          type="button"
+          onClick={onClear}
+          style={actionKeyStyle}
+          className="rounded-md bg-gray-300 px-2 font-semibold touch-manipulation select-none"
+        >
           LIMPIAR
         </button>
       </div>

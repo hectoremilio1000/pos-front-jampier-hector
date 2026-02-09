@@ -1,5 +1,4 @@
 // src/components/Auth/AuthContext.tsx  (puedes mantener el mismo archivo y nombre)
-import axios from "axios";
 import { createContext, useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import apiAuth from "../apis/apiAuth";
@@ -44,8 +43,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  const apiUrlAuth = import.meta.env.VITE_API_URL_AUTH; // ej: http://localhost:3333/api
-
   // Restaura sesión (opaco) para el panel
   useEffect(() => {
     const opaque = getAuthItem("token"); // opaco del panel
@@ -72,7 +69,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const login = async (email: string, password: string) => {
     try {
       // 1) Login
-      const res = await axios.post(`${apiUrlAuth}/login`, { email, password });
+      const res = await apiAuth.post("/login", { email, password });
 
       if (import.meta.env.DEV) {
         console.groupCollapsed(
@@ -151,7 +148,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             console.warn("[/me] 401, intentando refresh…");
           try {
             const refreshToken = getAuthItem("refresh_token");
-            const r = await axios.post(`${apiUrlAuth}/auth/refresh`, {
+            const r = await apiAuth.post("/auth/refresh", {
               refresh_token: refreshToken,
             });
             const newAccess = r?.data?.access_jwt as string | undefined;

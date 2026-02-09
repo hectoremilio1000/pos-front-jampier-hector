@@ -15,8 +15,8 @@ export default function Numpad({
   big?: boolean;
 }) {
   const cellStyle = {
-    height: big ? 72 : 64,
-    fontSize: big ? 22 : 20,
+    height: big ? 84 : 68,
+    fontSize: big ? 28 : 22,
   } as const;
 
   return (

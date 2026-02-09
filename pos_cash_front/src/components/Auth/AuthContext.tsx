@@ -1,4 +1,3 @@
-import axios from "axios";
 import { createContext, useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import apiAuth from "@/components/apis/apiAuth";
@@ -22,8 +21,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [token, setToken] = useState<string | null>(null); // opaco del panel
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
-
-  const apiUrlAuth = import.meta.env.VITE_API_URL_AUTH; // ej: http://localhost:3333/api
 
   // MONTAR: si hay opaco pero NO refresh_token ⇒ sesión vieja → forzar login
   useEffect(() => {
@@ -49,7 +46,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const login = async (email: string, password: string) => {
-    const res = await axios.post(`${apiUrlAuth}/login`, { email, password });
+    const res = await apiAuth.post("/login", { email, password });
 
     const role = res.data.user?.role?.code;
     if (!["cashier", "owner", "admin", "superadmin"].includes(role)) {
