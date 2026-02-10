@@ -1,11 +1,8 @@
-// /Users/hectoremilio/Proyectos/growthsuitecompleto/jampiertest/pos-front-jampier-hector/pos-admin/src/pages/Categorias/CategoryModal.tsx
 import { useEffect } from "react";
-import { Modal, Form, Input, InputNumber, Switch } from "antd";
+import { Modal, Form, Input, Switch } from "antd";
 
 export type CategoryValues = {
   name: string;
-  code: string;
-  sortOrder: number;
   isEnabled: boolean;
 };
 
@@ -13,7 +10,6 @@ export default function CategoryModal({
   open,
   mode, // "create" | "edit"
   initial,
-  categoriesCount, // para autogenerar en create
   confirmLoading,
   onCancel,
   onOk,
@@ -22,7 +18,6 @@ export default function CategoryModal({
   open: boolean;
   mode: "create" | "edit";
   initial?: Partial<CategoryValues>;
-  categoriesCount: number;
   confirmLoading?: boolean;
   onCancel: () => void;
   onOk: (values: CategoryValues) => Promise<void> | void;
@@ -31,27 +26,19 @@ export default function CategoryModal({
   const [form] = Form.useForm<CategoryValues>();
 
   useEffect(() => {
-    // autogenerar code/sortOrder en create
-    const next = String(categoriesCount + 1);
     form.setFieldsValue({
       name: initial?.name ?? "",
-      code: mode === "create" ? next : (initial?.code ?? ""),
-      sortOrder: mode === "create" ? Number(next) : (initial?.sortOrder ?? 1),
       isEnabled: initial?.isEnabled ?? true,
     });
-  }, [open, mode, categoriesCount, initial, form]);
+  }, [open, initial, form]);
 
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
-      // (opcional) duplicados
       if (onDuplicateCheck) {
         const msg = onDuplicateCheck(values);
         if (msg) {
-          form.setFields([
-            { name: "name", errors: [msg] },
-            { name: "code", errors: [msg] },
-          ]);
+          form.setFields([{ name: "name", errors: [msg] }]);
           return;
         }
       }
@@ -85,22 +72,6 @@ export default function CategoryModal({
           ]}
         >
           <Input placeholder="Bebidas" maxLength={60} autoFocus />
-        </Form.Item>
-
-        <Form.Item
-          label="Código"
-          name="code"
-          rules={[{ required: true, message: "Código requerido" }]}
-        >
-          <Input placeholder="1" maxLength={12} />
-        </Form.Item>
-
-        <Form.Item
-          label="Orden"
-          name="sortOrder"
-          rules={[{ required: true, message: "Orden requerido" }]}
-        >
-          <InputNumber min={1} className="w-full" />
         </Form.Item>
 
         <Form.Item label="¿Activo?" name="isEnabled" valuePropName="checked">

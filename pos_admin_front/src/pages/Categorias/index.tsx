@@ -13,6 +13,61 @@ interface Category {
   isEnabled: boolean;
 }
 
+type CategoryPayload = {
+  code: string;
+  name: string;
+  sortOrder: number;
+  isEnabled: boolean;
+};
+
+function buildNextCategoryCode(categories: Category[]) {
+  const used = new Set(
+    categories.map((c) => String(c.code || "").trim().toUpperCase()).filter(Boolean)
+  );
+
+  let maxNumericSuffix = 0;
+  for (const category of categories) {
+    const code = String(category.code || "").trim().toUpperCase();
+    const match = code.match(/(\d+)$/);
+    if (!match) continue;
+    const n = Number(match[1]);
+    if (Number.isFinite(n)) maxNumericSuffix = Math.max(maxNumericSuffix, n);
+  }
+
+  let candidate = maxNumericSuffix + 1;
+  while (candidate <= maxNumericSuffix + 5000) {
+    const code = `CAT-${String(candidate).padStart(3, "0")}`;
+    if (!used.has(code)) return code;
+    candidate += 1;
+  }
+
+  return `CAT-${Date.now()}`;
+}
+
+function getNextSortOrder(categories: Category[]) {
+  const max = categories.reduce(
+    (acc, category) => Math.max(acc, Number(category.sortOrder) || 0),
+    0
+  );
+  return max + 1;
+}
+
+function isDuplicateCodeError(err: any) {
+  const msg = String(
+    err?.response?.data?.message ||
+      err?.response?.data?.error ||
+      err?.message ||
+      ""
+  ).toLowerCase();
+
+  return (
+    msg.includes("duplicate") ||
+    msg.includes("unique") ||
+    msg.includes("already exists") ||
+    msg.includes("product_categories_restaurant_id_code_unique")
+  );
+}
+
 export default function Categorias() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
@@ -47,21 +102,37 @@ export default function Categorias() {
 
   const onDuplicateCheck = (v: CategoryValues) => {
     const dup = categories.some(
-      (c) =>
-        c.id !== editId &&
-        (c.name.trim().toLowerCase() === v.name.trim().toLowerCase() ||
-          c.code.trim().toLowerCase() === v.code.trim().toLowerCase())
+      (c) => c.id !== editId && c.name.trim().toLowerCase() === v.name.trim().toLowerCase()
     );
-    return dup ? "Nombre o código ya existe" : null;
+    return dup ? "Nombre ya existe" : null;
   };
 
   const handleCreate = async (vals: CategoryValues) => {
     setSaving(true);
     try {
-      await apiOrder.post("/categories", vals);
-      message.success("Categoría creada");
-      setCreateOpen(false);
-      fetchCategories();
+      let currentCategories = categories;
+
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        const payload: CategoryPayload = {
+          name: vals.name,
+          isEnabled: vals.isEnabled,
+          code: buildNextCategoryCode(currentCategories),
+          sortOrder: getNextSortOrder(currentCategories),
+        };
+
+        try {
+          await apiOrder.post("/categories", payload);
+          message.success("Categoría creada");
+          setCreateOpen(false);
+          await fetchCategories();
+          return;
+        } catch (err) {
+          if (!isDuplicateCodeError(err) || attempt === 3) throw err;
+
+          const latest = await apiOrder.get("/categories");
+          currentCategories = latest.data;
+        }
+      }
     } catch {
       message.error("Error al crear categoría");
     } finally {
@@ -73,8 +144,6 @@ export default function Categorias() {
     setEditId(category.id);
     setEditInitial({
       name: category.name,
-      code: category.code,
-      sortOrder: category.sortOrder,
       isEnabled: category.isEnabled,
     });
     setEditOpen(true);
@@ -84,7 +153,20 @@ export default function Categorias() {
     if (!editId) return;
     setSaving(true);
     try {
-      await apiOrder.put(`/categories/${editId}`, vals);
+      const current = categories.find((c) => c.id === editId);
+      if (!current) {
+        message.error("No se encontró la categoría a editar");
+        return;
+      }
+
+      const payload: CategoryPayload = {
+        name: vals.name,
+        isEnabled: vals.isEnabled,
+        code: current.code,
+        sortOrder: current.sortOrder,
+      };
+
+      await apiOrder.put(`/categories/${editId}`, payload);
       message.success("Categoría actualizada");
       setEditOpen(false);
       setEditId(null);
@@ -159,24 +241,20 @@ export default function Categorias() {
         pagination={{ pageSize: 10 }}
       />
 
-      {/* Crear */}
       <CategoryModal
         open={createOpen}
         mode="create"
         initial={{}}
-        categoriesCount={categories.length}
         confirmLoading={saving}
         onCancel={() => setCreateOpen(false)}
         onOk={handleCreate}
         onDuplicateCheck={onDuplicateCheck}
       />
 
-      {/* Editar */}
       <CategoryModal
         open={editOpen}
         mode="edit"
         initial={editInitial}
-        categoriesCount={categories.length}
         confirmLoading={saving}
         onCancel={() => {
           setEditOpen(false);
