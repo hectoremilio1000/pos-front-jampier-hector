@@ -275,7 +275,6 @@ export default function ProductosPage() {
 
   /* tabla */
   const columns = [
-    { title: "Código", dataIndex: "code" },
     { title: "Nombre", dataIndex: "name" },
     { title: "A. Impresión", dataIndex: ["areaImpresion", "name"] },
     {
@@ -316,9 +315,7 @@ export default function ProductosPage() {
   ];
 
   const filtered = rows.filter((r) =>
-    [r.name, r.code].some((t: string) =>
-      t?.toLowerCase().includes(search.toLowerCase())
-    )
+    [r.name].some((t: string) => t?.toLowerCase().includes(search.toLowerCase()))
   );
 
   /* helpers modificadores para pasar al modal */
