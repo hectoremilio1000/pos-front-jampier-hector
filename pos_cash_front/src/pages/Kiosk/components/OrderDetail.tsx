@@ -27,6 +27,42 @@ import type { CashOrderItem } from "../hooks/useCashKiosk";
 
 const money = (n: number) =>
   `$${(Math.round((n ?? 0) * 100) / 100).toFixed(2)}`;
+
+type ItemStatusDefinition = { label: string; color: string };
+
+const ITEM_STATUS_DEFINITIONS: Record<string, ItemStatusDefinition> = {
+  open: { label: "Abierta", color: "green" },
+  in_progress: { label: "En preparación", color: "processing" },
+  reopened: { label: "Reabierta", color: "purple" },
+  sent: { label: "Enviada", color: "geekblue" },
+  prepared: { label: "Preparada", color: "cyan" },
+  ready: { label: "Lista", color: "success" },
+  printed: { label: "Impreso", color: "default" },
+  paid: { label: "Pagado", color: "default" },
+  closed: { label: "Cerrada", color: "default" },
+  cancelled: { label: "Cancelado", color: "red" },
+  void: { label: "Anulado", color: "red" },
+};
+
+const CANCELLED_STATUS_MARKERS = ["cancel", "cancelled", "void", "anulado"];
+
+function resolveItemStatus(status?: string | null): ItemStatusDefinition {
+  if (!status) return { label: "Desconocido", color: "default" };
+  const normalized = String(status).toLowerCase();
+  if (ITEM_STATUS_DEFINITIONS[normalized]) {
+    return ITEM_STATUS_DEFINITIONS[normalized];
+  }
+  const fallbackColor = normalized.includes("cancel") ? "red" : "default";
+  return { label: normalized, color: fallbackColor };
+}
+
+function isItemCancelled(status?: string | null) {
+  if (!status) return false;
+  const normalized = status.toLowerCase();
+  return CANCELLED_STATUS_MARKERS.some((marker) =>
+    normalized.includes(marker),
+  );
+}
 type DiscountType = "percent" | "fixed";
 type PrintMode = "qr" | "impresion" | "mixto";
 
@@ -331,6 +367,20 @@ export default function OrderDetail() {
 
   const columns: ColumnsType<CashOrderItem> = [
     {
+      title: "Estado",
+      dataIndex: "status",
+      key: "status",
+      width: 120,
+      render: (_, it) => {
+        const status = resolveItemStatus(it.status);
+        return (
+          <Tag color={status.color} style={{ textTransform: "capitalize" }}>
+            {status.label}
+          </Tag>
+        );
+      },
+    },
+    {
       title: "Producto",
       dataIndex: "name",
       key: "name",
@@ -361,18 +411,43 @@ export default function OrderDetail() {
       width: 120,
     },
     {
+      title: "Motivo dcto",
+      key: "discountReason",
+      dataIndex: "discountReason",
+      align: "left",
+      width: 180,
+      render: (_, it) => {
+        const reason = (it.discountReason || "").trim();
+        const type = (it.discountType || "").toLowerCase() as DiscountType | "";
+        const value = Number(it.discountValue ?? 0);
+        const parts: string[] = [];
+        if (reason) {
+          parts.push(reason);
+        } else if (it.isCourtesy) {
+          parts.push("Cortesía");
+        }
+
+        if (type === "percent" && value > 0) {
+          parts.push(`${value}%`);
+        } else if (type === "fixed" && value > 0) {
+          parts.push(money(value));
+        }
+
+        return (
+          <div className="text-xs leading-snug max-w-[200px]">
+            {parts.length > 0
+              ? parts.map((p, index) => <div key={`${p}-${index}`}>{p}</div>)
+              : "-"}
+          </div>
+        );
+      },
+    },
+    {
       title: "Importe",
       key: "importe",
       align: "right",
       render: (_, it: any) => {
-        console.log(it);
-        const qty = Number(it.qty ?? 0);
-        const unit = Number(it.unitPrice ?? 0);
-        const gross = qty * unit;
-        const disc = Number(it.discountAmount ?? 0) || 0;
-        console.log(disc);
-        console.log(gross);
-        return money(Math.max(gross - disc, 0));
+        return money(lineAmount(it));
       },
       width: 120,
     },
@@ -386,7 +461,7 @@ export default function OrderDetail() {
         <Button
           size="small"
           onClick={() => openItemDiscountModal(it)}
-          disabled={!canApplyDiscounts}
+          disabled={!canApplyDiscounts || isItemCancelled(it.status)}
         >
           Aplicar
         </Button>
@@ -443,7 +518,8 @@ export default function OrderDetail() {
       let tax = 0;
 
       // 1) Aplicamos descuentos por ítem
-      for (const it of items) {
+      const chargeableItems = items.filter(isChargeableItem);
+      for (const it of chargeableItems) {
         const qty = Number(it.qty ?? 0);
         const basePrice = Number(it.basePrice ?? 0);
         const unitPrice = Number(it.unitPrice ?? 0);
@@ -503,11 +579,25 @@ export default function OrderDetail() {
   //   (orders?.findIndex((o: any) => o.id === selectedOrder?.id) ?? -1) + 1;
 
   function lineAmount(x: CashOrderItem): number {
-    const qty = Number(x.qty ?? 0);
-    const unit = Number(x.unitPrice ?? 0);
-    const tot = Number((x as any).total ?? NaN);
-    if (!Number.isNaN(tot)) return tot;
-    return qty * unit;
+    const qty = Number((x as any).qty ?? 0) || 0;
+    const unit = Number((x as any).unitPrice ?? 0) || 0;
+
+    // total que venga del API normalmente es BRUTO (sin descuento)
+    const apiTotal = Number((x as any).total);
+    const gross = Number.isFinite(apiTotal) ? apiTotal : qty * unit;
+
+    const discount = Number((x as any).discountAmount ?? 0) || 0;
+
+    const net = Math.max(gross - discount, 0);
+    return Math.round(net * 100) / 100;
+  }
+
+  function isChargeableItem(item: CashOrderItem): boolean {
+    const status = String(item.status ?? "").toLowerCase();
+    if (!status) return true;
+    return !["cancelled", "cancel", "void", "anulado"].some((marker) =>
+      status.includes(marker),
+    );
   }
 
   type TicketRow = { qty: number; desc: string; amount: number };
@@ -516,8 +606,9 @@ export default function OrderDetail() {
     const consumed = new Set<number>();
     const getName = (x: CashOrderItem) =>
       x.product?.name ?? x.name ?? `(Producto #${x.id})`;
+    const filteredSource = source.filter(isChargeableItem);
 
-    for (const it of source) {
+    for (const it of filteredSource) {
       if (consumed.has(it.id)) continue;
 
       const isMain = !!it.isCompositeProductMain;
@@ -1538,7 +1629,9 @@ export default function OrderDetail() {
               <Form.Item>
                 <Checkbox
                   checked={generalDiscountIsCourtesy}
-                  onChange={(e) => setGeneralDiscountIsCourtesy(e.target.checked)}
+                  onChange={(e) =>
+                    setGeneralDiscountIsCourtesy(e.target.checked)
+                  }
                 >
                   Es cortesía
                 </Checkbox>

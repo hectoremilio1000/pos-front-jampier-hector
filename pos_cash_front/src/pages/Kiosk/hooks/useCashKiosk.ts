@@ -48,6 +48,9 @@ export type CashOrderItem = {
   discountAmount?: number | null; // monto total de descuento de la línea
   discountReason?: string | null;
   discountAppliedBy?: number | null;
+  status?: string | null;
+  notes?: string | null;
+  isCourtesy?: boolean | null;
 };
 
 export type Area = {
@@ -348,6 +351,12 @@ export function useCashKiosk() {
             discountAmount: it.discountAmount,
             discountReason: it.discountReason,
             discountAppliedBy: it.discountAppliedBy,
+            status: it.status ? String(it.status).toLowerCase() : null,
+            notes: typeof it.notes === "string" ? it.notes : null,
+            isCourtesy:
+              typeof it.isCourtesy === "boolean"
+                ? it.isCourtesy
+                : Boolean(it.isCourtesy && it.isCourtesy !== "false"),
           })),
         })),
       );
@@ -413,6 +422,12 @@ export function useCashKiosk() {
                   discountAmount: it.discountAmount,
                   discountReason: it.discountReason,
                   discountAppliedBy: it.discountAppliedBy,
+                  status: it.status ? String(it.status).toLowerCase() : null,
+                  notes: typeof it.notes === "string" ? it.notes : null,
+                  isCourtesy:
+                    typeof it.isCourtesy === "boolean"
+                      ? it.isCourtesy
+                      : Boolean(it.isCourtesy && it.isCourtesy !== "false"),
                 })),
               }
             : o,
@@ -535,6 +550,35 @@ export function useCashKiosk() {
               typeof it.compositeProductId !== "undefined" &&
               it.compositeProductId !== null
                 ? Number(it.compositeProductId)
+                : null,
+            status: it.status ? String(it.status).toLowerCase() : null,
+            notes: typeof it.notes === "string" ? it.notes : null,
+            isCourtesy:
+              typeof it.isCourtesy === "boolean"
+                ? it.isCourtesy
+                : Boolean(it.isCourtesy && it.isCourtesy !== "false"),
+            discountType:
+              typeof it.discountType === "string"
+                ? (it.discountType as DiscountType)
+                : null,
+            discountValue:
+              typeof it.discountValue !== "undefined" &&
+              it.discountValue !== null
+                ? Number(it.discountValue)
+                : null,
+            discountAmount:
+              typeof it.discountAmount !== "undefined" &&
+              it.discountAmount !== null
+                ? Number(it.discountAmount)
+                : null,
+            discountReason:
+              typeof it.discountReason === "string"
+                ? it.discountReason
+                : null,
+            discountAppliedBy:
+              typeof it.discountAppliedBy !== "undefined" &&
+              it.discountAppliedBy !== null
+                ? Number(it.discountAppliedBy)
                 : null,
           };
         };
