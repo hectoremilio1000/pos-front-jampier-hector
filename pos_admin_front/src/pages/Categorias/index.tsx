@@ -112,7 +112,7 @@ export default function Categorias() {
   const filtered = useMemo(
     () =>
       orderedCategories.filter((c) =>
-        `${c.name} ${c.code}`.toLowerCase().includes(search.toLowerCase())
+        `${c.name}`.toLowerCase().includes(search.toLowerCase())
       ),
     [orderedCategories, search]
   );
@@ -263,7 +263,6 @@ export default function Categorias() {
         ),
     },
     { title: "Nombre", dataIndex: "name", key: "name" },
-    { title: "Código", dataIndex: "code", key: "code" },
     { title: "Orden", dataIndex: "sortOrder", key: "sortOrder" },
     {
       title: "Estado",
@@ -292,7 +291,7 @@ export default function Categorias() {
     <div className="space-y-4 max-w-4xl mx-auto">
       <div className="flex justify-between items-center gap-3">
         <Input
-          placeholder="Buscar por nombre o código"
+          placeholder="Buscar por nombre"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-sm"
