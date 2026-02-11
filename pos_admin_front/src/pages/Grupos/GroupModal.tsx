@@ -1,18 +1,11 @@
 import { useEffect } from "react";
-import {
-  Modal,
-  Form,
-  Input,
-  InputNumber,
-  Switch,
-  Select,
-} from "antd";
+import { Modal, Form, Input, Switch, Select } from "antd";
 
 export type GroupValues = {
   name: string;
   code: string;
   categoryId: number;
-  sortOrder: number;
+  sortOrder?: number;
   isEnabled: boolean;
 };
 
@@ -138,8 +131,8 @@ export default function GroupModal({
           />
         </Form.Item>
 
-        <Form.Item label="Orden" name="sortOrder" rules={[{ required: true }]}>
-          <InputNumber min={1} className="w-full" />
+        <Form.Item name="sortOrder" hidden>
+          <Input />
         </Form.Item>
 
         <Form.Item label="¿Activo?" name="isEnabled" valuePropName="checked">
