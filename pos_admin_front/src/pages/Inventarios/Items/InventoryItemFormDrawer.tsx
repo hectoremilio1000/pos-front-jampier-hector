@@ -10,13 +10,18 @@ import {
   Divider,
   message,
   Alert,
+  Modal,
 } from "antd";
 import type {
   InventoryGroupRow,
   InventoryItemRow,
   MeasurementUnitRow,
 } from "@/lib/api_inventory";
-import { upsertInventoryGroup, upsertInventoryItem } from "@/lib/api_inventory";
+import {
+  createMeasurementUnit,
+  upsertInventoryGroup,
+  upsertInventoryItem,
+} from "@/lib/api_inventory";
 import InventoryItemPhotosPanel from "./InventoryItemPhotosPanel";
 
 type Props = {
@@ -72,8 +77,12 @@ export default function InventoryItemFormDrawer({
   onEnsureUnits,
 }: Props) {
   const [form] = Form.useForm();
+  const [unitForm] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [ensuringUnits, setEnsuringUnits] = useState(false);
+  const [unitModalOpen, setUnitModalOpen] = useState(false);
+  const [unitSaving, setUnitSaving] = useState(false);
+  const [localUnits, setLocalUnits] = useState<MeasurementUnitRow[]>(units);
 
   const isEdit = !!item?.id;
   const codeTouchedRef = useRef(false);
@@ -98,9 +107,13 @@ export default function InventoryItemFormDrawer({
   const groupSelectOptions: GroupSelectOption[] =
     groupOptions.length > 0 ? groupOptions : suggestedGroupOptions;
 
+  useEffect(() => {
+    setLocalUnits(units);
+  }, [units]);
+
   const unitOptions = useMemo(
-    () => units.map((u) => ({ label: `${u.code} — ${u.name}`, value: u.id })),
-    [units],
+    () => localUnits.map((u) => ({ label: `${u.code} — ${u.name}`, value: u.id })),
+    [localUnits],
   );
   const hasUnits = unitOptions.length > 0;
 
@@ -114,6 +127,40 @@ export default function InventoryItemFormDrawer({
       message.error(e?.message ?? "No se pudieron crear las unidades base");
     } finally {
       setEnsuringUnits(false);
+    }
+  }
+
+  async function handleCreateUnit() {
+    const values = await unitForm.validateFields();
+    setUnitSaving(true);
+    try {
+      const created = await createMeasurementUnit({
+        code: String(values.code || "").trim().toLowerCase(),
+        name: String(values.name || "").trim(),
+        isActive: true,
+      });
+
+      setLocalUnits((prev) => {
+        const exists = prev.some((u) => u.id === created.id || u.code === created.code);
+        if (exists) {
+          return prev.map((u) => (u.id === created.id || u.code === created.code ? created : u));
+        }
+        return [...prev, created];
+      });
+
+      form.setFieldValue("unitId", created.id);
+      setUnitModalOpen(false);
+      unitForm.resetFields();
+      message.success("Unidad creada");
+    } catch (e: any) {
+      const msg = String(e?.message || "");
+      if (msg.toLowerCase().includes("duplicate") || msg.includes("409") || msg.includes("23505")) {
+        message.error("Ya existe una unidad con ese código");
+      } else {
+        message.error(e?.message ?? "No se pudo crear la unidad");
+      }
+    } finally {
+      setUnitSaving(false);
     }
   }
 
@@ -275,6 +322,11 @@ export default function InventoryItemFormDrawer({
           label="Unidad base"
           name="unitId"
           rules={[{ required: true, message: "Selecciona una unidad base" }]}
+          extra={
+            <Button type="link" style={{ paddingLeft: 0 }} onClick={() => setUnitModalOpen(true)}>
+              + Nueva unidad
+            </Button>
+          }
         >
           <Select
             placeholder={hasUnits ? "g / ml / pza" : "No hay unidades disponibles"}
@@ -319,6 +371,42 @@ export default function InventoryItemFormDrawer({
           Guarda el insumo para poder subir fotos.
         </div>
       )}
+
+      <Modal
+        title="Nueva unidad"
+        open={unitModalOpen}
+        onCancel={() => {
+          setUnitModalOpen(false);
+          unitForm.resetFields();
+        }}
+        onOk={handleCreateUnit}
+        okText="Crear"
+        confirmLoading={unitSaving}
+        destroyOnClose
+      >
+        <Form form={unitForm} layout="vertical">
+          <Form.Item
+            label="Código"
+            name="code"
+            rules={[
+              { required: true, message: "Código requerido" },
+              { min: 1, message: "Código inválido" },
+            ]}
+          >
+            <Input placeholder="ej: lb" maxLength={10} />
+          </Form.Item>
+          <Form.Item
+            label="Nombre"
+            name="name"
+            rules={[
+              { required: true, message: "Nombre requerido" },
+              { min: 2, message: "Nombre inválido" },
+            ]}
+          >
+            <Input placeholder="ej: libras" maxLength={40} />
+          </Form.Item>
+        </Form>
+      </Modal>
     </Drawer>
   );
 }

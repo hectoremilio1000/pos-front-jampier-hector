@@ -566,6 +566,18 @@ export function listMeasurementUnits(): Promise<MeasurementUnitRow[]> {
   return http<MeasurementUnitRow[]>("/measurement-units");
 }
 
+export function createMeasurementUnit(payload: {
+  code: string;
+  name: string;
+  satCode?: string;
+  isActive?: boolean;
+}): Promise<MeasurementUnitRow> {
+  return http<MeasurementUnitRow>("/measurement-units", {
+    method: "POST",
+    body: payload,
+  });
+}
+
 export async function ensureDefaultMeasurementUnits(): Promise<MeasurementUnitRow[]> {
   const res = await http<{ ok: boolean; count: number; rows: MeasurementUnitRow[] }>(
     "/measurement-units/ensure-defaults",
