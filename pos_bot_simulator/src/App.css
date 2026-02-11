@@ -81,6 +81,20 @@
   color: #445064;
 }
 
+.json-block {
+  margin: 0;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .actions {
   margin-top: auto;
 }
@@ -192,12 +206,19 @@ button.ghost {
   gap: 12px;
 }
 
-.chat-input button {
-  justify-self: end;
+.chat-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 @media (max-width: 900px) {
   .app {
     grid-template-columns: 1fr;
+  }
+
+  .chat-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
