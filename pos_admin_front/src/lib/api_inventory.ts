@@ -565,6 +565,15 @@ async function http<T>(
 export function listMeasurementUnits(): Promise<MeasurementUnitRow[]> {
   return http<MeasurementUnitRow[]>("/measurement-units");
 }
+
+export async function ensureDefaultMeasurementUnits(): Promise<MeasurementUnitRow[]> {
+  const res = await http<{ ok: boolean; count: number; rows: MeasurementUnitRow[] }>(
+    "/measurement-units/ensure-defaults",
+    { method: "POST" }
+  );
+  return Array.isArray(res?.rows) ? res.rows : [];
+}
+
 export function listSupplierTypes(): Promise<SupplierTypeRow[]> {
   return http<SupplierTypeRow[]>("/supplier-types");
 }

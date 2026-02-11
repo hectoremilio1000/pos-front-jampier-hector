@@ -10,6 +10,7 @@ import {
   listInventoryGroups,
   listInventoryItems,
   listMeasurementUnits,
+  ensureDefaultMeasurementUnits,
 } from "@/lib/api_inventory";
 import InventoryItemFormDrawer from "./InventoryItemFormDrawer";
 import ItemPresentationsDrawer from "./ItemPresentationsDrawer";
@@ -33,13 +34,20 @@ export default function InventoryItemsTab({ restaurantId }: Props) {
   async function reload(nextQ?: string) {
     setLoading(true);
     try {
-      const [g, u, it] = await Promise.all([
+      const [g, firstUnits, it] = await Promise.all([
         listInventoryGroups(restaurantId),
         listMeasurementUnits(),
         listInventoryItems(restaurantId, nextQ ?? q),
       ]);
+
+      let resolvedUnits = firstUnits;
+      if (!Array.isArray(firstUnits) || firstUnits.length === 0) {
+        // retry ligero para evitar estados intermitentes "No data"
+        resolvedUnits = await listMeasurementUnits();
+      }
+
       setGroups(g);
-      setUnits(u);
+      setUnits(resolvedUnits);
       setItems(it);
     } catch (e: any) {
       message.error(e?.message ?? "Error cargando insumos");
@@ -52,6 +60,12 @@ export default function InventoryItemsTab({ restaurantId }: Props) {
     reload("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
+
+  async function handleEnsureUnits() {
+    await ensureDefaultMeasurementUnits();
+    const fresh = await listMeasurementUnits();
+    setUnits(fresh);
+  }
 
   async function handleDelete(item: InventoryItemRow) {
     setDeletingId(item.id);
@@ -196,6 +210,7 @@ export default function InventoryItemsTab({ restaurantId }: Props) {
           setDrawerOpen(false);
           setEditing(null);
         }}
+        onEnsureUnits={handleEnsureUnits}
         onSaved={(saved) => {
           const wasEdit = !!editing?.id;
 

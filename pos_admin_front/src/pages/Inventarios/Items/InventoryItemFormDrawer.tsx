@@ -9,6 +9,7 @@ import {
   Space,
   Divider,
   message,
+  Alert,
 } from "antd";
 import type {
   InventoryGroupRow,
@@ -26,6 +27,7 @@ type Props = {
   item: InventoryItemRow | null;
   groups: InventoryGroupRow[];
   units: MeasurementUnitRow[];
+  onEnsureUnits?: () => Promise<void>;
 };
 
 const SUGGESTED_GROUPS = [
@@ -67,9 +69,11 @@ export default function InventoryItemFormDrawer({
   item,
   groups,
   units,
+  onEnsureUnits,
 }: Props) {
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
+  const [ensuringUnits, setEnsuringUnits] = useState(false);
 
   const isEdit = !!item?.id;
   const codeTouchedRef = useRef(false);
@@ -98,6 +102,20 @@ export default function InventoryItemFormDrawer({
     () => units.map((u) => ({ label: `${u.code} — ${u.name}`, value: u.id })),
     [units],
   );
+  const hasUnits = unitOptions.length > 0;
+
+  async function handleEnsureUnits() {
+    if (!onEnsureUnits) return;
+    setEnsuringUnits(true);
+    try {
+      await onEnsureUnits();
+      message.success("Unidades base creadas/actualizadas");
+    } catch (e: any) {
+      message.error(e?.message ?? "No se pudieron crear las unidades base");
+    } finally {
+      setEnsuringUnits(false);
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -135,6 +153,11 @@ export default function InventoryItemFormDrawer({
   }
 
   async function submit() {
+    if (!hasUnits) {
+      message.warning("No hay unidades base. Crea unidades antes de guardar el insumo.");
+      return;
+    }
+
     const values = await form.validateFields();
     setSaving(true);
     try {
@@ -172,7 +195,12 @@ export default function InventoryItemFormDrawer({
       extra={
         <Space>
           <Button onClick={onClose}>Cancelar</Button>
-          <Button type="primary" loading={saving} onClick={submit}>
+          <Button
+            type="primary"
+            loading={saving}
+            onClick={submit}
+            disabled={!hasUnits || ensuringUnits}
+          >
             Guardar
           </Button>
         </Space>
@@ -246,10 +274,33 @@ export default function InventoryItemFormDrawer({
         <Form.Item
           label="Unidad base"
           name="unitId"
-          rules={[{ required: true }]}
+          rules={[{ required: true, message: "Selecciona una unidad base" }]}
         >
-          <Select placeholder="g / ml / pza" options={unitOptions} />
+          <Select
+            placeholder={hasUnits ? "g / ml / pza" : "No hay unidades disponibles"}
+            options={unitOptions}
+            notFoundContent="No hay unidades"
+          />
         </Form.Item>
+
+        {!hasUnits && (
+          <div style={{ marginBottom: 12 }}>
+            <Alert
+              type="warning"
+              showIcon
+              message="No hay unidades base disponibles"
+              description="Para crear insumos primero necesitas unidades base."
+            />
+            <Button
+              style={{ marginTop: 8 }}
+              onClick={handleEnsureUnits}
+              loading={ensuringUnits}
+              type="default"
+            >
+              Crear unidades base (g, kg, ml, l, pza)
+            </Button>
+          </div>
+        )}
 
         <Form.Item label="Activo" name="isActive" valuePropName="checked">
           <Switch />
