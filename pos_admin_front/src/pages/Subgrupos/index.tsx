@@ -86,7 +86,7 @@ export default function Subgrupos() {
     } catch (e: any) {
       const msg = e?.response?.data?.message || "";
       if (msg.toLowerCase().includes("duplicate")) {
-        message.error("El código o nombre ya existe.");
+        message.error("El nombre ya existe.");
       } else {
         message.error("Error al crear subgrupo");
       }
@@ -121,7 +121,7 @@ export default function Subgrupos() {
     } catch (e: any) {
       const msg = e?.response?.data?.message || "";
       if (msg.toLowerCase().includes("duplicate")) {
-        message.error("El código o nombre ya existe.");
+        message.error("El nombre ya existe.");
       } else {
         message.error("Error al actualizar subgrupo");
       }
