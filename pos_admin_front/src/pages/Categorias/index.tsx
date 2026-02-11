@@ -1,7 +1,7 @@
 // src/pages/Categorias/index.tsx
-import { useEffect, useState } from "react";
-import { Table, Input, Button, message, Tag, Space } from "antd";
-import { PlusOutlined } from "@ant-design/icons";
+import { useEffect, useMemo, useState } from "react";
+import { Table, Input, Button, message, Tag, Space, Tooltip } from "antd";
+import { PlusOutlined, HolderOutlined } from "@ant-design/icons";
 import apiOrder from "@/components/apis/apiOrder";
 import CategoryModal, { type CategoryValues } from "./CategoryModal";
 
@@ -68,11 +68,21 @@ function isDuplicateCodeError(err: any) {
   );
 }
 
+function sortCategories(list: Category[]) {
+  return [...list].sort((a, b) => {
+    const byOrder = (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0);
+    if (byOrder !== 0) return byOrder;
+    return a.id - b.id;
+  });
+}
+
 export default function Categorias() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [reordering, setReordering] = useState(false);
   const [search, setSearch] = useState("");
+  const [draggingId, setDraggingId] = useState<number | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -85,20 +95,29 @@ export default function Categorias() {
     setLoading(true);
     try {
       const res = await apiOrder.get("/categories");
-      setCategories(res.data);
+      setCategories(sortCategories(res.data));
     } catch {
       message.error("Error al cargar categorías");
     } finally {
       setLoading(false);
     }
   };
+
   useEffect(() => {
     fetchCategories();
   }, []);
 
-  const filtered = categories.filter((c) =>
-    `${c.name} ${c.code}`.toLowerCase().includes(search.toLowerCase())
+  const orderedCategories = useMemo(() => sortCategories(categories), [categories]);
+
+  const filtered = useMemo(
+    () =>
+      orderedCategories.filter((c) =>
+        `${c.name} ${c.code}`.toLowerCase().includes(search.toLowerCase())
+      ),
+    [orderedCategories, search]
   );
+
+  const dragEnabled = search.trim().length === 0;
 
   const onDuplicateCheck = (v: CategoryValues) => {
     const dup = categories.some(
@@ -188,7 +207,61 @@ export default function Categorias() {
     }
   };
 
+  const persistReorder = async (nextList: Category[]) => {
+    const normalized = nextList.map((item, index) => ({
+      ...item,
+      sortOrder: index + 1,
+    }));
+
+    const prev = categories;
+    setCategories(normalized);
+    setReordering(true);
+
+    try {
+      await apiOrder.put("/categories/reorder", {
+        items: normalized.map((item) => ({
+          id: item.id,
+          position: item.sortOrder,
+        })),
+      });
+    } catch {
+      setCategories(prev);
+      message.error("No se pudo guardar el nuevo orden");
+    } finally {
+      setReordering(false);
+    }
+  };
+
+  const moveByDrag = async (dragId: number, dropId: number) => {
+    if (dragId === dropId || reordering) return;
+
+    const list = [...orderedCategories];
+    const from = list.findIndex((item) => item.id === dragId);
+    const to = list.findIndex((item) => item.id === dropId);
+    if (from < 0 || to < 0) return;
+
+    const [moved] = list.splice(from, 1);
+    list.splice(to, 0, moved);
+
+    await persistReorder(list);
+  };
+
   const columns = [
+    {
+      title: "",
+      key: "drag",
+      width: 44,
+      render: () =>
+        dragEnabled ? (
+          <Tooltip title="Arrastra para reordenar">
+            <HolderOutlined style={{ color: "#999", cursor: "grab" }} />
+          </Tooltip>
+        ) : (
+          <Tooltip title="Limpia la búsqueda para reordenar">
+            <HolderOutlined style={{ color: "#ddd" }} />
+          </Tooltip>
+        ),
+    },
     { title: "Nombre", dataIndex: "name", key: "name" },
     { title: "Código", dataIndex: "code", key: "code" },
     { title: "Orden", dataIndex: "sortOrder", key: "sortOrder" },
@@ -217,28 +290,50 @@ export default function Categorias() {
 
   return (
     <div className="space-y-4 max-w-4xl mx-auto">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center gap-3">
         <Input
           placeholder="Buscar por nombre o código"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-sm"
         />
-        <Button
-          icon={<PlusOutlined />}
-          type="primary"
-          onClick={() => setCreateOpen(true)}
-        >
-          Agregar categoría
-        </Button>
+        <Space>
+          <Tag color={dragEnabled ? "blue" : "default"}>
+            {dragEnabled
+              ? "Reordenamiento activo: arrastra filas"
+              : "Limpia búsqueda para reordenar"}
+          </Tag>
+          <Button
+            icon={<PlusOutlined />}
+            type="primary"
+            onClick={() => setCreateOpen(true)}
+          >
+            Agregar categoría
+          </Button>
+        </Space>
       </div>
 
       <Table
         rowKey="id"
         columns={columns as any}
         dataSource={filtered}
-        loading={loading}
+        loading={loading || reordering}
         pagination={{ pageSize: 10 }}
+        onRow={(record) => ({
+          draggable: dragEnabled && !reordering,
+          onDragStart: () => setDraggingId(record.id),
+          onDragOver: (e) => {
+            if (!dragEnabled) return;
+            e.preventDefault();
+          },
+          onDrop: async () => {
+            if (!dragEnabled || draggingId === null) return;
+            await moveByDrag(draggingId, record.id);
+            setDraggingId(null);
+          },
+          onDragEnd: () => setDraggingId(null),
+          style: dragEnabled ? { cursor: "move" } : {},
+        })}
       />
 
       <CategoryModal
