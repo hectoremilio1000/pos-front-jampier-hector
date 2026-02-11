@@ -199,6 +199,12 @@ button.ghost {
   margin-bottom: 4px;
 }
 
+.bubble-meta {
+  margin-top: 6px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
 .chat-input {
   padding: 18px 22px;
   background: #0b1220;

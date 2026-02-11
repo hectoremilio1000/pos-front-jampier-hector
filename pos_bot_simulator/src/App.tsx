@@ -12,6 +12,7 @@ type ChatMessage = {
   role: 'user' | 'assistant' | 'system'
   text: string
   ts: string
+  latencyMs?: number
 }
 
 type OutboundBotPayload = {
@@ -64,6 +65,7 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [lastPayload, setLastPayload] = useState<OutboundBotPayload | null>(null)
   const [lastBotResponseMeta, setLastBotResponseMeta] = useState<LastBotResponseMeta | null>(null)
+  const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null)
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
@@ -168,6 +170,7 @@ function App() {
     setStatus(`Enviando ${payload.provider}/${payload.providerMessageId}...`)
 
     try {
+      const requestStartedAt = performance.now()
       const res = await fetch(`${apiBaseClean}/bot/message`, {
         method: 'POST',
         headers: {
@@ -177,6 +180,8 @@ function App() {
         body: JSON.stringify(payload),
       })
       const data = await res.json()
+      const latencyMs = Math.max(0, Math.round(performance.now() - requestStartedAt))
+      setLastLatencyMs(latencyMs)
       if (!res.ok) {
         throw new Error(data?.error || `Error ${res.status}`)
       }
@@ -194,7 +199,7 @@ function App() {
 
       const replies = Array.isArray(typedData.replies) ? typedData.replies : []
       if (!replies.length) {
-        setStatus(`Sin respuestas del bot (${payload.providerMessageId}).`)
+        setStatus(`Sin respuestas del bot (${payload.providerMessageId}) • ${latencyMs}ms`)
         return
       }
 
@@ -203,9 +208,10 @@ function App() {
         role: 'assistant',
         text: String(reply || ''),
         ts: new Date().toISOString(),
+        latencyMs,
       }))
       setMessages((prev) => [...prev, ...replyMessages])
-      setStatus(`OK (${payload.provider}/${payload.providerMessageId})`)
+      setStatus(`OK (${payload.provider}/${payload.providerMessageId}) • ${latencyMs}ms`)
     } catch (err: any) {
       setStatus(err?.message || 'Error al enviar mensaje.')
       setMessages((prev) => [
@@ -369,6 +375,13 @@ function App() {
           <pre className="json-block">{lastIntentPayloadText}</pre>
         </div>
 
+        <div className="field">
+          <label>Ultima latencia</label>
+          <div className="status">
+            {lastLatencyMs === null ? 'Sin medición aún.' : `${lastLatencyMs} ms`}
+          </div>
+        </div>
+
         <div className="field actions">
           <button onClick={resetChat} className="ghost">
             Limpiar chat
@@ -402,6 +415,9 @@ function App() {
                     : 'Sistema'}
                 </div>
                 <div className="bubble-text">{msg.text}</div>
+                {msg.role === 'assistant' && typeof msg.latencyMs === 'number' ? (
+                  <div className="bubble-meta">{msg.latencyMs} ms</div>
+                ) : null}
               </div>
             ))
           )}
