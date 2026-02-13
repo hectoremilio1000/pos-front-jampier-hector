@@ -590,6 +590,12 @@ export function useCashKiosk() {
         const newTotals =
           msg.totals && typeof msg.totals === "object" ? msg.totals : null;
 
+        // Evento parcial: si no vienen items, pedimos snapshot puntual de la orden.
+        if (incomingItems.length === 0) {
+          await fetchOrderById(changedId).catch(() => {});
+          return;
+        }
+
         setOrders((prev) =>
           prev.map((o) => {
             if (o.id !== changedId) return o;

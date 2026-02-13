@@ -17,26 +17,25 @@ import HeaderStatus from "@/components/Kiosk/HeaderStatus";
 
 const { Title } = Typography;
 
-const MOBILE_MEDIA_QUERY = "(max-width: 767px)";
+const TOUCH_MEDIA_QUERY = "(max-width: 1024px), (hover: none) and (pointer: coarse)";
 const KEYPAD_VISIBILITY_STORAGE_KEY_DESKTOP =
   "pos_cash_login_keypad_visible_desktop";
 const KEYPAD_VISIBILITY_STORAGE_KEY_MOBILE =
   "pos_cash_login_keypad_visible_mobile";
 
-const getIsMobileViewport = (): boolean => {
+const getIsTouchViewport = (): boolean => {
   if (typeof window === "undefined") return false;
-  return window.matchMedia(MOBILE_MEDIA_QUERY).matches;
+  return window.matchMedia(TOUCH_MEDIA_QUERY).matches;
 };
 
-const getKeypadVisibilityPreference = (isMobileViewport: boolean): boolean => {
-  if (typeof window === "undefined") return !isMobileViewport;
+const getKeypadVisibilityPreference = (isTouchViewport: boolean): boolean => {
+  if (typeof window === "undefined") return !isTouchViewport;
+  if (isTouchViewport) return false;
 
-  const storageKey = isMobileViewport
-    ? KEYPAD_VISIBILITY_STORAGE_KEY_MOBILE
-    : KEYPAD_VISIBILITY_STORAGE_KEY_DESKTOP;
+  const storageKey = KEYPAD_VISIBILITY_STORAGE_KEY_DESKTOP;
 
   const savedPreference = window.localStorage.getItem(storageKey);
-  if (savedPreference === null) return !isMobileViewport;
+  if (savedPreference === null) return true;
 
   return savedPreference !== "false";
 };
@@ -74,11 +73,11 @@ export default function LoginScreen() {
   const [pairState, setPairState] = useState<PairState>(
     sessionStorage.getItem("kiosk_token") ? "paired" : "none"
   );
-  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
-    getIsMobileViewport()
+  const [isTouchViewport, setIsTouchViewport] = useState<boolean>(() =>
+    getIsTouchViewport()
   );
   const [isKeypadVisible, setIsKeypadVisible] = useState<boolean>(() =>
-    getKeypadVisibilityPreference(getIsMobileViewport())
+    getKeypadVisibilityPreference(getIsTouchViewport())
   );
 
   // campo activo para keypad
@@ -146,10 +145,10 @@ export default function LoginScreen() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const mediaQueryList = window.matchMedia(MOBILE_MEDIA_QUERY);
-    const applyViewportPreference = (isMobile: boolean) => {
-      setIsMobileViewport(isMobile);
-      setIsKeypadVisible(getKeypadVisibilityPreference(isMobile));
+    const mediaQueryList = window.matchMedia(TOUCH_MEDIA_QUERY);
+    const applyViewportPreference = (isTouch: boolean) => {
+      setIsTouchViewport(isTouch);
+      setIsKeypadVisible(getKeypadVisibilityPreference(isTouch));
     };
 
     applyViewportPreference(mediaQueryList.matches);
@@ -168,12 +167,16 @@ export default function LoginScreen() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const storageKey = isMobileViewport
-      ? KEYPAD_VISIBILITY_STORAGE_KEY_MOBILE
-      : KEYPAD_VISIBILITY_STORAGE_KEY_DESKTOP;
+    if (isTouchViewport) {
+      window.localStorage.setItem(KEYPAD_VISIBILITY_STORAGE_KEY_MOBILE, "false");
+      return;
+    }
 
-    window.localStorage.setItem(storageKey, String(isKeypadVisible));
-  }, [isKeypadVisible, isMobileViewport]);
+    window.localStorage.setItem(
+      KEYPAD_VISIBILITY_STORAGE_KEY_DESKTOP,
+      String(isKeypadVisible)
+    );
+  }, [isKeypadVisible, isTouchViewport]);
 
   // Pairing CASH (requiere estación)
   // Pairing CASH (requiere estación)
@@ -288,21 +291,23 @@ export default function LoginScreen() {
           />
         </div>
 
-        <div className="flex justify-end mb-4">
-          <button
-            type="button"
-            onClick={() => setIsKeypadVisible((prev) => !prev)}
-            className="rounded bg-gray-700 px-3 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-gray-600"
-          >
-            {isKeypadVisible
-              ? "Ocultar teclado touch"
-              : "Mostrar teclado touch"}
-          </button>
-        </div>
+        {!isTouchViewport && (
+          <div className="flex justify-end mb-4">
+            <button
+              type="button"
+              onClick={() => setIsKeypadVisible((prev) => !prev)}
+              className="rounded bg-gray-700 px-3 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-gray-600"
+            >
+              {isKeypadVisible
+                ? "Ocultar teclado touch"
+                : "Mostrar teclado touch"}
+            </button>
+          </div>
+        )}
 
         {/* Layout */}
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
-          {isKeypadVisible && (
+          {!isTouchViewport && isKeypadVisible && (
             <div className="order-1 xl:order-2 xl:col-span-5">
               <div className="w-full xl:max-w-[460px] xl:ml-auto">
                 <Numpad
@@ -318,7 +323,9 @@ export default function LoginScreen() {
 
           <div
             className={`space-y-3 order-2 xl:order-1 ${
-              isKeypadVisible ? "xl:col-span-7" : "xl:col-span-12"
+              !isTouchViewport && isKeypadVisible
+                ? "xl:col-span-7"
+                : "xl:col-span-12"
             }`}
           >
             {!hasPair ? (

@@ -16,6 +16,7 @@ import {
 import { useEffect, useState } from "react";
 import apiOrderKiosk from "@/components/apis/apiOrderKiosk";
 import apiAuth from "@/components/apis/apiAuth";
+import apiCashKiosk from "@/components/apis/apiCashKiosk";
 import type { ColumnsType } from "antd/es/table";
 
 type Props = { open: boolean; onClose: () => void };
@@ -39,7 +40,7 @@ type Item = {
 
 type OrderLite = {
   id: number;
-  status: string; // 'closed' | 'void'
+  status: string; // 'closed' | 'void' | 'refunded' | 'partial_refund'
   tableName?: string | null;
   folioSeries?: string | null;
   folioNumber?: number | null;
@@ -48,6 +49,20 @@ type OrderLite = {
   tax?: number;
   total?: number;
 };
+
+type RefundLine = { paymentMethodId: number; amount: number };
+
+type PaymentMethodOption = {
+  label: string;
+  value: number;
+  code: string;
+  isCash: boolean;
+};
+
+const FALLBACK_PAYMENT_METHOD_OPTIONS: PaymentMethodOption[] = [
+  { label: "Efectivo", value: 1, code: "CASH", isCash: true },
+  { label: "Tarjeta", value: 2, code: "CARD", isCash: false },
+];
 
 export default function OrdersReviewDrawer({ open, onClose }: Props) {
   const [loading, setLoading] = useState(false);
@@ -63,27 +78,58 @@ export default function OrdersReviewDrawer({ open, onClose }: Props) {
   const [pwOpen, setPwOpen] = useState(false);
   const [pw, setPw] = useState("");
 
-  // approval modal (password)
-  type RefundLine = { paymentMethodId: number; amount: number };
+  const [paymentMethodOptions, setPaymentMethodOptions] = useState<
+    PaymentMethodOption[]
+  >([]);
 
-  const PAYMENT_METHOD_OPTIONS = [
-    { label: "Efectivo", value: 1 },
-    { label: "Tarjeta", value: 2 },
-    // { label: "Transferencia", value: 3 },
-  ];
+  const resolvedPaymentMethodOptions =
+    paymentMethodOptions.length > 0
+      ? paymentMethodOptions
+      : FALLBACK_PAYMENT_METHOD_OPTIONS;
+
+  const defaultRefundMethodId =
+    resolvedPaymentMethodOptions.find((opt) => opt.code === "CASH")?.value ??
+    resolvedPaymentMethodOptions[0]?.value ??
+    0;
 
   useEffect(() => {
     if (!open) return;
     (async () => {
       setLoading(true);
       try {
-        // usa X-Shift-Id del interceptor; endpoint nuevo abajo
-        const { data } = await apiOrderKiosk.get("/shift/orders/review", {
-          validateStatus: () => true,
-        });
-        if (!Array.isArray(data)) throw new Error("Sin datos");
-        setOrders(data);
-        setSel(data[0] ?? null);
+        const [ordersRes, methodsRes] = await Promise.all([
+          apiOrderKiosk.get("/shift/orders/review", {
+            validateStatus: () => true,
+          }),
+          apiCashKiosk.get("/payment-methods", {
+            params: { enabled: true },
+            validateStatus: () => true,
+          }),
+        ]);
+
+        const ordersData = ordersRes?.data;
+        if (!Array.isArray(ordersData)) throw new Error("Sin datos");
+        setOrders(ordersData);
+        setSel(ordersData[0] ?? null);
+
+        const methodsData = methodsRes?.data;
+        if (
+          methodsRes?.status >= 200 &&
+          methodsRes?.status < 300 &&
+          Array.isArray(methodsData)
+        ) {
+          const mapped = methodsData
+            .filter((m: any) => Number(m?.id) > 0)
+            .map((m: any) => ({
+              label: String(m?.name || m?.code || "Metodo " + m?.id),
+              value: Number(m.id),
+              code: String(m?.code || "").toUpperCase(),
+              isCash: Boolean(m?.isCash),
+            }));
+          setPaymentMethodOptions(mapped);
+        } else {
+          setPaymentMethodOptions([]);
+        }
       } catch (e: any) {
         message.error(
           String(e?.message || "No fue posible cargar cuentas del turno")
@@ -128,7 +174,14 @@ export default function OrdersReviewDrawer({ open, onClose }: Props) {
 
   function statusTag(s: string) {
     const v = s.toLowerCase();
-    const color = v === "closed" ? "green" : v === "void" ? "red" : "default";
+    const color =
+      v === "closed"
+        ? "green"
+        : v === "void"
+          ? "red"
+          : v === "refunded" || v === "partial_refund"
+            ? "orange"
+            : "default";
     return <Tag color={color}>{v}</Tag>;
   }
 
@@ -163,8 +216,13 @@ export default function OrdersReviewDrawer({ open, onClose }: Props) {
   }
   function proceedCancelApproval() {
     // refunds son opcionales, pero si existen deben ser válidos
+    const validMethodIds = new Set(
+      resolvedPaymentMethodOptions.map((opt) => Number(opt.value))
+    );
+
     for (const r of refunds) {
-      if (!r.paymentMethodId || !(Number(r.amount) > 0)) {
+      const methodId = Number(r.paymentMethodId);
+      if (!validMethodIds.has(methodId) || !(Number(r.amount) > 0)) {
         message.error("Línea de reembolso inválida");
         return;
       }
@@ -196,10 +254,11 @@ export default function OrdersReviewDrawer({ open, onClose }: Props) {
       message.success("Folio cancelado");
 
       // refresca selección
+      const nextStatus = String(data?.status || "void").toLowerCase();
       setOrders((prev) =>
-        prev.map((o) => (o.id === sel.id ? { ...o, status: "void" } : o))
+        prev.map((o) => (o.id === sel.id ? { ...o, status: nextStatus } : o))
       );
-      setSel({ ...sel, status: "void" });
+      setSel((prev) => (prev ? { ...prev, status: nextStatus } : prev));
 
       setRefunds([]);
       setCancelReason("");
@@ -302,8 +361,10 @@ export default function OrdersReviewDrawer({ open, onClose }: Props) {
                 </div>
               </Space>
 
-              {/* Marca visual si está cancelada */}
-              {sel.status.toLowerCase() === "void" && (
+              {/* Marca visual si está cancelada/reembolsada */}
+              {["void", "refunded", "partial_refund"].includes(
+                sel.status.toLowerCase()
+              ) && (
                 <div
                   style={{
                     position: "absolute",
@@ -318,7 +379,11 @@ export default function OrdersReviewDrawer({ open, onClose }: Props) {
                     color: "#d4380d",
                   }}
                 >
-                  FOLIO CANCELADO
+                  {sel.status.toLowerCase() === "void"
+                    ? "FOLIO CANCELADO"
+                    : sel.status.toLowerCase() === "refunded"
+                      ? "FOLIO REEMBOLSADO"
+                      : "FOLIO REEMBOLSO PARCIAL"}
                 </div>
               )}
               {/* Modal 1: configuración de cancelación (motivo + reembolsos opcionales) */}
@@ -350,7 +415,7 @@ export default function OrdersReviewDrawer({ open, onClose }: Props) {
                           <Select
                             style={{ width: 180 }}
                             value={r.paymentMethodId}
-                            options={PAYMENT_METHOD_OPTIONS}
+                            options={resolvedPaymentMethodOptions}
                             onChange={(v) =>
                               setRefunds((prev) =>
                                 prev.map((x, i) =>
@@ -389,15 +454,19 @@ export default function OrdersReviewDrawer({ open, onClose }: Props) {
                       ))}
 
                       <Button
-                        onClick={() =>
+                        onClick={() => {
+                          if (!defaultRefundMethodId) {
+                            message.error("No hay métodos de pago disponibles");
+                            return;
+                          }
                           setRefunds((p) => [
                             ...p,
                             {
-                              paymentMethodId: PAYMENT_METHOD_OPTIONS[0].value,
+                              paymentMethodId: defaultRefundMethodId,
                               amount: 0,
                             },
-                          ])
-                        }
+                          ]);
+                        }}
                       >
                         Agregar línea de reembolso
                       </Button>

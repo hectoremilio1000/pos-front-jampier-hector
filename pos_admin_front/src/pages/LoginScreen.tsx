@@ -5,28 +5,26 @@ import { message } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const MOBILE_MEDIA_QUERY = "(max-width: 767px)";
+const TOUCH_MEDIA_QUERY = "(max-width: 1024px), (hover: none) and (pointer: coarse)";
 const KEYBOARD_VISIBILITY_STORAGE_KEY_DESKTOP =
   "pos_admin_login_keyboard_visible_desktop";
 const KEYBOARD_VISIBILITY_STORAGE_KEY_MOBILE =
   "pos_admin_login_keyboard_visible_mobile";
 
-const getIsMobileViewport = (): boolean => {
+const getIsTouchViewport = (): boolean => {
   if (typeof window === "undefined") return false;
-  return window.matchMedia(MOBILE_MEDIA_QUERY).matches;
+  return window.matchMedia(TOUCH_MEDIA_QUERY).matches;
 };
 
-const getKeyboardVisibilityPreference = (isMobileViewport: boolean): boolean => {
-  if (typeof window === "undefined") return !isMobileViewport;
+const getKeyboardVisibilityPreference = (isTouchViewport: boolean): boolean => {
+  if (typeof window === "undefined") return !isTouchViewport;
+  if (isTouchViewport) return false;
 
-  const storageKey = isMobileViewport
-    ? KEYBOARD_VISIBILITY_STORAGE_KEY_MOBILE
-    : KEYBOARD_VISIBILITY_STORAGE_KEY_DESKTOP;
+  const storageKey = KEYBOARD_VISIBILITY_STORAGE_KEY_DESKTOP;
 
   const savedPreference = window.localStorage.getItem(storageKey);
 
-  // Mobile first rule: hide by default on phones; show by default on larger screens.
-  if (savedPreference === null) return !isMobileViewport;
+  if (savedPreference === null) return true;
 
   return savedPreference !== "false";
 };
@@ -37,11 +35,11 @@ const LoginScreen: React.FC = () => {
   const [tecladoActive, setTecladoActive] = useState<"email" | "password">(
     "email"
   );
-  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
-    getIsMobileViewport()
+  const [isTouchViewport, setIsTouchViewport] = useState<boolean>(() =>
+    getIsTouchViewport()
   );
   const [isKeyboardVisible, setIsKeyboardVisible] = useState<boolean>(() =>
-    getKeyboardVisibilityPreference(getIsMobileViewport())
+    getKeyboardVisibilityPreference(getIsTouchViewport())
   );
 
   const { token, login } = useAuth();
@@ -53,10 +51,10 @@ const LoginScreen: React.FC = () => {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const mediaQueryList = window.matchMedia(MOBILE_MEDIA_QUERY);
-    const applyViewportPreference = (isMobile: boolean) => {
-      setIsMobileViewport(isMobile);
-      setIsKeyboardVisible(getKeyboardVisibilityPreference(isMobile));
+    const mediaQueryList = window.matchMedia(TOUCH_MEDIA_QUERY);
+    const applyViewportPreference = (isTouch: boolean) => {
+      setIsTouchViewport(isTouch);
+      setIsKeyboardVisible(getKeyboardVisibilityPreference(isTouch));
     };
 
     applyViewportPreference(mediaQueryList.matches);
@@ -75,15 +73,16 @@ const LoginScreen: React.FC = () => {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const storageKey = isMobileViewport
-      ? KEYBOARD_VISIBILITY_STORAGE_KEY_MOBILE
-      : KEYBOARD_VISIBILITY_STORAGE_KEY_DESKTOP;
+    if (isTouchViewport) {
+      window.localStorage.setItem(KEYBOARD_VISIBILITY_STORAGE_KEY_MOBILE, "false");
+      return;
+    }
 
     window.localStorage.setItem(
-      storageKey,
+      KEYBOARD_VISIBILITY_STORAGE_KEY_DESKTOP,
       String(isKeyboardVisible)
     );
-  }, [isKeyboardVisible, isMobileViewport]);
+  }, [isKeyboardVisible, isTouchViewport]);
 
   const handleLogin = async () => {
     if (email === "" || password === "") {
@@ -133,7 +132,7 @@ const LoginScreen: React.FC = () => {
   return (
     <div className="w-full min-h-screen bg-blue-700 text-gray-800 font-sans px-4 py-6 md:py-8">
       <div className="mx-auto w-full max-w-[1720px] grid grid-cols-1 xl:grid-cols-12 gap-6 lg:gap-8 items-start">
-        {isKeyboardVisible && (
+        {!isTouchViewport && isKeyboardVisible && (
           <section className="w-full xl:col-span-7">
             <div className="mx-auto rounded-lg bg-white/95 p-4 sm:p-5 shadow-lg">
               <TecladoVirtual
@@ -150,23 +149,25 @@ const LoginScreen: React.FC = () => {
 
         <section
           className={`${
-            isKeyboardVisible
+            !isTouchViewport && isKeyboardVisible
               ? "w-full xl:col-span-5"
               : "w-full"
           } flex w-full justify-center`}
         >
           <div className="w-full max-w-xl xl:max-w-[640px] flex flex-col gap-4 md:gap-5">
-            <div className="w-full flex justify-end">
-              <button
-                type="button"
-                onClick={() => setIsKeyboardVisible((prev) => !prev)}
-                className="rounded bg-gray-700 px-3 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-gray-600"
-              >
-                {isKeyboardVisible
-                  ? "Ocultar teclado touch"
-                  : "Mostrar teclado touch"}
-              </button>
-            </div>
+            {!isTouchViewport && (
+              <div className="w-full flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsKeyboardVisible((prev) => !prev)}
+                  className="rounded bg-gray-700 px-3 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-gray-600"
+                >
+                  {isKeyboardVisible
+                    ? "Ocultar teclado touch"
+                    : "Mostrar teclado touch"}
+                </button>
+              </div>
+            )}
 
             <div className="w-full text-white text-base sm:text-lg">
               🕒 {new Date().toLocaleString("es-MX", { hour12: false })}
