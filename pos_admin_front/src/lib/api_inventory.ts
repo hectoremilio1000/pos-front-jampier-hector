@@ -491,6 +491,13 @@ function toQueryString(qs?: Record<string, unknown>): string {
   return s ? `?${s}` : "";
 }
 
+const REQUEST_TIMEOUT_MS = 15000;
+const RETRYABLE_HTTP_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function http<T>(
   path: string,
   opts: {
@@ -538,27 +545,54 @@ async function http<T>(
     }
   }
 
-  const res = await fetch(url, init);
-  const text = await res.text();
+  const isGet = method.toUpperCase() === "GET";
+  const maxAttempts = isGet ? 2 : 1;
+  let lastError: unknown = null;
 
-  if (!res.ok) {
-    // intenta leer JSON de error
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const j = JSON.parse(text);
-      const msg = j?.message || j?.error || res.statusText;
-      throw new Error(`${res.status} ${msg}`);
-    } catch {
-      throw new Error(`${res.status} ${text || res.statusText}`);
+      const res = await fetch(url, { ...init, signal: controller.signal });
+      const text = await res.text();
+      if (!res.ok) {
+        const shouldRetry = isGet && RETRYABLE_HTTP_STATUS.has(res.status) && attempt < maxAttempts;
+        if (shouldRetry) {
+          await sleep(200 * attempt);
+          continue;
+        }
+
+        try {
+          const j = JSON.parse(text);
+          const msg = j?.message || j?.error || res.statusText;
+          throw new Error(`${res.status} ${msg}`);
+        } catch {
+          throw new Error(`${res.status} ${text || res.statusText}`);
+        }
+      }
+
+      if (!text) return undefined as T;
+      try {
+        return JSON.parse(text) as T;
+      } catch {
+        // si el backend regresa texto plano
+        return text as any as T;
+      }
+    } catch (err: unknown) {
+      const isAbort = err instanceof DOMException && err.name === "AbortError";
+      const shouldRetry = isGet && attempt < maxAttempts;
+      lastError = isAbort ? new Error(`Timeout ${REQUEST_TIMEOUT_MS}ms`) : err;
+      if (shouldRetry) {
+        await sleep(200 * attempt);
+        continue;
+      }
+      throw lastError;
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
-  if (!text) return undefined as any;
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    // si el backend regresa texto plano
-    return text as any as T;
-  }
+  throw lastError ?? new Error("Error de red");
 }
 
 /** ===== Catálogos globales ===== */

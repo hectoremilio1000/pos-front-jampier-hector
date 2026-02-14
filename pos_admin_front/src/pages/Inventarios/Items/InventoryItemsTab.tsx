@@ -31,26 +31,50 @@ export default function InventoryItemsTab({ restaurantId }: Props) {
   const [presentationsItem, setPresentationsItem] = useState<InventoryItemRow | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
+  async function resolveUnitsSafe(): Promise<MeasurementUnitRow[]> {
+    try {
+      const rows = await listMeasurementUnits();
+      if (Array.isArray(rows) && rows.length > 0) return rows;
+    } catch {
+      // sigue al fallback abajo
+    }
+
+    // fallback pro: intenta autocurar catálogo y reintentar
+    await ensureDefaultMeasurementUnits();
+    const rows = await listMeasurementUnits();
+    return Array.isArray(rows) ? rows : [];
+  }
+
   async function reload(nextQ?: string) {
     setLoading(true);
     try {
-      const [g, firstUnits, it] = await Promise.all([
+      const [groupsRes, unitsRes, itemsRes] = await Promise.allSettled([
         listInventoryGroups(restaurantId),
-        listMeasurementUnits(),
+        resolveUnitsSafe(),
         listInventoryItems(restaurantId, nextQ ?? q),
       ]);
 
-      let resolvedUnits = firstUnits;
-      if (!Array.isArray(firstUnits) || firstUnits.length === 0) {
-        // retry ligero para evitar estados intermitentes "No data"
-        resolvedUnits = await listMeasurementUnits();
+      if (groupsRes.status === "fulfilled") {
+        setGroups(groupsRes.value);
+      } else {
+        message.warning("No se pudieron cargar los grupos de insumo.");
       }
 
-      setGroups(g);
-      setUnits(resolvedUnits);
-      setItems(it);
-    } catch (e: any) {
-      message.error(e?.message ?? "Error cargando insumos");
+      if (unitsRes.status === "fulfilled") {
+        setUnits(unitsRes.value);
+      } else {
+        // no bloquea tabla de insumos si falla catálogo global
+        message.warning("No se pudieron cargar las unidades base.");
+      }
+
+      if (itemsRes.status === "fulfilled") {
+        setItems(itemsRes.value);
+      } else {
+        throw itemsRes.reason;
+      }
+    } catch (e: unknown) {
+      const err = e as { message?: string } | undefined;
+      message.error(err?.message ?? "Error cargando insumos");
     } finally {
       setLoading(false);
     }
