@@ -14,6 +14,7 @@ import {
   Tag,
   Radio,
   InputNumber,
+  Tooltip,
 } from "antd";
 import { createInvoiceForOrder } from "@/components/apis/apiOrderInvoices";
 
@@ -34,14 +35,26 @@ const ITEM_STATUS_DEFINITIONS: Record<string, ItemStatusDefinition> = {
   open: { label: "Abierta", color: "green" },
   in_progress: { label: "En preparación", color: "processing" },
   reopened: { label: "Reabierta", color: "purple" },
-  sent: { label: "Enviada", color: "geekblue" },
+  sent: { label: "Enviado", color: "geekblue" },
   prepared: { label: "Preparada", color: "cyan" },
   ready: { label: "Lista", color: "success" },
-  printed: { label: "Impreso", color: "default" },
+  printed: { label: "Impresa", color: "default" },
   paid: { label: "Pagado", color: "default" },
   closed: { label: "Cerrada", color: "default" },
   cancelled: { label: "Cancelado", color: "red" },
   void: { label: "Anulado", color: "red" },
+};
+
+const ORDER_STATUS_LABELS: Record<string, string> = {
+  open: "Abierta",
+  in_progress: "En preparación",
+  reopened: "Reabierta",
+  printed: "Impresa",
+  paid: "Pagada",
+  closed: "Cerrada",
+  void: "Anulada",
+  refunded: "Reembolsada",
+  partial_refund: "Reembolso parcial",
 };
 
 const CANCELLED_STATUS_MARKERS = ["cancel", "cancelled", "void", "anulado"];
@@ -63,6 +76,13 @@ function isItemCancelled(status?: string | null) {
     normalized.includes(marker),
   );
 }
+
+function resolveOrderStatusLabel(status?: string | null) {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (!normalized) return "-";
+  return ORDER_STATUS_LABELS[normalized] || normalized;
+}
+
 type DiscountType = "percent" | "fixed";
 type PrintMode = "qr" | "impresion" | "mixto";
 
@@ -246,9 +266,9 @@ export default function OrderDetail() {
       return;
     }
 
-    // subtotal después de descuentos por ítem (solo con items)
+    // subtotal después de descuentos por ítem (solo con items cobrables)
     let subtotalAfterItems = 0;
-    for (const it of items) {
+    for (const it of items.filter(isChargeableItem)) {
       const qty = Number(it.qty ?? 0);
       const unit = Number(it.unitPrice ?? 0);
       const gross = qty * unit;
@@ -453,19 +473,38 @@ export default function OrderDetail() {
     },
 
     {
-      title: "Descuento",
-      key: "discount",
-      align: "center",
-      width: 90,
-      render: (_, it) => (
-        <Button
-          size="small"
-          onClick={() => openItemDiscountModal(it)}
-          disabled={!canApplyDiscounts || isItemCancelled(it.status)}
-        >
-          Aplicar
-        </Button>
-      ),
+      title: "Acción",
+      key: "actions",
+      width: 340,
+      render: (_, it) => {
+        const hasItemId = typeof it.id === "number";
+        const canAdjustItem =
+          hasItemId && canApplyDiscounts && !isItemCancelled(it.status);
+        return (
+          <Space size="small" wrap>
+            <Button
+              danger
+              size="small"
+              onClick={() => {
+                setVoidItemIds([it.id]);
+                setVoidReason("");
+                setVoidManagerPassword("");
+                setVoidModalVisible(true);
+              }}
+              disabled={!canAdjustItem}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="small"
+              onClick={() => openItemDiscountModal(it)}
+              disabled={!canAdjustItem}
+            >
+              Descuento
+            </Button>
+          </Space>
+        );
+      },
     },
   ];
 
@@ -579,6 +618,8 @@ export default function OrderDetail() {
   //   (orders?.findIndex((o: any) => o.id === selectedOrder?.id) ?? -1) + 1;
 
   function lineAmount(x: CashOrderItem): number {
+    if (!isChargeableItem(x)) return 0;
+
     const qty = Number((x as any).qty ?? 0) || 0;
     const unit = Number((x as any).unitPrice ?? 0) || 0;
 
@@ -1041,6 +1082,12 @@ export default function OrderDetail() {
 
   // 👉 nuevo: borrar cuenta solo si jamás se imprimió y no hay productos
   const canDeleteOrder = printCount === 0 && !hasItems;
+  const deleteOrderBlockedReason =
+    printCount > 0
+      ? "No puedes borrar la cuenta porque ya fue impresa."
+      : hasItems
+        ? "No puedes borrar la cuenta porque todavía tiene productos."
+        : "";
   const hasPrinter = Boolean(stationCurrent?.printerName);
   const configuredPrintMode = (printSettings?.printMode ||
     "mixto") as PrintMode;
@@ -1441,7 +1488,7 @@ export default function OrderDetail() {
                               : "processing"
                   }
                 >
-                  {status || "-"}
+                  {resolveOrderStatusLabel(status)}
                 </Tag>
               </Descriptions.Item>
             </Descriptions>
@@ -1520,15 +1567,24 @@ export default function OrderDetail() {
                   🗑️ Eliminar productos
                 </Button>
 
-                <Button
-                  onClick={openDeleteFlow}
-                  disabled={!canDeleteOrder}
-                  danger
-                  type="dashed"
-                  title="Solo si nunca se imprimió y no tiene productos"
+                <Tooltip
+                  title={
+                    canDeleteOrder
+                      ? "Borrar cuenta"
+                      : deleteOrderBlockedReason
+                  }
                 >
-                  🗑️ Borrar cuenta
-                </Button>
+                  <span className="inline-block">
+                    <Button
+                      onClick={openDeleteFlow}
+                      disabled={!canDeleteOrder}
+                      danger
+                      type="dashed"
+                    >
+                      🗑️ Borrar cuenta
+                    </Button>
+                  </span>
+                </Tooltip>
               </div>
 
               <Button

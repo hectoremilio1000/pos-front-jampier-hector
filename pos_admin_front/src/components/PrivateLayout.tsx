@@ -2,6 +2,7 @@ import { Outlet, NavLink, useLocation } from "react-router-dom";
 import { Button, Drawer, Tooltip } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./Auth/AuthContext";
+import BotAdminAssistant from "./BotAdminAssistant";
 
 import { MenuOutlined, LeftOutlined, RightOutlined } from "@ant-design/icons";
 
@@ -331,6 +332,7 @@ export default function PrivateLayout() {
           <Outlet />
         </main>
       </div>
+      <BotAdminAssistant />
     </div>
   );
 }

@@ -114,12 +114,18 @@ const RegistroChequeModal: React.FC<Props> = ({
   const [tables, setTables] = useState<TableRow[]>([]);
   const [tablesLoading, setTablesLoading] = useState(false);
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
+  const [selectedAreaId, setSelectedAreaId] = useState<number | null>(
+    typeof defaultAreaId === "number" ? defaultAreaId : null
+  );
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(
     typeof defaultServiceId === "number" ? defaultServiceId : null
   );
 
+  const hasAreas = areas.length > 0;
   const hasTables = tables.length > 0;
   const hasServices = services.length > 0;
+  const firstValidAreaId =
+    areas.find((a) => typeof a.id === "number")?.id ?? null;
 
   const getTableLabel = (t: TableRow) => {
     return (
@@ -162,18 +168,34 @@ const RegistroChequeModal: React.FC<Props> = ({
     setNameSource("table");
   };
 
-  // Área/Servicio siempre vienen de arriba. Si faltan, tomamos el primero disponible.
-  const areaId =
-    typeof defaultAreaId === "number"
-      ? defaultAreaId
-      : areas[0]
-        ? Number(areas[0].id)
-        : 0;
+  // Área/Servicio editables en modal; si faltan, intentamos con primer valor disponible.
+  const areaId = selectedAreaId ?? 0;
   const serviceId = selectedServiceId ?? 0;
 
   const areaName = areas.find((a) => a.id === areaId)?.name ?? "—";
   const serviceName =
     services.find((s) => Number(s.id) === Number(serviceId))?.name ?? "—";
+
+  useEffect(() => {
+    if (!visible) return;
+    if (!hasAreas) {
+      setSelectedAreaId(null);
+      return;
+    }
+
+    const defaultId =
+      typeof defaultAreaId === "number"
+        ? defaultAreaId
+        : firstValidAreaId !== null
+          ? Number(firstValidAreaId)
+          : null;
+
+    setSelectedAreaId((prev) => {
+      if (!prev) return defaultId;
+      const exists = areas.some((a) => Number(a.id) === Number(prev));
+      return exists ? prev : defaultId;
+    });
+  }, [visible, hasAreas, areas, defaultAreaId, firstValidAreaId]);
 
   useEffect(() => {
     if (!visible) return;
@@ -240,7 +262,7 @@ const RegistroChequeModal: React.FC<Props> = ({
     return () => {
       cancelled = true;
     };
-  }, [visible, areaId]);
+  }, [visible, areaId, tablesRefreshKey]);
 
   const avanzar = () => setStep((s) => Math.min(s + 1, 2));
   const retroceder = () => setStep((s) => Math.max(s - 1, 0));
@@ -441,6 +463,38 @@ const RegistroChequeModal: React.FC<Props> = ({
         </div>
 
         <div className="p-3 rounded border bg-white">
+          <div className="text-xs text-gray-500 mb-1">Área (zona de mesas)</div>
+          <div className="text-[11px] text-gray-400 mb-2">
+            Al cambiar área, se actualizan mesas y mapa.
+          </div>
+          {hasAreas ? (
+            <Select
+              size="large"
+              className="w-full"
+              value={selectedAreaId ?? undefined}
+              onChange={(v) => {
+                const id = Number(v);
+                const nextId = Number.isFinite(id) ? id : null;
+                setSelectedAreaId(nextId);
+                setSelectedTableId(null);
+                if (nameSource === "table") {
+                  setCuenta("");
+                  setNameSource(null);
+                }
+              }}
+              options={areas
+                .filter((a) => typeof a.id === "number")
+                .map((a) => ({
+                  value: Number(a.id),
+                  label: a.name || `Área #${a.id}`,
+                }))}
+            />
+          ) : (
+            <div className="text-sm text-red-500">No hay áreas configuradas.</div>
+          )}
+        </div>
+
+        <div className="p-3 rounded border bg-white md:col-span-2 self-start">
           <div className="flex items-center justify-between">
             <div className="text-xs text-gray-500">Mesa en mapa</div>
             {hasManualName ? (
@@ -450,7 +504,7 @@ const RegistroChequeModal: React.FC<Props> = ({
             ) : null}
           </div>
           {showMap ? (
-            <div className="mt-3">
+            <div className="mt-3 h-[260px] md:h-[320px] overflow-hidden">
               <MesaMapPicker
                 areaId={areaId || null}
                 selectedTableId={selectedTableId}
@@ -467,7 +521,7 @@ const RegistroChequeModal: React.FC<Props> = ({
                   }
                 }}
                 showGrid={false}
-                minStage={{ width: 280, height: 220 }}
+                minStage={{ width: 280, height: 260 }}
                 refreshKey={tablesRefreshKey}
               />
             </div>

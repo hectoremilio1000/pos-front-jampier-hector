@@ -64,7 +64,12 @@ const PairingForm: FC<Props> = ({
           `/kiosk/devices/by-code/${encodeURIComponent(q.trim())}`,
           { params: { type: "cash" } }
         );
-        const rows: ExistingDev[] = r.data || [];
+        const payload = r.data as ExistingDev[] | { rows?: ExistingDev[] } | null;
+        const rows = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.rows)
+            ? payload.rows
+            : [];
         setExisting(rows);
         setOpen(rows.length > 0);
       } catch {

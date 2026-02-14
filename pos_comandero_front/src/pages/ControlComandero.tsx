@@ -1971,7 +1971,14 @@ const ControlComandero: React.FC = () => {
                 {["Todas", ...areas.map((a) => a.name)].map((name) => (
                   <button
                     key={name}
-                    onClick={() => setAreaSeleccionadaNombre(name)}
+                    onClick={() => {
+                      setAreaSeleccionadaNombre(name);
+                      if (name !== "Todas") {
+                        const nextAreaId = areas.find((a) => a.name === name)?.id ?? null;
+                        setSelectedAreaId(nextAreaId);
+                        setNum("kiosk_selected_area_id", nextAreaId);
+                      }
+                    }}
                     className={`px-3 py-2 rounded-2xl text-sm font-medium border transition
                     ${
                       areaSeleccionadaNombre === name
@@ -2167,7 +2174,7 @@ const ControlComandero: React.FC = () => {
           visible={modalVisible}
           areas={areas}
           services={services}
-          defaultAreaId={selectedAreaId ?? undefined}
+          defaultAreaId={mapAreaId ?? undefined}
           defaultServiceId={selectedServiceId ?? undefined}
           tablesRefreshKey={tablesRefreshKey}
           onClose={() => setModalVisible(false)}

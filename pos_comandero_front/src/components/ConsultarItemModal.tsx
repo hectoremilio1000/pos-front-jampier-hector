@@ -112,6 +112,7 @@ type Row = {
   productDisplay: string; // principal + \n > modificadores
   notes: string;
   status: string | null;
+  amount: number;
   mainItemId?: number; // puede no existir si aún no persiste
   allItemIds: number[]; // principal + modificadores (o único)
 };
@@ -122,18 +123,40 @@ function minutesSince(ts?: string) {
   return Math.max(0, Math.floor(ms / 60000));
 }
 
-function StatusTag({ status }: { status: ItemStatus }) {
-  switch (status) {
+function normalizeStatusKey(status?: string | null): ItemStatus {
+  const s = String(status || "").trim().toLowerCase();
+  if (!s) return null;
+  if (s.includes("cancel") || s.includes("void") || s.includes("anulad")) {
+    return "cancelled";
+  }
+  if (s === "pending" || s.includes("pend")) return "pending";
+  if (s === "prepared" || s.includes("prepar")) return "prepared";
+  if (s === "fire") return "fire";
+  if (s === "sent" || s.includes("envi")) return "sent";
+  return null;
+}
+
+function isCancelledStatus(status?: string | null) {
+  return normalizeStatusKey(status) === "cancelled";
+}
+
+function isSentStatus(status?: string | null) {
+  return normalizeStatusKey(status) === "sent";
+}
+
+function StatusTag({ status }: { status: string | null }) {
+  const key = normalizeStatusKey(status);
+  switch (key) {
     case "pending":
-      return <Tag color="default">pending</Tag>;
+      return <Tag color="default">Pendiente</Tag>;
     case "sent":
-      return <Tag color="blue">sent</Tag>;
+      return <Tag color="blue">Enviado</Tag>;
     case "fire":
-      return <Tag color="orange">fire</Tag>;
+      return <Tag color="orange">En cocina</Tag>;
     case "prepared":
-      return <Tag color="green">prepared</Tag>;
+      return <Tag color="green">Preparado</Tag>;
     case "cancelled":
-      return <Tag color="red">cancelled</Tag>;
+      return <Tag color="red">Cancelado</Tag>;
     default:
       return <Tag>—</Tag>;
   }
@@ -193,6 +216,17 @@ const ConsultarItemModal: React.FC<Props> = ({
       maximumFractionDigits: 2,
     }).format(Number.isFinite(n) ? n : 0);
 
+  function getLineNetAmount(item: OrderItem): number {
+    if (isCancelledStatus(item.status)) return 0;
+
+    const qty = Number(item.qty ?? 0);
+    const unit = Number(item.unitPrice ?? item.basePrice ?? 0);
+    const grossRaw = Number(item.total);
+    const gross = Number.isFinite(grossRaw) ? grossRaw : qty * unit;
+    const discount = Number(item.discountAmount ?? 0) || 0;
+    return Math.max(gross - discount, 0);
+  }
+
   const getRestaurantId = () =>
     Number(orderCurrent?.restaurantId ?? 0) || getRestaurantIdFromJwt();
 
@@ -226,7 +260,7 @@ const ConsultarItemModal: React.FC<Props> = ({
 
   const totals = useMemo(() => {
     const activeItems = items.filter(
-      (it) => String(it.status || "").toLowerCase() !== "cancelled",
+      (it) => !isCancelledStatus(it.status),
     );
     const sumGross = activeItems.reduce(
       (acc, it) => acc + (Number(it.total) || 0),
@@ -306,6 +340,10 @@ const ConsultarItemModal: React.FC<Props> = ({
           productDisplay,
           notes: it.notes ?? "",
           status: it.status ?? null, // usamos el status del principal
+          amount: [it, ...modifiers].reduce(
+            (acc, current) => acc + getLineNetAmount(current),
+            0,
+          ),
           mainItemId: it.id,
           allItemIds: [
             ...(typeof it.id === "number" ? [it.id] : []),
@@ -328,6 +366,7 @@ const ConsultarItemModal: React.FC<Props> = ({
           productDisplay: it.product?.name ?? "(Producto)",
           notes: it.notes ?? "",
           status: it.status ?? null,
+          amount: getLineNetAmount(it),
           mainItemId: it.id,
           allItemIds: typeof it.id === "number" ? [it.id] : [],
         });
@@ -398,7 +437,15 @@ const ConsultarItemModal: React.FC<Props> = ({
       dataIndex: "status",
       key: "status",
       width: 130,
-      render: (st: ItemStatus) => <StatusTag status={st} />,
+      render: (st: string | null) => <StatusTag status={st} />,
+    },
+    {
+      title: "Importe",
+      dataIndex: "amount",
+      key: "amount",
+      width: 130,
+      align: "right",
+      render: (amount: number) => <Text strong>{money(amount)}</Text>,
     },
     {
       title: "Descuento",
@@ -431,7 +478,7 @@ const ConsultarItemModal: React.FC<Props> = ({
       width: 340,
       render: (_: any, row: Row) => {
         const course = row.course ?? 1;
-        const canFire = row.status === "sent" && course > 1; // 🔥 solo si está en 'sent' y no es 1er tiempo
+        const canFire = isSentStatus(row.status) && course > 1; // 🔥 solo si está en 'sent' y no es 1er tiempo
         const orderStatus = String(orderCurrent?.status || "").toLowerCase();
         const canAdjust = ["open", "in_progress", "reopened"].includes(orderStatus);
         return (
@@ -441,7 +488,7 @@ const ConsultarItemModal: React.FC<Props> = ({
               size="small"
               onClick={() => openCancelModal(row)}
               disabled={
-                !row.allItemIds.length || row.status === "cancelled" || !canAdjust
+                !row.allItemIds.length || isCancelledStatus(row.status) || !canAdjust
               }
             >
               Cancelar
@@ -456,10 +503,10 @@ const ConsultarItemModal: React.FC<Props> = ({
             <Tooltip
               title={
                 canFire
-                  ? "Enviar a FIRE"
+                  ? "Enviar a cocina"
                   : course <= 1
                     ? "FIRE solo aplica a tiempos > 1"
-                    : "Solo disponible cuando el estado es 'sent'"
+                    : "Solo disponible cuando el estado es 'enviado'"
               }
             >
               <Button
@@ -468,7 +515,7 @@ const ConsultarItemModal: React.FC<Props> = ({
                 onClick={() => onFire(row)}
                 disabled={!row.allItemIds.length || !canFire}
               >
-                Fired
+                Enviar
               </Button>
             </Tooltip>
           </Space>
